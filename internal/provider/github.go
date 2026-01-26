@@ -153,3 +153,35 @@ func (p *GitHubProvider) CreateReview(ctx context.Context, number int, comments 
 
 	return nil
 }
+
+// GetReviewComments returns all review comments on the pull request
+func (p *GitHubProvider) GetReviewComments(ctx context.Context, number int) ([]ExistingComment, error) {
+	var allComments []*github.PullRequestComment
+	opts := &github.PullRequestListCommentsOptions{
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+
+	for {
+		comments, resp, err := p.client.PullRequests.ListComments(ctx, p.owner, p.repo, number, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list PR comments: %w", err)
+		}
+		allComments = append(allComments, comments...)
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	result := make([]ExistingComment, 0, len(allComments))
+	for _, c := range allComments {
+		result = append(result, ExistingComment{
+			Path: c.GetPath(),
+			Line: c.GetLine(),
+			Body: c.GetBody(),
+		})
+	}
+
+	return result, nil
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/iq2i/ainspector/internal/cache"
 	"github.com/iq2i/ainspector/internal/ci"
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/extractor"
@@ -13,7 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "0.1.0"
+var (
+	version     = "0.1.0"
+	forceReview bool
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "ainspector",
@@ -53,6 +57,7 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
+	reviewCmd.Flags().BoolVarP(&forceReview, "force", "f", false, "Force re-review of all functions, ignoring cache")
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(versionCmd)
 }
@@ -113,6 +118,44 @@ func runReview(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Filter out already reviewed functions (unless --force is set)
+	functionsToReview := functions
+	if !forceReview {
+		fmt.Println("Checking for previously reviewed functions...")
+		existingComments, err := p.GetReviewComments(ctx, env.PRNumber)
+		if err != nil {
+			// Log warning but continue - this is not fatal
+			fmt.Printf("Warning: could not fetch existing comments: %v\n", err)
+		} else {
+			// Build tracker from existing comments
+			tracker := cache.NewTracker()
+			var reviewedComments []cache.ReviewedComment
+			for _, c := range existingComments {
+				reviewedComments = append(reviewedComments, cache.ReviewedComment{
+					Path: c.Path,
+					Line: c.Line,
+					Hash: cache.ExtractHash(c.Body),
+					Body: c.Body,
+				})
+			}
+			tracker.LoadFromComments(reviewedComments)
+
+			// Filter out already reviewed functions
+			functionsToReview = tracker.FilterUnreviewed(functions)
+			skipped := len(functions) - len(functionsToReview)
+			if skipped > 0 {
+				fmt.Printf("Skipped %d already reviewed functions\n", skipped)
+			}
+		}
+	} else {
+		fmt.Println("Force flag set - reviewing all modified functions")
+	}
+
+	if len(functionsToReview) == 0 {
+		fmt.Println("All modified functions have already been reviewed")
+		return nil
+	}
+
 	// Get LLM config from environment variables
 	apiURL := os.Getenv("LLM_BASE_URL")
 	if apiURL == "" {
@@ -131,22 +174,28 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// Review with LLM
 	client := llm.NewClient(apiURL, apiKey, model)
-	fmt.Printf("Reviewing with LLM (%s)...\n", model)
+	fmt.Printf("Reviewing %d functions with LLM (%s)...\n", len(functionsToReview), model)
 
-	results := llm.ReviewFunctions(ctx, client, functions)
+	results := llm.ReviewFunctions(ctx, client, functionsToReview)
 
-	// Convert results to review comments
+	// Convert results to review comments with hash markers for caching
 	var comments []provider.ReviewComment
 	for _, result := range results {
 		if !result.HasIssues() {
 			continue
 		}
 
+		// Generate hash for this function to enable caching
+		fnHash := cache.FunctionHash(&result.Function)
+		hashMarker := cache.FormatHashMarker(fnHash)
+
 		for _, suggestion := range result.Suggestions {
+			// Append hash marker to comment body for future cache detection
+			body := suggestion.Description + "\n\n" + hashMarker
 			comment := provider.ReviewComment{
 				Path:       result.Function.FilePath,
 				Line:       suggestion.Line,
-				Body:       suggestion.Description,
+				Body:       body,
 				Suggestion: suggestion.Code,
 			}
 			comments = append(comments, comment)

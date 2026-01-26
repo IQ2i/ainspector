@@ -41,6 +41,10 @@ func (m *mockProvider) CreateReview(ctx context.Context, number int, comments []
 	return nil
 }
 
+func (m *mockProvider) GetReviewComments(ctx context.Context, number int) ([]provider.ExistingComment, error) {
+	return nil, nil
+}
+
 func TestExtractModifiedFunctions_SkipsDeletedFiles(t *testing.T) {
 	mock := &mockProvider{files: map[string]string{}}
 	e := New(mock, nil)

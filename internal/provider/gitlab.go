@@ -187,3 +187,48 @@ func (p *GitLabProvider) CreateReview(ctx context.Context, number int, comments 
 
 	return nil
 }
+
+// GetReviewComments returns all review comments on the merge request
+func (p *GitLabProvider) GetReviewComments(ctx context.Context, number int) ([]ExistingComment, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("GitLab client not initialized")
+	}
+
+	mrNumber := int64(number)
+	var allDiscussions []*gitlab.Discussion
+	opts := &gitlab.ListMergeRequestDiscussionsOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+			Page:    1,
+		},
+	}
+
+	for {
+		discussions, resp, err := p.client.Discussions.ListMergeRequestDiscussions(p.projectID, mrNumber, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list MR discussions: %w", err)
+		}
+		allDiscussions = append(allDiscussions, discussions...)
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	var result []ExistingComment
+	for _, d := range allDiscussions {
+		for _, note := range d.Notes {
+			// Only include notes with position (inline comments)
+			if note.Position != nil {
+				result = append(result, ExistingComment{
+					Path: note.Position.NewPath,
+					Line: int(note.Position.NewLine),
+					Body: note.Body,
+				})
+			}
+		}
+	}
+
+	return result, nil
+}

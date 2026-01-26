@@ -19,6 +19,13 @@ type ReviewComment struct {
 	Suggestion string // Optional: suggested code replacement
 }
 
+// ExistingComment represents a review comment already posted on the PR/MR
+type ExistingComment struct {
+	Path string // File path
+	Line int    // Line number
+	Body string // Comment body
+}
+
 // Provider is the interface for git hosting providers (GitHub, GitLab)
 type Provider interface {
 	// GetModifiedFiles returns all files modified in a PR/MR
@@ -32,4 +39,7 @@ type Provider interface {
 
 	// CreateReview creates a review with inline comments on specific lines
 	CreateReview(ctx context.Context, number int, comments []ReviewComment) error
+
+	// GetReviewComments returns all review comments on the PR/MR
+	GetReviewComments(ctx context.Context, number int) ([]ExistingComment, error)
 }
