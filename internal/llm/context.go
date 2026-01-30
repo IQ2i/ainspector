@@ -13,26 +13,26 @@ import (
 
 // ProjectContext holds the generated project context
 type ProjectContext struct {
-	Description string   // Raw file contents (US.1) OR LLM summary (legacy)
+	Description string // Raw file contents (US.1) OR LLM summary (legacy)
 	Languages   []string
-	IsRaw       bool     // true if Description contains raw files, false if LLM summary
+	IsRaw       bool // true if Description contains raw files, false if LLM summary
 }
 
 // contextFiles maps file patterns to their descriptions
 var contextFiles = map[string]string{
 	// Go
-	"go.mod":      "Go module dependencies",
-	"go.sum":      "Go dependency checksums",
+	"go.mod": "Go module dependencies",
+	"go.sum": "Go dependency checksums",
 
 	// JavaScript/TypeScript
-	"package.json": "Node.js dependencies and scripts",
+	"package.json":  "Node.js dependencies and scripts",
 	"tsconfig.json": "TypeScript configuration",
 
 	// Python
 	"requirements.txt": "Python dependencies",
-	"pyproject.toml": "Python project configuration",
-	"setup.py": "Python package setup",
-	"Pipfile": "Pipenv dependencies",
+	"pyproject.toml":   "Python project configuration",
+	"setup.py":         "Python package setup",
+	"Pipfile":          "Pipenv dependencies",
 
 	// PHP
 	"composer.json": "PHP dependencies",
@@ -44,18 +44,18 @@ var contextFiles = map[string]string{
 	"Gemfile": "Ruby dependencies",
 
 	// Java
-	"pom.xml": "Maven dependencies",
+	"pom.xml":      "Maven dependencies",
 	"build.gradle": "Gradle build configuration",
 
 	// .NET
-	"*.csproj": "C# project file",
+	"*.csproj":        "C# project file",
 	"packages.config": ".NET package references",
 
 	// Documentation and AI helpers
-	"README.md": "Project documentation",
-	"CLAUDE.md": "Claude AI instructions",
-	"AGENTS.md": "AI agents instructions",
-	".cursorrules": "Cursor IDE AI rules",
+	"README.md":                       "Project documentation",
+	"CLAUDE.md":                       "Claude AI instructions",
+	"AGENTS.md":                       "AI agents instructions",
+	".cursorrules":                    "Cursor IDE AI rules",
 	".github/copilot-instructions.md": "GitHub Copilot instructions",
 }
 

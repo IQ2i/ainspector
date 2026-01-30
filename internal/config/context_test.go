@@ -15,18 +15,18 @@ func TestCollectContextFiles_IncludeExclude(t *testing.T) {
 	createTestFile(t, tmpDir, "docs/internal.md", "internal content")
 
 	tests := []struct {
-		name          string
-		include       []string
-		exclude       []string
-		wantFiles     []string
-		wantNoFiles   []string
-		wantWarnings  int
+		name         string
+		include      []string
+		exclude      []string
+		wantFiles    []string
+		wantNoFiles  []string
+		wantWarnings int
 	}{
 		{
-			name:      "include all, exclude one",
-			include:   []string{"docs/**"},
-			exclude:   []string{"docs/internal.md"},
-			wantFiles: []string{"docs/guide.md"},
+			name:        "include all, exclude one",
+			include:     []string{"docs/**"},
+			exclude:     []string{"docs/internal.md"},
+			wantFiles:   []string{"docs/guide.md"},
 			wantNoFiles: []string{"docs/internal.md"},
 		},
 		{

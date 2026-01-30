@@ -498,10 +498,10 @@ func TestReviewResult_HasIssues(t *testing.T) {
 
 func TestParseReviewResponse(t *testing.T) {
 	tests := []struct {
-		name           string
-		response       string
-		expectedCount  int
-		expectedFirst  *Suggestion
+		name          string
+		response      string
+		expectedCount int
+		expectedFirst *Suggestion
 	}{
 		{
 			name:          "LGTM response",

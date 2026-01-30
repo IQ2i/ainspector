@@ -140,11 +140,11 @@ func TestFindContextFiles(t *testing.T) {
 
 	// Create various config files
 	files := map[string]string{
-		"package.json":   `{"name": "test"}`,
-		"README.md":      "# Test",
-		"go.mod":         "module test",
-		"composer.json":  `{"name": "test"}`,
-		"CLAUDE.md":      "Claude instructions",
+		"package.json":  `{"name": "test"}`,
+		"README.md":     "# Test",
+		"go.mod":        "module test",
+		"composer.json": `{"name": "test"}`,
+		"CLAUDE.md":     "Claude instructions",
 	}
 
 	for name, content := range files {
@@ -446,9 +446,9 @@ func TestGenerateProjectContext_BackwardCompatibility(t *testing.T) {
 
 func TestBuildSystemPrompt_RawVsLegacy(t *testing.T) {
 	tests := []struct {
-		name            string
-		projectContext  *ProjectContext
-		expectHeader    string
+		name           string
+		projectContext *ProjectContext
+		expectHeader   string
 	}{
 		{
 			name: "raw context",
