@@ -84,6 +84,65 @@ func TestLoad(t *testing.T) {
 			t.Errorf("expected from_yaml/, got %s", cfg.Ignore.Paths[0])
 		}
 	})
+
+	t.Run("loads rules from config", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.Chdir(tmpDir)
+
+		content := `rules:
+  - Exceptions must not be used for flow control
+  - All database access must go through repositories
+  - console.log must not be used in production code
+`
+		_ = os.WriteFile("ainspector.yaml", []byte(content), 0644)
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(cfg.Rules) != 3 {
+			t.Errorf("expected 3 rules, got %d", len(cfg.Rules))
+		}
+		if cfg.Rules[0] != "Exceptions must not be used for flow control" {
+			t.Errorf("unexpected first rule: %s", cfg.Rules[0])
+		}
+	})
+
+	t.Run("handles missing rules section", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.Chdir(tmpDir)
+
+		content := `ignore:
+  paths:
+    - vendor/
+`
+		_ = os.WriteFile("ainspector.yaml", []byte(content), 0644)
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(cfg.Rules) != 0 {
+			t.Errorf("expected 0 rules, got %d", len(cfg.Rules))
+		}
+	})
+
+	t.Run("handles empty rules list", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.Chdir(tmpDir)
+
+		content := `rules: []
+`
+		_ = os.WriteFile("ainspector.yaml", []byte(content), 0644)
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(cfg.Rules) != 0 {
+			t.Errorf("expected 0 rules, got %d", len(cfg.Rules))
+		}
+	})
 }
 
 func TestLoadFromPath(t *testing.T) {

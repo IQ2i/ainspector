@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Ignore  IgnoreConfig  `yaml:"ignore"`
 	Context ContextConfig `yaml:"context"`
+	Rules   []string      `yaml:"rules"`
 }
 
 // IgnoreConfig holds patterns for files to ignore during review

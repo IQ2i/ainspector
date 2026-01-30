@@ -207,7 +207,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// Review with LLM
 	fmt.Printf("Reviewing %d functions with LLM (%s)...\n", len(functionsToReview), model)
-	results := llm.ReviewFunctions(ctx, client, functionsToReview, projectContext)
+	results := llm.ReviewFunctions(ctx, client, functionsToReview, projectContext, cfg.Rules)
 
 	// Convert results to review comments with hash markers for caching
 	var comments []provider.ReviewComment

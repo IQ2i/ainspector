@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,7 +42,7 @@ func TestReviewFunctions_SingleFunction(t *testing.T) {
 		},
 	}
 
-	results := ReviewFunctions(ctx, client, functions, nil)
+	results := ReviewFunctions(ctx, client, functions, nil, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -78,7 +79,7 @@ func TestReviewFunctions_WithIssues(t *testing.T) {
 		{Name: "test", FilePath: "test.go", Language: "go"},
 	}
 
-	results := ReviewFunctions(ctx, client, functions, nil)
+	results := ReviewFunctions(ctx, client, functions, nil, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -121,7 +122,7 @@ func TestReviewFunctions_MultipleFunctions(t *testing.T) {
 		{Name: "func3", FilePath: "c.go", Language: "go", ChangeType: "modified"},
 	}
 
-	results := ReviewFunctions(ctx, client, functions, nil)
+	results := ReviewFunctions(ctx, client, functions, nil, nil)
 
 	if len(results) != 3 {
 		t.Fatalf("expected 3 results, got %d", len(results))
@@ -170,7 +171,7 @@ func TestReviewFunctions_MixedSuccessAndFailure(t *testing.T) {
 		{Name: "func3"},
 	}
 
-	results := ReviewFunctions(ctx, client, functions, nil)
+	results := ReviewFunctions(ctx, client, functions, nil, nil)
 
 	if len(results) != 3 {
 		t.Fatalf("expected 3 results, got %d", len(results))
@@ -207,7 +208,7 @@ func TestReviewFunctions_EmptyList(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{}, nil)
+	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{}, nil, nil)
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
@@ -241,7 +242,7 @@ func TestReviewFunctions_PreservesFunction(t *testing.T) {
 		ChangeType: "modified",
 	}
 
-	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{originalFn}, nil)
+	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{originalFn}, nil, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -407,7 +408,7 @@ func TestReviewFunctions_VerifiesPromptStructure(t *testing.T) {
 		{Name: "test", Language: "go", FilePath: "test.go"},
 	}
 
-	ReviewFunctions(ctx, client, functions, nil)
+	ReviewFunctions(ctx, client, functions, nil, nil)
 
 	// Should have 2 messages: system and user
 	if len(receivedMessages) != 2 {
@@ -635,7 +636,7 @@ func TestBuildSystemPrompt_LanguageSpecific(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			prompt := buildSystemPrompt(tt.language, nil)
+			prompt := buildSystemPrompt(tt.language, nil, nil)
 
 			// Should always contain base prompt
 			if !strings.Contains(prompt, "You are an expert code reviewer") {
@@ -656,7 +657,7 @@ func TestBuildSystemPrompt_BasePromptAlwaysPresent(t *testing.T) {
 	languages := []string{"go", "javascript", "python", "rust", "unknown"}
 
 	for _, lang := range languages {
-		prompt := buildSystemPrompt(lang, nil)
+		prompt := buildSystemPrompt(lang, nil, nil)
 
 		// All prompts should contain essential base instructions
 		essentials := []string{
@@ -671,5 +672,141 @@ func TestBuildSystemPrompt_BasePromptAlwaysPresent(t *testing.T) {
 				t.Errorf("prompt for %q should contain %q", lang, essential)
 			}
 		}
+	}
+}
+
+func TestBuildSystemPrompt_WithProjectRules(t *testing.T) {
+	rules := []string{
+		"Exceptions must not be used for flow control",
+		"All database access must go through repositories",
+		"console.log must not be used in production code",
+	}
+
+	prompt := buildSystemPrompt("go", nil, rules)
+
+	// Should contain the rules section header
+	if !strings.Contains(prompt, "=== PROJECT RULES (MUST BE ENFORCED) ===") {
+		t.Error("prompt should contain project rules header")
+	}
+
+	// Should contain enforcement language
+	if !strings.Contains(prompt, "MUST be enforced") {
+		t.Error("prompt should contain enforcement language")
+	}
+
+	// Should contain all rules with numbering
+	for i, rule := range rules {
+		expected := fmt.Sprintf("%d. %s", i+1, rule)
+		if !strings.Contains(prompt, expected) {
+			t.Errorf("prompt should contain numbered rule: %q", expected)
+		}
+	}
+
+	// Should still contain base prompt
+	if !strings.Contains(prompt, "You are an expert code reviewer") {
+		t.Error("prompt should still contain base prompt")
+	}
+
+	// Should still contain language-specific rules
+	if !strings.Contains(prompt, "LANGUAGE-SPECIFIC CHECKS FOR GO") {
+		t.Error("prompt should still contain language-specific rules")
+	}
+}
+
+func TestBuildSystemPrompt_WithoutProjectRules(t *testing.T) {
+	// Test with nil rules
+	promptNil := buildSystemPrompt("go", nil, nil)
+	if strings.Contains(promptNil, "PROJECT RULES") {
+		t.Error("prompt should not contain project rules section when rules are nil")
+	}
+
+	// Test with empty rules
+	promptEmpty := buildSystemPrompt("go", nil, []string{})
+	if strings.Contains(promptEmpty, "PROJECT RULES") {
+		t.Error("prompt should not contain project rules section when rules are empty")
+	}
+
+	// Both should contain base prompt
+	if !strings.Contains(promptNil, "You are an expert code reviewer") {
+		t.Error("prompt with nil rules should contain base prompt")
+	}
+	if !strings.Contains(promptEmpty, "You are an expert code reviewer") {
+		t.Error("prompt with empty rules should contain base prompt")
+	}
+}
+
+func TestBuildSystemPrompt_RulesPlacement(t *testing.T) {
+	rules := []string{"Test rule"}
+	prompt := buildSystemPrompt("go", nil, rules)
+
+	// Rules should come after base prompt but before language-specific rules
+	baseIdx := strings.Index(prompt, "You are an expert code reviewer")
+	rulesIdx := strings.Index(prompt, "PROJECT RULES")
+	langIdx := strings.Index(prompt, "LANGUAGE-SPECIFIC CHECKS")
+
+	if baseIdx == -1 || rulesIdx == -1 || langIdx == -1 {
+		t.Fatal("prompt should contain all sections")
+	}
+
+	if baseIdx >= rulesIdx {
+		t.Error("base prompt should come before project rules")
+	}
+
+	if rulesIdx >= langIdx {
+		t.Error("project rules should come before language-specific rules")
+	}
+}
+
+func TestReviewFunctions_WithProjectRules(t *testing.T) {
+	var receivedMessages []ChatMessage
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req ChatRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		receivedMessages = req.Messages
+
+		resp := ChatResponse{
+			Choices: []struct {
+				Message ChatMessage `json:"message"`
+			}{
+				{Message: ChatMessage{Role: "assistant", Content: "LGTM"}},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "key", "gpt-4")
+	ctx := context.Background()
+
+	functions := []extractor.ExtractedFunction{
+		{Name: "test", Language: "go", FilePath: "test.go"},
+	}
+
+	rules := []string{
+		"No console.log in production",
+		"All functions must have tests",
+	}
+
+	results := ReviewFunctions(ctx, client, functions, nil, rules)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Verify system prompt contains rules
+	if len(receivedMessages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(receivedMessages))
+	}
+
+	systemPrompt := receivedMessages[0].Content
+	if !strings.Contains(systemPrompt, "PROJECT RULES") {
+		t.Error("system prompt should contain project rules section")
+	}
+	if !strings.Contains(systemPrompt, "No console.log in production") {
+		t.Error("system prompt should contain first rule")
+	}
+	if !strings.Contains(systemPrompt, "All functions must have tests") {
+		t.Error("system prompt should contain second rule")
 	}
 }

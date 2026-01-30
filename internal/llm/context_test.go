@@ -256,7 +256,7 @@ func TestBuildSystemPrompt_WithProjectContext(t *testing.T) {
 		Languages:   []string{"javascript", "typescript"},
 	}
 
-	prompt := buildSystemPrompt("javascript", projectContext)
+	prompt := buildSystemPrompt("javascript", projectContext, nil)
 
 	// Should contain base prompt
 	if !strings.Contains(prompt, "You are an expert code reviewer") {
@@ -279,7 +279,7 @@ func TestBuildSystemPrompt_WithProjectContext(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_WithoutProjectContext(t *testing.T) {
-	prompt := buildSystemPrompt("go", nil)
+	prompt := buildSystemPrompt("go", nil, nil)
 
 	// Should contain base prompt
 	if !strings.Contains(prompt, "You are an expert code reviewer") {
@@ -303,7 +303,7 @@ func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 		Languages:   []string{"go"},
 	}
 
-	prompt := buildSystemPrompt("go", projectContext)
+	prompt := buildSystemPrompt("go", projectContext, nil)
 
 	// Should NOT contain project context section when description is empty
 	if strings.Contains(prompt, "PROJECT CONTEXT") {
@@ -472,7 +472,7 @@ func TestBuildSystemPrompt_RawVsLegacy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			prompt := buildSystemPrompt("go", tt.projectContext)
+			prompt := buildSystemPrompt("go", tt.projectContext, nil)
 
 			if !strings.Contains(prompt, tt.expectHeader) {
 				t.Errorf("expected prompt to contain %q", tt.expectHeader)

@@ -168,8 +168,8 @@ LANGUAGE-SPECIFIC CHECKS FOR BASH:
 - Verify safe handling of user input`,
 }
 
-// buildSystemPrompt creates a language-specific system prompt with optional project context
-func buildSystemPrompt(language string, projectContext *ProjectContext) string {
+// buildSystemPrompt creates a language-specific system prompt with optional project context and rules
+func buildSystemPrompt(language string, projectContext *ProjectContext, rules []string) string {
 	prompt := baseSystemPrompt
 
 	// Add project context if available
@@ -180,6 +180,16 @@ func buildSystemPrompt(language string, projectContext *ProjectContext) string {
 		} else {
 			// LLM-generated summary (legacy)
 			prompt += "\n\nPROJECT CONTEXT:\n" + projectContext.Description
+		}
+	}
+
+	// Add project-specific rules
+	if len(rules) > 0 {
+		prompt += "\n\n=== PROJECT RULES (MUST BE ENFORCED) ===\n"
+		prompt += "The following rules are specific to this project and MUST be enforced.\n"
+		prompt += "Report any violations of these rules explicitly in your review:\n\n"
+		for i, rule := range rules {
+			prompt += fmt.Sprintf("%d. %s\n", i+1, rule)
 		}
 	}
 
@@ -222,13 +232,14 @@ func (r *ReviewResult) HasIssues() bool {
 
 // ReviewFunctions reviews each function using the LLM and returns the results.
 // If projectContext is provided, it will be included in the system prompt for better context.
-func ReviewFunctions(ctx context.Context, client *Client, functions []extractor.ExtractedFunction, projectContext *ProjectContext) []ReviewResult {
+// If rules are provided, they will be enforced as mandatory project-specific rules.
+func ReviewFunctions(ctx context.Context, client *Client, functions []extractor.ExtractedFunction, projectContext *ProjectContext, rules []string) []ReviewResult {
 	results := make([]ReviewResult, 0, len(functions))
 
 	for _, fn := range functions {
 		result := ReviewResult{Function: fn}
 
-		systemPrompt := buildSystemPrompt(fn.Language, projectContext)
+		systemPrompt := buildSystemPrompt(fn.Language, projectContext, rules)
 		userPrompt := buildUserPrompt(&fn)
 		messages := []ChatMessage{
 			{Role: "system", Content: systemPrompt},
