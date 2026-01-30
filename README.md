@@ -10,7 +10,11 @@ ainspector automatically analyzes your PRs/MRs, extracts modified functions usin
 - Function-level analysis using tree-sitter parsing
 - Reviews only the changed code, not the entire file
 - Compatible with any OpenAI-compatible API (OpenAI, Anthropic, Ollama, etc.)
-- Configurable file exclusion patterns
+- Smart caching: skips already reviewed functions across commits
+- Project context generation from documentation files (CLAUDE.md, README.md, etc.)
+- Custom review rules enforcement
+- Configurable context files and exclusion patterns
+- Language-specific review guidelines
 
 ### Supported Languages
 
@@ -60,6 +64,8 @@ jobs:
           LLM_BASE_URL: https://api.openai.com  # optional
           LLM_MODEL: gpt-4o                      # optional
         run: ./ainspector review
+        # Use --force to re-review all functions (ignores cache)
+        # run: ./ainspector review --force
 ```
 
 ### GitLab CI
@@ -75,11 +81,31 @@ ai-review:
     - curl -sL https://github.com/iq2i/ainspector/releases/latest/download/ainspector-linux-amd64 -o ainspector
     - chmod +x ainspector
     - ./ainspector review
+    # Use --force to re-review all functions (ignores cache)
+    # - ./ainspector review --force
   variables:
     GITLAB_TOKEN: $GITLAB_API_TOKEN  # or use CI_JOB_TOKEN with appropriate permissions
     LLM_API_KEY: $LLM_API_KEY
     LLM_BASE_URL: https://api.openai.com
     LLM_MODEL: gpt-4o
+```
+
+### Command Line Options
+
+**ainspector review** - Run code review on the current PR/MR
+
+Options:
+- `--force`, `-f` - Force re-review of all functions, ignoring the cache. By default, ainspector skips functions that have already been reviewed in previous runs.
+
+**ainspector version** - Print the version number
+
+### Smart Caching
+
+ainspector automatically tracks which functions have been reviewed by embedding a hash marker in review comments. On subsequent runs, it skips functions that haven't changed since the last review, saving API costs and review time.
+
+To force a complete re-review (useful after updating review rules or context):
+```bash
+./ainspector review --force
 ```
 
 ## LLM Configuration
@@ -92,57 +118,84 @@ ainspector works with any OpenAI-compatible API. Configure it using environment 
 | `LLM_BASE_URL` | No | `https://api.openai.com` | Base URL of the API |
 | `LLM_MODEL` | No | `gpt-4o` | Model name to use |
 
-### Provider Examples
-
-**OpenAI**
-```bash
-LLM_API_KEY=sk-...
-LLM_BASE_URL=https://api.openai.com
-LLM_MODEL=gpt-4o
-```
-
-**Anthropic (via OpenAI-compatible proxy)**
-```bash
-LLM_API_KEY=sk-ant-...
-LLM_BASE_URL=https://api.anthropic.com
-LLM_MODEL=claude-sonnet-4-20250514
-```
-
-**Azure OpenAI**
-```bash
-LLM_API_KEY=your-azure-key
-LLM_BASE_URL=https://your-resource.openai.azure.com
-LLM_MODEL=your-deployment-name
-```
-
-**Ollama (local)**
-```bash
-LLM_API_KEY=ollama  # any non-empty value
-LLM_BASE_URL=http://localhost:11434
-LLM_MODEL=llama3
-```
-
-**OpenRouter**
-```bash
-LLM_API_KEY=sk-or-...
-LLM_BASE_URL=https://openrouter.ai/api
-LLM_MODEL=anthropic/claude-sonnet-4-20250514
-```
-
 ## Configuration File
 
-Create an `ainspector.yaml` (or `ainspector.yml`) at the root of your repository to exclude files from review:
+Create an `ainspector.yaml` (or `ainspector.yml`) at the root of your repository to customize the review behavior:
 
 ```yaml
+# Exclude files from code review
 ignore:
-  # Glob patterns (supports ** for recursive matching)
   paths:
     - vendor/
     - node_modules/
     - "**/*_test.go"
     - "*.generated.go"
     - dist/
+
+# Configure project context for better AI understanding
+context:
+  # Files to include in project context (supports ** for recursive matching)
+  include:
+    - CLAUDE.md
+    - ARCHITECTURE.md
+    - docs/**.md
+    - "*.config.js"
+
+  # Files to exclude (takes priority over include)
+  exclude:
+    - docs/archive/**
+    - "**/*.draft.md"
+
+# Custom review rules enforced by the AI
+rules:
+  - "All exceptions must be logged before rethrowing"
+  - "Database queries must use prepared statements"
+  - "No console.log allowed in production code"
+  - "All public functions must have JSDoc comments"
+  - "API responses must include proper error codes"
 ```
+
+### Configuration Options
+
+**ignore.paths** - Glob patterns for files to skip during review. Useful for excluding vendor code, generated files, and test files.
+
+**context.include** - Files to include when generating project context. The AI will read these files to better understand your project's architecture, conventions, and requirements. By default, ainspector automatically searches for common documentation files like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `README.md`, and `.github/copilot-instructions.md`.
+
+**context.exclude** - Files to exclude from project context (overrides include patterns).
+
+**rules** - Custom project-specific review rules. These rules are enforced by the AI reviewer and any violations will be explicitly reported in the code review comments.
+
+## How It Works
+
+### Project Context Generation
+
+Before reviewing code, ainspector generates project context to help the AI understand your codebase better. The context is built from:
+
+1. **Automatic Discovery**: Common documentation files are automatically detected:
+   - `CLAUDE.md` - Claude-specific project instructions
+   - `AGENTS.md` - Agent configuration and guidelines
+   - `.cursorrules` - Cursor IDE AI rules
+   - `.github/copilot-instructions.md` - GitHub Copilot instructions
+   - `README.md` - Project overview and documentation
+
+2. **Custom Context Files**: Files specified in `context.include` in your `ainspector.yaml`
+
+The AI analyzes these files to understand your project's architecture, coding conventions, and requirements before reviewing your code.
+
+### Language-Specific Review Guidelines
+
+ainspector includes tailored review guidelines for each supported language:
+
+- **Go**: Error handling, nil checks, goroutine leaks, defer usage
+- **JavaScript/TypeScript**: Promise handling, type safety, async/await patterns
+- **Python**: Exception handling, type hints, resource management
+- **Rust**: Ownership rules, unsafe blocks, error propagation
+- **Java**: Exception handling, resource leaks, null safety
+- **C/C++**: Memory management, buffer overflows, pointer safety
+- **C#**: Disposal patterns, async/await, null reference handling
+- **PHP**: SQL injection, XSS prevention, type declarations
+- **Ruby**: Exception handling, nil checks, block usage
+- **Bash**: Quoting, error handling, shellcheck compliance
 
 ## Environment Variables Reference
 
