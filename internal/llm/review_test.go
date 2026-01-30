@@ -561,3 +561,115 @@ func TestParseReviewResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildSystemPrompt_LanguageSpecific(t *testing.T) {
+	tests := []struct {
+		name             string
+		language         string
+		expectedContains []string
+	}{
+		{
+			name:     "Go language includes error handling checks",
+			language: "go",
+			expectedContains: []string{
+				"LANGUAGE-SPECIFIC CHECKS FOR GO",
+				"errors are properly handled",
+				"nil pointer dereferences",
+				"goroutines",
+			},
+		},
+		{
+			name:     "JavaScript includes async/await checks",
+			language: "javascript",
+			expectedContains: []string{
+				"LANGUAGE-SPECIFIC CHECKS FOR JAVASCRIPT",
+				"async functions properly await",
+				"promise rejections",
+			},
+		},
+		{
+			name:     "TypeScript includes type checks",
+			language: "typescript",
+			expectedContains: []string{
+				"LANGUAGE-SPECIFIC CHECKS FOR TYPESCRIPT",
+				"TypeScript types",
+				"any' type",
+			},
+		},
+		{
+			name:     "Python includes exception handling checks",
+			language: "python",
+			expectedContains: []string{
+				"LANGUAGE-SPECIFIC CHECKS FOR PYTHON",
+				"exception handling",
+				"context managers",
+			},
+		},
+		{
+			name:     "Rust includes Result type checks",
+			language: "rust",
+			expectedContains: []string{
+				"LANGUAGE-SPECIFIC CHECKS FOR RUST",
+				"Result type",
+				"unwrap",
+			},
+		},
+		{
+			name:     "PHP includes SQL injection checks",
+			language: "php",
+			expectedContains: []string{
+				"LANGUAGE-SPECIFIC CHECKS FOR PHP",
+				"SQL injection",
+				"prepared statements",
+				"XSS vulnerabilities",
+			},
+		},
+		{
+			name:     "Unknown language uses base prompt only",
+			language: "unknown-lang",
+			expectedContains: []string{
+				"You are an expert code reviewer",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prompt := buildSystemPrompt(tt.language)
+
+			// Should always contain base prompt
+			if !strings.Contains(prompt, "You are an expert code reviewer") {
+				t.Error("prompt should contain base system prompt")
+			}
+
+			// Check for language-specific content
+			for _, expected := range tt.expectedContains {
+				if !strings.Contains(prompt, expected) {
+					t.Errorf("prompt for language %q should contain %q", tt.language, expected)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildSystemPrompt_BasePromptAlwaysPresent(t *testing.T) {
+	languages := []string{"go", "javascript", "python", "rust", "unknown"}
+
+	for _, lang := range languages {
+		prompt := buildSystemPrompt(lang)
+
+		// All prompts should contain essential base instructions
+		essentials := []string{
+			"You are an expert code reviewer",
+			"RESPONSE FORMAT",
+			"LGTM",
+			"JSON object",
+		}
+
+		for _, essential := range essentials {
+			if !strings.Contains(prompt, essential) {
+				t.Errorf("prompt for %q should contain %q", lang, essential)
+			}
+		}
+	}
+}
