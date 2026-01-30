@@ -41,7 +41,7 @@ func TestReviewFunctions_SingleFunction(t *testing.T) {
 		},
 	}
 
-	results := ReviewFunctions(ctx, client, functions)
+	results := ReviewFunctions(ctx, client, functions, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -78,7 +78,7 @@ func TestReviewFunctions_WithIssues(t *testing.T) {
 		{Name: "test", FilePath: "test.go", Language: "go"},
 	}
 
-	results := ReviewFunctions(ctx, client, functions)
+	results := ReviewFunctions(ctx, client, functions, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -121,7 +121,7 @@ func TestReviewFunctions_MultipleFunctions(t *testing.T) {
 		{Name: "func3", FilePath: "c.go", Language: "go", ChangeType: "modified"},
 	}
 
-	results := ReviewFunctions(ctx, client, functions)
+	results := ReviewFunctions(ctx, client, functions, nil)
 
 	if len(results) != 3 {
 		t.Fatalf("expected 3 results, got %d", len(results))
@@ -170,7 +170,7 @@ func TestReviewFunctions_MixedSuccessAndFailure(t *testing.T) {
 		{Name: "func3"},
 	}
 
-	results := ReviewFunctions(ctx, client, functions)
+	results := ReviewFunctions(ctx, client, functions, nil)
 
 	if len(results) != 3 {
 		t.Fatalf("expected 3 results, got %d", len(results))
@@ -207,7 +207,7 @@ func TestReviewFunctions_EmptyList(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{})
+	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{}, nil)
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
@@ -241,7 +241,7 @@ func TestReviewFunctions_PreservesFunction(t *testing.T) {
 		ChangeType: "modified",
 	}
 
-	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{originalFn})
+	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{originalFn}, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -407,7 +407,7 @@ func TestReviewFunctions_VerifiesPromptStructure(t *testing.T) {
 		{Name: "test", Language: "go", FilePath: "test.go"},
 	}
 
-	ReviewFunctions(ctx, client, functions)
+	ReviewFunctions(ctx, client, functions, nil)
 
 	// Should have 2 messages: system and user
 	if len(receivedMessages) != 2 {
@@ -635,7 +635,7 @@ func TestBuildSystemPrompt_LanguageSpecific(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			prompt := buildSystemPrompt(tt.language)
+			prompt := buildSystemPrompt(tt.language, nil)
 
 			// Should always contain base prompt
 			if !strings.Contains(prompt, "You are an expert code reviewer") {
@@ -656,7 +656,7 @@ func TestBuildSystemPrompt_BasePromptAlwaysPresent(t *testing.T) {
 	languages := []string{"go", "javascript", "python", "rust", "unknown"}
 
 	for _, lang := range languages {
-		prompt := buildSystemPrompt(lang)
+		prompt := buildSystemPrompt(lang, nil)
 
 		// All prompts should contain essential base instructions
 		essentials := []string{

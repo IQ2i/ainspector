@@ -168,12 +168,20 @@ LANGUAGE-SPECIFIC CHECKS FOR BASH:
 - Verify safe handling of user input`,
 }
 
-// buildSystemPrompt creates a language-specific system prompt
-func buildSystemPrompt(language string) string {
+// buildSystemPrompt creates a language-specific system prompt with optional project context
+func buildSystemPrompt(language string, projectContext *ProjectContext) string {
 	prompt := baseSystemPrompt
+
+	// Add project context if available
+	if projectContext != nil && projectContext.Description != "" {
+		prompt += "\n\nPROJECT CONTEXT:\n" + projectContext.Description
+	}
+
+	// Add language-specific rules
 	if rules, ok := languageSpecificRules[language]; ok {
 		prompt += "\n" + rules
 	}
+
 	return prompt
 }
 
@@ -207,13 +215,14 @@ func (r *ReviewResult) HasIssues() bool {
 }
 
 // ReviewFunctions reviews each function using the LLM and returns the results.
-func ReviewFunctions(ctx context.Context, client *Client, functions []extractor.ExtractedFunction) []ReviewResult {
+// If projectContext is provided, it will be included in the system prompt for better context.
+func ReviewFunctions(ctx context.Context, client *Client, functions []extractor.ExtractedFunction, projectContext *ProjectContext) []ReviewResult {
 	results := make([]ReviewResult, 0, len(functions))
 
 	for _, fn := range functions {
 		result := ReviewResult{Function: fn}
 
-		systemPrompt := buildSystemPrompt(fn.Language)
+		systemPrompt := buildSystemPrompt(fn.Language, projectContext)
 		userPrompt := buildUserPrompt(&fn)
 		messages := []ChatMessage{
 			{Role: "system", Content: systemPrompt},

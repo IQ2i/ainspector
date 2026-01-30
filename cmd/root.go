@@ -118,6 +118,16 @@ func runReview(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Detect languages used in the modified functions
+	languagesMap := make(map[string]bool)
+	for _, fn := range functions {
+		languagesMap[fn.Language] = true
+	}
+	var languages []string
+	for lang := range languagesMap {
+		languages = append(languages, lang)
+	}
+
 	// Filter out already reviewed functions (unless --force is set)
 	functionsToReview := functions
 	if !forceReview {
@@ -172,11 +182,28 @@ func runReview(cmd *cobra.Command, args []string) error {
 		model = "gpt-4o"
 	}
 
-	// Review with LLM
+	// Create LLM client
 	client := llm.NewClient(apiURL, apiKey, model)
-	fmt.Printf("Reviewing %d functions with LLM (%s)...\n", len(functionsToReview), model)
 
-	results := llm.ReviewFunctions(ctx, client, functionsToReview)
+	// Generate project context
+	fmt.Println("Generating project context...")
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("Warning: could not get working directory: %v\n", err)
+		projectRoot = "."
+	}
+
+	projectContext, err := llm.GenerateProjectContext(ctx, client, projectRoot, languages)
+	if err != nil {
+		fmt.Printf("Warning: failed to generate project context: %v\n", err)
+		projectContext = nil
+	} else if projectContext.Description != "" {
+		fmt.Printf("Project context: %s\n", projectContext.Description)
+	}
+
+	// Review with LLM
+	fmt.Printf("Reviewing %d functions with LLM (%s)...\n", len(functionsToReview), model)
+	results := llm.ReviewFunctions(ctx, client, functionsToReview, projectContext)
 
 	// Convert results to review comments with hash markers for caching
 	var comments []provider.ReviewComment
