@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/iq2i/ainspector/internal/config"
 )
 
 func TestGenerateProjectContext_WithFiles(t *testing.T) {
@@ -50,7 +52,7 @@ func TestGenerateProjectContext_WithFiles(t *testing.T) {
 	client := NewClient(server.URL, "test-key", "gpt-4")
 	ctx := context.Background()
 
-	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"javascript"})
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"javascript"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,6 +68,10 @@ func TestGenerateProjectContext_WithFiles(t *testing.T) {
 	if len(projectContext.Languages) != 1 || projectContext.Languages[0] != "javascript" {
 		t.Errorf("expected languages [javascript], got %v", projectContext.Languages)
 	}
+
+	if projectContext.IsRaw {
+		t.Error("expected IsRaw to be false for legacy mode")
+	}
 }
 
 func TestGenerateProjectContext_NoFiles(t *testing.T) {
@@ -79,7 +85,7 @@ func TestGenerateProjectContext_NoFiles(t *testing.T) {
 	client := NewClient(server.URL, "test-key", "gpt-4")
 	ctx := context.Background()
 
-	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"})
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -90,6 +96,10 @@ func TestGenerateProjectContext_NoFiles(t *testing.T) {
 
 	if len(projectContext.Languages) != 1 || projectContext.Languages[0] != "go" {
 		t.Errorf("expected languages [go], got %v", projectContext.Languages)
+	}
+
+	if projectContext.IsRaw {
+		t.Error("expected IsRaw to be false for legacy mode")
 	}
 }
 
@@ -111,13 +121,17 @@ func TestGenerateProjectContext_LLMFailure(t *testing.T) {
 	ctx := context.Background()
 
 	// Should not return error, just empty context
-	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"})
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
 	if err != nil {
 		t.Fatalf("should not return error on LLM failure: %v", err)
 	}
 
 	if projectContext.Description != "" {
 		t.Error("expected empty description on LLM failure")
+	}
+
+	if projectContext.IsRaw {
+		t.Error("expected IsRaw to be false for legacy mode")
 	}
 }
 
@@ -294,5 +308,179 @@ func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 	// Should NOT contain project context section when description is empty
 	if strings.Contains(prompt, "PROJECT CONTEXT") {
 		t.Error("should not contain PROJECT CONTEXT when description is empty")
+	}
+}
+
+func TestGenerateProjectContext_WithConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create test files
+	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# Test Project"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(tmpDir, "docs"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "docs/guide.md"), []byte("# Guide"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create config with include patterns
+	contextConfig := &config.ContextConfig{
+		Include: []string{"README.md", "docs/guide.md"},
+	}
+
+	// Mock LLM server (should NOT be called)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("LLM should not be called when using config-based context")
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", "gpt-4")
+	ctx := context.Background()
+
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, contextConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if projectContext.Description == "" {
+		t.Error("expected non-empty description")
+	}
+
+	if !projectContext.IsRaw {
+		t.Error("expected IsRaw to be true for config-based context")
+	}
+
+	// Should contain both files
+	if !strings.Contains(projectContext.Description, "=== README.md ===") {
+		t.Error("expected description to contain README.md")
+	}
+
+	if !strings.Contains(projectContext.Description, "=== docs/guide.md ===") {
+		t.Error("expected description to contain docs/guide.md")
+	}
+
+	if !strings.Contains(projectContext.Description, "# Test Project") {
+		t.Error("expected description to contain README content")
+	}
+}
+
+func TestGenerateProjectContext_BackwardCompatibility(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file that would be picked up by legacy mode
+	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# Test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mock LLM server (should be called in legacy mode)
+	llmCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		llmCalled = true
+		resp := ChatResponse{
+			Choices: []struct {
+				Message ChatMessage `json:"message"`
+			}{
+				{Message: ChatMessage{
+					Role:    "assistant",
+					Content: "A test project",
+				}},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", "gpt-4")
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		contextConfig *config.ContextConfig
+		expectLLMCall bool
+		expectIsRaw   bool
+	}{
+		{
+			name:          "nil config - use legacy",
+			contextConfig: nil,
+			expectLLMCall: true,
+			expectIsRaw:   false,
+		},
+		{
+			name:          "empty config - use legacy",
+			contextConfig: &config.ContextConfig{},
+			expectLLMCall: true,
+			expectIsRaw:   false,
+		},
+		{
+			name: "config with patterns - no LLM",
+			contextConfig: &config.ContextConfig{
+				Include: []string{"README.md"},
+			},
+			expectLLMCall: false,
+			expectIsRaw:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			llmCalled = false
+
+			projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, tt.contextConfig)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if llmCalled != tt.expectLLMCall {
+				t.Errorf("LLM called = %v, want %v", llmCalled, tt.expectLLMCall)
+			}
+
+			if projectContext.IsRaw != tt.expectIsRaw {
+				t.Errorf("IsRaw = %v, want %v", projectContext.IsRaw, tt.expectIsRaw)
+			}
+		})
+	}
+}
+
+func TestBuildSystemPrompt_RawVsLegacy(t *testing.T) {
+	tests := []struct {
+		name            string
+		projectContext  *ProjectContext
+		expectHeader    string
+	}{
+		{
+			name: "raw context",
+			projectContext: &ProjectContext{
+				Description: "=== README.md ===\nContent",
+				Languages:   []string{"go"},
+				IsRaw:       true,
+			},
+			expectHeader: "=== PROJECT CONTEXT ===",
+		},
+		{
+			name: "legacy context",
+			projectContext: &ProjectContext{
+				Description: "A Go project",
+				Languages:   []string{"go"},
+				IsRaw:       false,
+			},
+			expectHeader: "PROJECT CONTEXT:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prompt := buildSystemPrompt("go", tt.projectContext)
+
+			if !strings.Contains(prompt, tt.expectHeader) {
+				t.Errorf("expected prompt to contain %q", tt.expectHeader)
+			}
+
+			if !strings.Contains(prompt, tt.projectContext.Description) {
+				t.Error("expected prompt to contain description")
+			}
+		})
 	}
 }

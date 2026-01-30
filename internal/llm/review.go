@@ -174,7 +174,13 @@ func buildSystemPrompt(language string, projectContext *ProjectContext) string {
 
 	// Add project context if available
 	if projectContext != nil && projectContext.Description != "" {
-		prompt += "\n\nPROJECT CONTEXT:\n" + projectContext.Description
+		if projectContext.IsRaw {
+			// Raw file contents from config
+			prompt += "\n\n=== PROJECT CONTEXT ===\n" + projectContext.Description
+		} else {
+			// LLM-generated summary (legacy)
+			prompt += "\n\nPROJECT CONTEXT:\n" + projectContext.Description
+		}
 	}
 
 	// Add language-specific rules

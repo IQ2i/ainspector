@@ -193,12 +193,16 @@ func runReview(cmd *cobra.Command, args []string) error {
 		projectRoot = "."
 	}
 
-	projectContext, err := llm.GenerateProjectContext(ctx, client, projectRoot, languages)
+	projectContext, err := llm.GenerateProjectContext(ctx, client, projectRoot, languages, &cfg.Context)
 	if err != nil {
 		fmt.Printf("Warning: failed to generate project context: %v\n", err)
 		projectContext = nil
 	} else if projectContext.Description != "" {
-		fmt.Printf("Project context: %s\n", projectContext.Description)
+		if projectContext.IsRaw {
+			fmt.Printf("Project context loaded from %d configured file(s)\n", len(cfg.Context.Include))
+		} else {
+			fmt.Printf("Project context: %s\n", projectContext.Description)
+		}
 	}
 
 	// Review with LLM

@@ -8,13 +8,22 @@ import (
 
 // Config represents the ainspector configuration
 type Config struct {
-	Ignore IgnoreConfig `yaml:"ignore"`
+	Ignore  IgnoreConfig  `yaml:"ignore"`
+	Context ContextConfig `yaml:"context"`
 }
 
 // IgnoreConfig holds patterns for files to ignore during review
 type IgnoreConfig struct {
 	// Paths contains glob patterns (supports ** for recursive matching)
 	Paths []string `yaml:"paths"`
+}
+
+// ContextConfig holds patterns for files to include in project context
+type ContextConfig struct {
+	// Include contains glob patterns for files/folders to include in context
+	Include []string `yaml:"include"`
+	// Exclude contains glob patterns to exclude (takes priority over Include)
+	Exclude []string `yaml:"exclude"`
 }
 
 // configFileNames lists the supported configuration file names in order of priority
