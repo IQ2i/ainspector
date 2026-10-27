@@ -35,6 +35,13 @@ func IsVendoredPath(path string) bool {
 	return false
 }
 
+// IsNestedVendoredPath tells whether a vendored path sits below another directory. Unlike the
+// vendor directory at the root of the project, it may be code of the change put out of sight.
+func IsNestedVendoredPath(path string) bool {
+	first, _, _ := strings.Cut(filepath.ToSlash(path), "/")
+	return IsVendoredPath(path) && first != "vendor" && first != "node_modules"
+}
+
 // ShouldIgnore checks if a file path should be ignored: vendored and generated files always are,
 // the others according to ignore.paths
 func (c *Config) ShouldIgnore(path string) bool {

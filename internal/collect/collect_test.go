@@ -786,3 +786,26 @@ func TestCollect_BlankLinesBetweenMethodsAreNotHunks(t *testing.T) {
 		}
 	}
 }
+
+func TestCollect_VendoredAndGeneratedFilesAreSkippedWithoutConfig(t *testing.T) {
+	src := "package x\n\nfunc F() int {\n\treturn 1\n}\n"
+	mock := &mockProvider{files: map[string]string{
+		"vendor/a.go": src, "src/vendor/b.go": src, "app.min.js": "function f(){return 1}", "ok.go": src,
+	}}
+	e := New(mock, nil)
+	defer e.Close()
+
+	patch := "@@ -3,3 +3,3 @@ package x\n func F() int {\n-\treturn 0\n+\treturn 1\n }"
+	var files []provider.ModifiedFile
+	for path := range mock.files {
+		files = append(files, provider.ModifiedFile{Path: path, Status: "modified", Patch: patch})
+	}
+
+	result, err := e.Collect(context.Background(), Request{Files: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].FilePath != "ok.go" {
+		t.Errorf("only ok.go should be collected, got %+v", result)
+	}
+}

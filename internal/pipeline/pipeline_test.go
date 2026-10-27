@@ -634,9 +634,9 @@ func TestRun_VendoredAndUnsafeFilesAreNotReviewed(t *testing.T) {
 
 func TestDropUnsafePaths(t *testing.T) {
 	files := []provider.ModifiedFile{{Path: "a.go"}, {Path: "b\r\n.go"}, {Path: "c.go", OldPath: "d\x1b[2K.go"}}
-	got := dropUnsafePaths(files)
-	if len(got) != 1 || got[0].Path != "a.go" {
-		t.Errorf("got %+v", got)
+	got, n := dropUnsafePaths(files)
+	if len(got) != 1 || got[0].Path != "a.go" || n != 2 {
+		t.Errorf("got %+v, %d dropped", got, n)
 	}
 }
 
@@ -865,5 +865,64 @@ func TestRun_NoticeIsNotWrittenInDryRunNorWithoutTheTokenOwner(t *testing.T) {
 				t.Errorf("nothing should be written, got %v", h.fake.noteBodies())
 			}
 		})
+	}
+}
+
+func TestRun_FilesKeptOutOfReviewAreListedInTheSummary(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	main := h.fake.mr.Files[0]
+	for _, path := range []string{"vendor/acme/lib.go", "src/Foo/vendor/x.go", "web/node_modules/x/index.go", "evil\n::error::injected.go"} {
+		extra := main
+		extra.Path = path
+		h.fake.mr.Files = append(h.fake.mr.Files, extra)
+	}
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 {
+		t.Fatalf("expected the summary, got %v", notes)
+	}
+	for _, want := range []string{"src/Foo/vendor/x.go", "web/node_modules/x/index.go", "1 file skipped, the name holds control characters"} {
+		if !strings.Contains(notes[0], want) {
+			t.Errorf("the summary should mention %q:\n%s", want, notes[0])
+		}
+	}
+	if strings.Contains(notes[0], "vendor/acme/lib.go") || strings.Contains(notes[0], "::error::") {
+		t.Errorf("unexpected paths in the summary:\n%s", notes[0])
+	}
+}
+
+func TestRun_ChangeThatOnlyTouchesNestedVendorDirectoriesIsNoticed(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	for i := range h.fake.mr.Files {
+		h.fake.mr.Files[i].Path = "src/Foo/vendor/" + h.fake.mr.Files[i].Path
+	}
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	notes := h.fake.noteBodies()
+	if len(h.requests) != 0 || len(notes) != 1 || !strings.Contains(notes[0], publish.NoticeMarker) || !strings.Contains(notes[0], "src/Foo/vendor/") {
+		t.Errorf("expected a notice naming the hidden files, got %v", notes)
+	}
+}
+
+func TestHiddenNote_CapsTheList(t *testing.T) {
+	var files []provider.ModifiedFile
+	for i := range 25 {
+		files = append(files, provider.ModifiedFile{Path: fmt.Sprintf("a/vendor/f%d.go", i)})
+	}
+	files = append(files, provider.ModifiedFile{Path: "vendor/root.go"}, provider.ModifiedFile{Path: "a/node_modules/gone.js", Status: "deleted"})
+
+	note := hiddenNote(files)
+	if !strings.Contains(note, "(and 5 more)") || strings.Contains(note, "root.go") || strings.Contains(note, "gone.js") {
+		t.Errorf("note = %q", note)
+	}
+	if hiddenNote(files[25:]) != "" {
+		t.Error("the vendor directory of the root and deleted files are not worth a note")
 	}
 }

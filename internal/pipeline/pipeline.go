@@ -97,12 +97,19 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		return fmt.Errorf("failed to get modified files: %w", err)
 	}
 
-	files = dropUnsafePaths(files)
-	var configNotes []string
+	files, unsafe := dropUnsafePaths(files)
+	var changeNotes []string
 	if name := changedConfig(files); name != "" {
 		note := fmt.Sprintf("This change modifies %s: the settings of its new version apply to this review", name)
 		fmt.Printf("Warning: %s\n", note)
-		configNotes = append(configNotes, note)
+		changeNotes = append(changeNotes, note)
+	}
+	if unsafe > 0 {
+		changeNotes = append(changeNotes, fmt.Sprintf("%d %s skipped, the name holds control characters", unsafe, plural(unsafe, "file")))
+	}
+	if note := hiddenNote(files); note != "" {
+		fmt.Printf("Warning: %s\n", note)
+		changeNotes = append(changeNotes, note)
 	}
 	fmt.Printf("Found %d modified files\n", len(files))
 
@@ -118,7 +125,11 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 	if len(units) == 0 {
 		fmt.Println("No code to review")
-		return errors.Join(out.write(), stopped(ctx, deps, opts, files, "no file of the change is left to review"))
+		var hidden []string
+		if note := hiddenNote(files); note != "" {
+			hidden = append(hidden, note)
+		}
+		return errors.Join(out.write(), stopped(ctx, deps, opts, files, "no file of the change is left to review", hidden...))
 	}
 
 	if len(req.Related.Presets) > 0 {
@@ -172,7 +183,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 		if len(toReview) == 0 {
 			fmt.Printf("Nothing left to review for %s\n", mode.Name())
-			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(configNotes), Feedback: feedback[mode.Name()]}
+			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(changeNotes), Feedback: feedback[mode.Name()]}
 			if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
 				errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 			}
@@ -202,7 +213,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		run.Carried = carried
 		run.AlreadyReviewed = alreadyReviewed
 		run.Feedback = feedback[mode.Name()]
-		run.Notes = append(slices.Clone(configNotes), run.Notes...)
+		run.Notes = append(slices.Clone(changeNotes), run.Notes...)
 
 		fmt.Printf("Found %d issues (out of %d units reviewed)\n", len(run.Published), len(run.Reviewed))
 		if n := len(run.Skipped); n > 0 {
@@ -518,10 +529,11 @@ func changedConfig(files []provider.ModifiedFile) string {
 }
 
 // stopped is called when a run ends before reviewing anything. If the change modifies the
-// configuration file, the author may have caused it (a pattern that ignores the change, a mode
-// turned off), and the participants must be able to see it: a notice is posted on the PR/MR.
-// Failing to post it never fails the run. The files are fetched when the caller has none.
-func stopped(ctx context.Context, deps Deps, opts Options, files []provider.ModifiedFile, reason string) error {
+// configuration file, or if the caller has notes to give, the author may have caused it (a
+// pattern that ignores the change, a mode turned off, code under a vendor directory), and the
+// participants must be able to see it: a notice is posted on the PR/MR. Failing to post it never
+// fails the run. The files are fetched when the caller has none.
+func stopped(ctx context.Context, deps Deps, opts Options, files []provider.ModifiedFile, reason string, notes ...string) error {
 	if files == nil {
 		var err error
 		if files, err = deps.Provider.GetModifiedFiles(ctx, opts.Number); err != nil {
@@ -529,18 +541,19 @@ func stopped(ctx context.Context, deps Deps, opts Options, files []provider.Modi
 			return nil
 		}
 	}
-	name := changedConfig(dropUnsafePaths(files))
-	if name == "" {
+	kept, _ := dropUnsafePaths(files)
+	name := changedConfig(kept)
+	if name == "" && len(notes) == 0 {
 		return nil
 	}
 
-	fmt.Printf("Warning: this change modifies %s and the review stopped: %s\n", name, reason)
+	fmt.Printf("Warning: the review stopped (%s) and the change may be the cause\n", reason)
 	if opts.DryRun {
 		return nil
 	}
 	self, err := deps.Provider.CurrentUser(ctx)
 	if err == nil {
-		err = publish.PostNotice(ctx, deps.Provider, opts.Number, self, name, reason)
+		err = publish.PostNotice(ctx, deps.Provider, opts.Number, self, name, reason, notes)
 	}
 	if err != nil {
 		fmt.Printf("Warning: %v\n", err)
@@ -548,9 +561,9 @@ func stopped(ctx context.Context, deps Deps, opts Options, files []provider.Modi
 	return nil
 }
 
-// dropUnsafePaths removes the files whose name holds a control character: printed to the log of
-// the job it would forge lines or workflow commands
-func dropUnsafePaths(files []provider.ModifiedFile) []provider.ModifiedFile {
+// dropUnsafePaths removes the files whose name holds a control character, and counts them:
+// printed to the log of the job it would forge lines or workflow commands
+func dropUnsafePaths(files []provider.ModifiedFile) ([]provider.ModifiedFile, int) {
 	kept := files[:0:0]
 	for _, f := range files {
 		if strings.ContainsFunc(f.Path+f.OldPath, unicode.IsControl) {
@@ -559,7 +572,38 @@ func dropUnsafePaths(files []provider.ModifiedFile) []provider.ModifiedFile {
 		}
 		kept = append(kept, f)
 	}
-	return kept
+	return kept, len(files) - len(kept)
+}
+
+// maxHiddenListed caps the paths named in the note about vendored files
+const maxHiddenListed = 20
+
+// hiddenNote lists the files that are never reviewed because they sit below a vendor or
+// node_modules directory that is not at the root of the project. Nothing in the configuration
+// can bring them back, so the change could hide code there: the participants must be told.
+func hiddenNote(files []provider.ModifiedFile) string {
+	var paths []string
+	for _, f := range files {
+		if f.Status != "deleted" && config.IsNestedVendoredPath(f.Path) {
+			paths = append(paths, f.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	listed := paths[:min(len(paths), maxHiddenListed)]
+	note := "Not reviewed, below a nested vendor or node_modules directory: " + strings.Join(listed, ", ")
+	if more := len(paths) - len(listed); more > 0 {
+		note += fmt.Sprintf(" (and %d more)", more)
+	}
+	return note
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }
 
 func changedPaths(files []provider.ModifiedFile) []string {

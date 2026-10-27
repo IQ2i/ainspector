@@ -617,3 +617,18 @@ func TestIsConfigFile(t *testing.T) {
 		}
 	}
 }
+
+func TestIsNestedVendoredPath(t *testing.T) {
+	tests := map[string]bool{
+		"vendor/acme/lib.go":          false,
+		"node_modules/x/index.js":     false,
+		"src/Foo/vendor/x.php":        true,
+		"web/node_modules/x/index.js": true,
+		"src/Foo/Bar.php":             false,
+	}
+	for path, want := range tests {
+		if got := IsNestedVendoredPath(path); got != want {
+			t.Errorf("IsNestedVendoredPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}

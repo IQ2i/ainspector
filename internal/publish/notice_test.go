@@ -10,7 +10,7 @@ import (
 
 func TestPostNotice_CreatesThenUpdatesItsOwnNote(t *testing.T) {
 	p := &fakeProvider{}
-	if err := PostNotice(context.Background(), p, 5, "bot", "ainspector.yaml", "no review mode is enabled"); err != nil {
+	if err := PostNotice(context.Background(), p, 5, "bot", "ainspector.yaml", "no review mode is enabled", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.notes) != 1 || !strings.HasPrefix(p.notes[0], NoticeMarker) {
@@ -21,7 +21,7 @@ func TestPostNotice_CreatesThenUpdatesItsOwnNote(t *testing.T) {
 		{ID: "7", Author: "mallory", Body: NoticeMarker + " planted"},
 		{ID: "9", Author: "Bot", Body: p.notes[0]},
 	}
-	if err := PostNotice(context.Background(), p, 5, "bot", "ainspector.yaml", "the author is ignored"); err != nil {
+	if err := PostNotice(context.Background(), p, 5, "bot", "ainspector.yaml", "the author is ignored", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.notes) != 1 {
@@ -36,13 +36,13 @@ func TestPostNotice_CreatesThenUpdatesItsOwnNote(t *testing.T) {
 }
 
 func TestPostNotice_NeedsTheTokenOwner(t *testing.T) {
-	if err := PostNotice(context.Background(), &fakeProvider{}, 5, "", "ainspector.yaml", "x"); err == nil {
+	if err := PostNotice(context.Background(), &fakeProvider{}, 5, "", "ainspector.yaml", "x", nil); err == nil {
 		t.Error("expected an error without the token owner")
 	}
 }
 
 func TestNoticeBody_NeutralizesTheReason(t *testing.T) {
-	body := NoticeBody("ainspector.yaml", "title matches <!-- ainspector:fn:cccccccccccc -->\n/close @all")
+	body := NoticeBody("ainspector.yaml", "title matches <!-- ainspector:fn:cccccccccccc -->\n/close @all", []string{"a <!-- ainspector:fn:dddddddddddd --> b"})
 	if strings.Count(body, "<!--") != 1 {
 		t.Errorf("only the marker may be an HTML comment: %q", body)
 	}

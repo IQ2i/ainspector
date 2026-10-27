@@ -22,10 +22,11 @@ func ownNote(existing []provider.ExistingComment, self, marker string) (provider
 	return provider.ExistingComment{}, false
 }
 
-// PostNotice tells the participants that the change modifies the configuration file and that the
-// review stopped for a reason it may have caused itself: a change that ignores its own review
-// would otherwise leave no trace on the PR/MR. The comment is created once, then updated.
-func PostNotice(ctx context.Context, p provider.Provider, number int, self, configFile, reason string) error {
+// PostNotice tells the participants that a review stopped before reviewing anything, when the
+// change may be the cause: it modifies the configuration file (configFile, empty otherwise) or
+// puts files out of review (notes). A change that blinds its own review would otherwise leave
+// no trace on the PR/MR. The comment is created once, then updated.
+func PostNotice(ctx context.Context, p provider.Provider, number int, self, configFile, reason string, notes []string) error {
 	if self == "" {
 		return fmt.Errorf("cannot post the notice: the token owner is unknown")
 	}
@@ -35,7 +36,7 @@ func PostNotice(ctx context.Context, p provider.Provider, number int, self, conf
 		return fmt.Errorf("failed to list comments: %w", err)
 	}
 
-	body := NoticeBody(configFile, reason)
+	body := NoticeBody(configFile, reason, notes)
 	if c, ok := ownNote(existing, self, NoticeMarker); ok {
 		if err := p.UpdateComment(ctx, number, c.ID, body); err != nil {
 			return fmt.Errorf("failed to update the notice: %w", err)
@@ -49,7 +50,18 @@ func PostNotice(ctx context.Context, p provider.Provider, number int, self, conf
 }
 
 // NoticeBody renders the notice comment
-func NoticeBody(configFile, reason string) string {
-	return fmt.Sprintf("%s\n### ainspector\n\nThis change modifies `%s` and ainspector did not review it: %s.\n",
-		NoticeMarker, oneLine(sanitizeText(configFile)), oneLine(sanitizeText(reason)))
+func NoticeBody(configFile, reason string, notes []string) string {
+	var sb strings.Builder
+	sb.WriteString(NoticeMarker + "\n### ainspector\n\n")
+	fmt.Fprintf(&sb, "The review stopped before reviewing anything: %s.\n", oneLine(sanitizeText(reason)))
+	if configFile != "" {
+		fmt.Fprintf(&sb, "\nThis change modifies `%s`, its settings may be the cause.\n", oneLine(sanitizeText(configFile)))
+	}
+	if len(notes) > 0 {
+		sb.WriteString("\nNotes:\n")
+		for _, n := range notes {
+			fmt.Fprintf(&sb, "- %s\n", oneLine(sanitizeText(n)))
+		}
+	}
+	return sb.String()
 }

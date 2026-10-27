@@ -152,8 +152,8 @@ func (e *Collector) Collect(ctx context.Context, req Request) ([]ReviewUnit, err
 			continue
 		}
 
-		// Skip files matching ignore patterns from config
-		if e.config != nil && e.config.ShouldIgnore(file.Path) {
+		// Vendored and generated files are always skipped, the others by the patterns of the config
+		if config.IsGeneratedPath(file.Path) || config.IsVendoredPath(file.Path) || (e.config != nil && e.config.ShouldIgnore(file.Path)) {
 			fmt.Printf("Skipping ignored file: %s\n", file.Path)
 			continue
 		}
@@ -192,14 +192,6 @@ func (e *Collector) extractFromFile(ctx context.Context, file provider.ModifiedF
 	changeType := "modified"
 	if file.Status == "added" {
 		changeType = "added"
-	}
-
-	if config.IsGeneratedPath(file.Path) && (!parsed || req.Hunks.Orphans) {
-		// Generated files never become hunks. A minified script still gets the units of its functions.
-		if !parsed {
-			return nil, nil
-		}
-		req.Hunks.Orphans = false
 	}
 
 	if !parsed {
