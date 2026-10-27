@@ -161,6 +161,6 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"fd28a5d6aa02\"],\"findings\":[\"ad60e436acd8\"],\"reported\":[{\"fp\":\"ad60e436acd8\",\"file\":\"src/Controller/InvoiceController.php\",\"line\":28,\"category\":\"idor\",\"title\":\"The invoice voter lets any user read any invoice\"}]} --\u003e\n"
+    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"fd28a5d6aa02\"],\"findings\":[\"ad60e436acd8\"],\"reported\":[{\"fp\":\"ad60e436acd8\",\"file\":\"src/Controller/InvoiceController.php\",\"line\":28,\"category\":\"idor\",\"title\":\"The invoice voter lets any user read any invoice\"}],\"open\":[{\"fp\":\"ad60e436acd8\",\"file\":\"src/Controller/InvoiceController.php\",\"line\":28,\"category\":\"idor\",\"title\":\"The invoice voter lets any user read any invoice\",\"end\":28,\"sev\":\"high\",\"unit\":\"fd28a5d6aa02\"}]} --\u003e\n"
   ]
 }

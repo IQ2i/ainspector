@@ -62,6 +62,6 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 100 in, 10 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"f5eb93f7160c\"],\"findings\":[]} --\u003e\n"
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 100 in, 10 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"f5eb93f7160c\"],\"findings\":[],\"open\":[{\"fp\":\"d1178a03dc9b\",\"file\":\"src/Controller/AccountController.php\",\"line\":17,\"title\":\"SQL injection: the id is concatenated into the query.\",\"end\":17,\"unit\":\"f5eb93f7160c\"}]} --\u003e\n"
   ]
 }

@@ -172,6 +172,6 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"e9b9b6984b69\",\"085ad365a8a3\",\"4393ac231f70\"],\"findings\":[]} --\u003e\n"
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"e9b9b6984b69\",\"085ad365a8a3\",\"4393ac231f70\"],\"findings\":[],\"open\":[{\"fp\":\"14c98a2d98d1\",\"file\":\"main.go\",\"line\":10,\"title\":\"Division by zero is not checked.\",\"end\":10,\"unit\":\"085ad365a8a3\"},{\"fp\":\"a46639c1f457\",\"file\":\"main.go\",\"line\":14,\"title\":\"Off-by-one: the loop reads past the end of the slice.\",\"end\":14,\"unit\":\"4393ac231f70\"}]} --\u003e\n"
   ]
 }
