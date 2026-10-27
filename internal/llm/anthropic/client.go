@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
@@ -16,6 +17,10 @@ import (
 // defaultMaxTokens leaves room for adaptive thinking: the limit applies to thinking and answer together
 const defaultMaxTokens = 16000
 
+// requestTimeout bounds each attempt of a request: the SDK default of ten minutes would let one
+// stuck call hold a job. A variable so that tests can shorten it.
+var requestTimeout = 5 * time.Minute
+
 // Client calls the Anthropic Messages API.
 type Client struct {
 	client sdk.Client
@@ -24,7 +29,12 @@ type Client struct {
 
 // New creates a client. An empty model leaves the choice to each request.
 func New(apiKey, model string, opts ...option.RequestOption) *Client {
-	opts = append([]option.RequestOption{option.WithAPIKey(apiKey)}, opts...)
+	defaults := []option.RequestOption{
+		option.WithAPIKey(apiKey),
+		option.WithRequestTimeout(requestTimeout),
+		option.WithMaxRetries(2),
+	}
+	opts = append(defaults, opts...)
 	return &Client{client: sdk.NewClient(opts...), model: model}
 }
 

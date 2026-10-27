@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
 
@@ -271,5 +272,31 @@ func TestComplete_FailuresStillReportUsage(t *testing.T) {
 				t.Errorf("the tokens were billed, the response must carry them, got %+v", resp)
 			}
 		})
+	}
+}
+
+func TestNew_RequestsAreBoundedInTime(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+
+	old := requestTimeout
+	requestTimeout = 50 * time.Millisecond
+	defer func() { requestTimeout = old }()
+
+	client := New("k", "m", option.WithBaseURL(server.URL), option.WithMaxRetries(0))
+	start := time.Now()
+	_, err := client.Complete(context.Background(), llm.Request{Messages: []llm.Message{{Role: "user", Content: "hi"}}})
+	if err == nil {
+		t.Fatal("expected a timeout")
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Errorf("the request was not bounded, it took %s", time.Since(start))
 	}
 }
