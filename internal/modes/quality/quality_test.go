@@ -17,6 +17,9 @@ func TestMode_Identity(t *testing.T) {
 	if m.Scope() != collect.ScopeFunction {
 		t.Errorf("expected function scope, got %s", m.Scope())
 	}
+	if !m.PublishPolicy().Inline {
+		t.Error("quality must publish inline comments")
+	}
 	if p := m.FilterPolicy(); p.MaxPublished != 0 || p.MinConfidence != 0 || p.MinSeverity != "" {
 		t.Errorf("quality must not filter findings, got %+v", p)
 	}

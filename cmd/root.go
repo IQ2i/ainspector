@@ -9,11 +9,13 @@ import (
 	"github.com/iq2i/ainspector/internal/ci"
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/config"
+	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/llm/openai"
 	"github.com/iq2i/ainspector/internal/modes"
 	"github.com/iq2i/ainspector/internal/pipeline"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/publish"
 	"github.com/spf13/cobra"
 )
 
@@ -155,7 +157,7 @@ func review(ctx context.Context, p provider.Provider, newClient func() (llm.Clie
 	functionsToReview := functions
 	if !force {
 		fmt.Println("Checking for previously reviewed functions...")
-		existingComments, err := p.GetReviewComments(ctx, number)
+		existingComments, err := p.ListComments(ctx, number)
 		if err != nil {
 			fmt.Printf("Warning: could not fetch existing comments: %v\n", err)
 		} else {
@@ -213,27 +215,21 @@ func review(ctx context.Context, p provider.Provider, newClient func() (llm.Clie
 	fmt.Printf("Reviewing %d functions with LLM...\n", len(functionsToReview))
 	results := pipeline.ReviewUnits(ctx, client, mode, functionsToReview, projectContext)
 
-	var comments []provider.ReviewComment
+	var published []findings.Finding
 	for _, result := range results {
-		for _, f := range result.Findings {
-			comments = append(comments, provider.ReviewComment{
-				Path:       f.File,
-				Line:       f.StartLine,
-				Body:       f.Explanation + "\n\n" + cache.FormatHashMarker(f.UnitHash),
-				Suggestion: f.Suggestion,
-			})
-		}
+		published = append(published, result.Findings...)
 	}
 
-	fmt.Printf("Found %d issues (out of %d functions reviewed)\n", len(comments), len(results))
+	fmt.Printf("Found %d issues (out of %d functions reviewed)\n", len(published), len(results))
 
-	if len(comments) == 0 {
+	if len(published) == 0 {
 		fmt.Println("No issues found, skipping review")
 		return nil
 	}
 
 	fmt.Println("Posting review with inline suggestions...")
-	if err := p.CreateReview(ctx, number, comments); err != nil {
+	run := publish.Run{Mode: mode.Name(), Units: functionsToReview, Published: published}
+	if err := publish.NewInline(p, number).Publish(ctx, run); err != nil {
 		return fmt.Errorf("failed to create review: %w", err)
 	}
 

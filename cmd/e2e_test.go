@@ -70,18 +70,35 @@ func (f *fakeProvider) GetFileContent(ctx context.Context, path string) (string,
 	return string(data), err
 }
 
-func (f *fakeProvider) PostComment(ctx context.Context, number int, body string) error {
+func (f *fakeProvider) GetChangeInfo(ctx context.Context, number int) (provider.ChangeInfo, error) {
+	return provider.ChangeInfo{Number: number}, nil
+}
+
+func (f *fakeProvider) CurrentUser(ctx context.Context) (string, error) {
+	return "", nil
+}
+
+func (f *fakeProvider) PostComment(ctx context.Context, number int, body string) (string, error) {
+	f.writes++
+	return "1", nil
+}
+
+func (f *fakeProvider) UpdateComment(ctx context.Context, number int, id, body string) error {
 	f.writes++
 	return nil
 }
 
-func (f *fakeProvider) CreateReview(ctx context.Context, number int, comments []provider.ReviewComment) error {
+func (f *fakeProvider) CreateReview(ctx context.Context, number int, comments []provider.ReviewComment) ([]provider.CommentResult, error) {
 	f.writes++
 	f.posted = append(f.posted, comments...)
-	return nil
+	results := make([]provider.CommentResult, len(comments))
+	for i, c := range comments {
+		results[i] = provider.CommentResult{Comment: c}
+	}
+	return results, nil
 }
 
-func (f *fakeProvider) GetReviewComments(ctx context.Context, number int) ([]provider.ExistingComment, error) {
+func (f *fakeProvider) ListComments(ctx context.Context, number int) ([]provider.ExistingComment, error) {
 	return f.comment, nil
 }
 

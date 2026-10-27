@@ -8,6 +8,7 @@ import (
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/modes/quality"
+	"github.com/iq2i/ainspector/internal/publish"
 )
 
 // Mode is a kind of review with its own prompt, output parsing and noise policy
@@ -20,6 +21,7 @@ type Mode interface {
 	BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request
 	Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Finding, error)
 	FilterPolicy() findings.Policy
+	PublishPolicy() publish.Policy
 }
 
 // Enabled builds the modes named in names, in order

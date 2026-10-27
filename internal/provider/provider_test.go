@@ -117,3 +117,21 @@ func TestGitHubProvider_ImplementsInterface(t *testing.T) {
 func TestGitLabProvider_ImplementsInterface(t *testing.T) {
 	var _ Provider = (*GitLabProvider)(nil)
 }
+
+func TestFence(t *testing.T) {
+	tests := []struct {
+		name, info, code, want string
+	}{
+		{"plain", "suggestion", "x := 1", "```suggestion\nx := 1\n```"},
+		{"no info", "", "x", "```\nx\n```"},
+		{"contains fence", "", "a\n```\nb", "````\na\n```\nb\n````"},
+		{"longer run", "", "`````", "``````\n`````\n``````"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Fence(tt.info, tt.code); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

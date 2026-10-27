@@ -10,6 +10,7 @@ import (
 
 // mockProvider is a test double for the Provider interface
 type mockProvider struct {
+	provider.Provider
 	files       map[string]string // path -> content
 	getFileErr  error
 	getFilesErr error
@@ -31,18 +32,6 @@ func (m *mockProvider) GetFileContent(ctx context.Context, path string) (string,
 		return "", errors.New("file not found")
 	}
 	return content, nil
-}
-
-func (m *mockProvider) PostComment(ctx context.Context, number int, body string) error {
-	return nil
-}
-
-func (m *mockProvider) CreateReview(ctx context.Context, number int, comments []provider.ReviewComment) error {
-	return nil
-}
-
-func (m *mockProvider) GetReviewComments(ctx context.Context, number int) ([]provider.ExistingComment, error) {
-	return nil, nil
 }
 
 func TestCollect_SkipsDeletedFiles(t *testing.T) {
