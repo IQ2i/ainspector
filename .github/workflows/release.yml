@@ -37,8 +37,9 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 1
+          VERSION: ${{ github.ref_name }}
         run: |
-          go build -ldflags="-s -w" -o ainspector .
+          go build -ldflags="-s -w -X github.com/iq2i/ainspector/cmd.version=$VERSION" -o ainspector .
           tar -czvf ainspector-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz ainspector
 
       - name: Build (Windows)
@@ -47,8 +48,9 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 1
+          VERSION: ${{ github.ref_name }}
         run: |
-          go build -ldflags="-s -w" -o ainspector.exe .
+          go build -ldflags="-s -w -X github.com/iq2i/ainspector/cmd.version=$env:VERSION" -o ainspector.exe .
           Compress-Archive -Path ainspector.exe -DestinationPath ainspector-${{ matrix.goos }}-${{ matrix.goarch }}.zip
 
       - name: Upload artifact (Unix)
@@ -64,6 +66,35 @@ jobs:
         with:
           name: ainspector-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ainspector-${{ matrix.goos }}-${{ matrix.goarch }}.zip
+
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: VERSION=${{ github.ref_name }}
+          tags: |
+            ghcr.io/iq2i/ainspector:${{ github.ref_name }}
+            ghcr.io/iq2i/ainspector:latest
 
   release:
     needs: build
