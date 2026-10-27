@@ -20,6 +20,14 @@ type ReviewComment struct {
 	Line       int    // Line number where the comment applies
 	Body       string // Comment body (may include suggestion block)
 	Suggestion string // Optional: suggested code replacement
+	// EndLine is the last line the suggestion replaces. Zero or Line means the line of the
+	// comment alone.
+	EndLine int
+}
+
+// replacesRange tells whether the suggestion of a comment replaces several lines
+func (c ReviewComment) replacesRange() bool {
+	return c.Suggestion != "" && c.EndLine > c.Line
 }
 
 // ChangeInfo describes the PR/MR being reviewed

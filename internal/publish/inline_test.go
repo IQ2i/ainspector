@@ -187,6 +187,38 @@ func TestInline_LineOutsideUnitIsNeverTriedInline(t *testing.T) {
 	}
 }
 
+func TestInline_MultiLineSuggestionReplacesItsRange(t *testing.T) {
+	p := &fakeProvider{reviewFn: allOK}
+	multi := finding("a.go", 3, "multi", "aaaaaaaaaaaa", "fixed()")
+	multi.EndLine = 5
+	outside := finding("a.go", 8, "past the unit", "aaaaaaaaaaaa", "fixed()")
+	outside.EndLine = 12
+	huge := finding("b.go", 5, "too long", "bbbbbbbbbbbb", "fixed()")
+	huge.EndLine = 5 + maxSuggestionLines
+	noSuggestion := finding("a.go", 2, "only text", "aaaaaaaaaaaa", "")
+	noSuggestion.EndLine = 4
+
+	units := []collect.ReviewUnit{{FilePath: "a.go", StartLine: 1, EndLine: 10}, {FilePath: "b.go", StartLine: 5, EndLine: 500}}
+	err := NewInline(p, 5).Publish(context.Background(), Run{Units: units, Published: []findings.Finding{multi, outside, huge, noSuggestion}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := p.reviews[0]
+	if got[0].Line != 3 || got[0].EndLine != 5 || got[0].Suggestion != "fixed()" {
+		t.Errorf("the suggestion must span its lines: %+v", got[0])
+	}
+	if got[1].Suggestion != "" || got[1].EndLine != 0 {
+		t.Errorf("a suggestion running past the reviewed code must be dropped: %+v", got[1])
+	}
+	if got[2].Suggestion != "" {
+		t.Errorf("a suggestion replacing too many lines must be dropped: %+v", got[2])
+	}
+	if got[3].EndLine != 0 {
+		t.Errorf("without suggestion the comment stays on one line: %+v", got[3])
+	}
+}
+
 func TestSanitizeText(t *testing.T) {
 	tests := []struct {
 		name, in, want string

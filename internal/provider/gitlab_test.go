@@ -95,6 +95,36 @@ func TestGitLab_CreateReview_ReportsEachComment(t *testing.T) {
 	}
 }
 
+func TestGitLab_CreateReview_MultiLineSuggestion(t *testing.T) {
+	var bodies []string
+	p := newTestGitLab(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(gitlabMR))
+			return
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		bodies = append(bodies, fmt.Sprint(body["body"]))
+		_, _ = w.Write([]byte(`{"id":"d1","notes":[]}`))
+	})
+
+	_, err := p.CreateReview(context.Background(), 1, []ReviewComment{
+		{Path: "a.go", Line: 3, EndLine: 5, Body: "range", Suggestion: "fixed()"},
+		{Path: "b.go", Line: 4, EndLine: 6, Body: "plain text"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(bodies[0], "```suggestion:-0+2\nfixed()\n```") {
+		t.Errorf("the suggestion must replace the two lines below the first, got %q", bodies[0])
+	}
+	if strings.Contains(bodies[1], "suggestion") {
+		t.Errorf("no suggestion expected, got %q", bodies[1])
+	}
+}
+
 func TestGitLab_CreateReview_NoComments(t *testing.T) {
 	p := newTestGitLab(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("no request expected")

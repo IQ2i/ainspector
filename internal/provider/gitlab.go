@@ -193,7 +193,11 @@ func (p *GitLabProvider) CreateReview(ctx context.Context, number int, comments 
 	for _, c := range comments {
 		body := c.Body
 		if c.Suggestion != "" {
-			body = c.Body + "\n\n" + Fence("suggestion:-0+0", c.Suggestion)
+			below := 0
+			if c.replacesRange() {
+				below = c.EndLine - c.Line
+			}
+			body = c.Body + "\n\n" + Fence(fmt.Sprintf("suggestion:-0+%d", below), c.Suggestion)
 		}
 
 		line := int64(c.Line)
