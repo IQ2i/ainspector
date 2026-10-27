@@ -76,9 +76,12 @@ modes:
 - `LLM_BASE_URL` - Default: `https://api.openai.com`
 - `LLM_MODEL` - Default: `gpt-4o`
 
+**Optional:**
+- `AINSPECTOR_MAX_TOKENS_PER_RUN` - Token cap of a run that `ainspector.yaml` can only lower
+
 **Auto-provided by CI:**
 - GitHub: `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, `GITHUB_REF`, `GITHUB_EVENT_PATH`
-- GitLab: `GITLAB_TOKEN`, `CI_PROJECT_PATH`, `CI_MERGE_REQUEST_IID`
+- GitLab: `CI_PROJECT_PATH`, `CI_MERGE_REQUEST_IID`, `CI_API_V4_URL`; `GITLAB_TOKEN` (project access token, scope `api`, role Reporter) must be set by the job, `CI_JOB_TOKEN` is not supported
 
 ## Supported Languages
 

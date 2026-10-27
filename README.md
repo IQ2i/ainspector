@@ -49,6 +49,7 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write
@@ -57,41 +58,35 @@ jobs:
 
       - name: Download ainspector
         run: |
-          curl -sL https://github.com/iq2i/ainspector/releases/latest/download/ainspector-linux-amd64 -o ainspector
-          chmod +x ainspector
+          curl -sL https://github.com/iq2i/ainspector/releases/latest/download/ainspector-linux-amd64.tar.gz | tar xz
 
       - name: Run AI review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_BASE_URL: https://api.openai.com  # optional
-          LLM_MODEL: gpt-4o                      # optional
-        run: ./ainspector review
-        # Use --force to re-review all functions (ignores cache)
-        # run: ./ainspector review --force
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AINSPECTOR_MAX_TOKENS_PER_RUN: '300000'
+        run: ./ainspector review --mode quality,security
 ```
+
+Pull requests from forks get neither the secret nor a token that can write: skip the job for them (`if: github.event.pull_request.head.repo.full_name == github.repository`). The `pull-requests: write` permission is what lets `GITHUB_TOKEN` post the review and the summary. The repository of ainspector reviews its own pull requests this way (`.github/workflows/ainspector.yml`).
 
 ### GitLab CI
 
-Add to your `.gitlab-ci.yml`:
+ainspector is published as a Docker image, `ghcr.io/iq2i/ainspector` (a tag per release, and `latest`), that you can mirror in the registry of your instance. Pin a release tag (replace `<release>` below with the one you use): the job holds a token that can write to the project, and `latest` would run whatever is published next. Add to your `.gitlab-ci.yml`:
 
 ```yaml
 ai-review:
   stage: test
+  image: ghcr.io/iq2i/ainspector:<release>
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   allow_failure: true
   script:
-    - curl -sL https://github.com/iq2i/ainspector/releases/latest/download/ainspector-linux-amd64 -o ainspector
-    - chmod +x ainspector
-    - ./ainspector review
-    # Use --force to re-review all functions (ignores cache)
-    # - ./ainspector review --force
+    - ainspector review --mode quality,security
   variables:
-    GITLAB_TOKEN: $GITLAB_API_TOKEN  # or use CI_JOB_TOKEN with appropriate permissions
-    LLM_API_KEY: $LLM_API_KEY
-    LLM_BASE_URL: https://api.openai.com
-    LLM_MODEL: gpt-4o
+    GITLAB_TOKEN: $AINSPECTOR_GITLAB_TOKEN
+    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+    AINSPECTOR_MAX_TOKENS_PER_RUN: "300000"
   artifacts:
     when: always
     expire_in: 30 days
@@ -99,9 +94,27 @@ ai-review:
       - ainspector-report.json
     reports:
       codequality: gl-code-quality-report.json
+
+# The Code Quality widget compares the merge request with the report of its target branch
+ai-review-baseline:
+  stage: test
+  image: ghcr.io/iq2i/ainspector:<release>
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - echo '[]' > gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
 ```
 
-The `codequality` report makes the findings appear in the Code Quality section of the merge request (available in the Free edition). See [Reports](#reports).
+The `codequality` report makes the findings appear in the Code Quality section of the merge request (available in the Free edition). See [Reports](#reports). Without a report on the target branch, GitLab has nothing to compare with: the second job publishes an empty one.
+
+The job must not be `allow_failure: false`: ainspector never fails a pipeline because of what it found, but it does when it cannot post its comments or write its reports.
+
+#### The GitLab token
+
+`GITLAB_TOKEN` is required. Create a **project access token** dedicated to ainspector (Settings, Access tokens) with the `api` scope and the **Reporter** role, and expose it to the job as a masked CI/CD variable. A protected variable is only given to pipelines of protected branches and tags, which merge request pipelines of other branches are not: with it the job fails for want of a token. Anyone who can edit `.gitlab-ci.yml` in a merge request can print the token, which is why it must be dedicated and limited to the Reporter role. GitLab has no narrower scope that can write merge request notes, and `CI_JOB_TOKEN` cannot: ainspector does not accept it. The comments are posted under the name of the token, which is also how ainspector recognizes its own comments among the others. The token needs nothing else than reading the merge request and its files, and writing notes.
 
 ### Command Line Options
 
@@ -138,7 +151,7 @@ ainspector calls the Anthropic API directly, or any OpenAI-compatible API. The A
 
 With the Anthropic backend, the stable part of the prompt (instructions, project context and project rules) is cached, so that the functions of a merge request after the first one read it at a fraction of the price. With an OpenAI-compatible backend, ainspector asks for a JSON reply conforming to a schema and falls back to a less strict mode when the endpoint rejects it.
 
-Each run stops sending requests once `llm.max_tokens_per_run` tokens were consumed (400000 by default; tokens read from the cache do not count). The functions left unreviewed are listed in the summary and reviewed by the next run. The summary also gives the tokens used and an estimated cost, for the models whose price is known (`claude-sonnet-5-5` and `claude-opus-5-5`, others through `llm.prices`).
+Each run stops sending requests once `llm.max_tokens_per_run` tokens were consumed (400000 by default; tokens read from the cache do not count). `AINSPECTOR_MAX_TOKENS_PER_RUN` sets a cap that `ainspector.yaml` can only lower: the file comes from the merge request under review, so its author could otherwise raise their own budget. Set it as a CI/CD variable of the project or the group, which a merge request cannot override. The functions left unreviewed are listed in the summary and reviewed by the next run. The summary also gives the tokens used and an estimated cost, for the models whose price is known (`claude-sonnet-5-5` and `claude-opus-5-5`, others through `llm.prices`).
 
 ## Configuration File
 
@@ -224,7 +237,7 @@ rules:
 
 ### Configuration Options
 
-**ignore.paths** - Glob patterns for files to skip during review. Useful for excluding vendor code, generated files, and test files.
+**ignore.paths** - Glob patterns for files to skip during review, such as test files. Files under `vendor/` or `node_modules/` (at any depth), lock files, minified assets and source maps are never reviewed, whatever the list says.
 
 **ignore.authors**, **ignore.title_patterns**, **ignore.labels** - Skip the whole merge request when its author or one of its labels matches (case-insensitive), or when its title matches one of the regular expressions. Handy for dependency bots.
 
@@ -243,6 +256,8 @@ rules:
 **llm** - `provider` (`anthropic` or `openai`), `max_tokens_per_run` and `prices`, see [LLM Configuration](#llm-configuration).
 
 **rules** - Custom project-specific review rules. These rules are enforced by the AI reviewer and any violations will be explicitly reported in the code review comments.
+
+`ainspector.yaml` is read from the checkout of the merge request, so its author can change the settings of the review that judges their own change (disable a mode, add instructions to the false positive filter). When a merge request modifies the file, ainspector says so in the log and in the summary.
 
 ## How It Works
 
@@ -299,6 +314,10 @@ What it reviews, beyond the functions with added lines:
 
 To keep the noise low, findings of `info` severity or under 50% confidence are dropped, findings already reported by a previous run are not repeated (even if their line moved), and a second call to a stronger model discards the false positives. That filter never discards denial of service or resource exhaustion findings. If the filter fails, the findings are published unfiltered and the summary says so. Only the `max_findings` most severe findings are commented, the others are listed in the summary. When nothing is found, no inline comment is posted: only the summary.
 
+### Measuring Usefulness
+
+Ask reviewers to react to each comment of ainspector with a thumbs up (useful) or a thumbs down (not useful). On every following run, ainspector reads the reactions to the comments it posted earlier on the merge request (the 100 most recent), and records them: the summary of a mode tells how many were useful, not useful, or without a verdict, and `ainspector-report.json` lists them per comment (`feedback`: file, line, fingerprint, thumbs). Archive the artifacts of a pilot to compute the rate of useful findings across merge requests, and correct the prompts from it. Reactions are not read with `--force`.
+
 ### Language-Specific Review Guidelines
 
 ainspector includes tailored review guidelines for each supported language:
@@ -328,11 +347,11 @@ ainspector includes tailored review guidelines for each supported language:
 
 | Variable | Description |
 |----------|-------------|
-| `GITLAB_TOKEN` | GitLab API token with `api` scope |
-| `CI_JOB_TOKEN` | Alternative to GITLAB_TOKEN (limited permissions) |
+| `GITLAB_TOKEN` | Project access token with the `api` scope and the Reporter role (required, `CI_JOB_TOKEN` is not supported) |
+| `CI_API_V4_URL` | API URL of the instance (automatic) |
 | `CI_PROJECT_PATH` | Project path (automatic) |
 | `CI_MERGE_REQUEST_IID` | Merge request ID (automatic) |
-| `CI_SERVER_HOST` | GitLab host for self-hosted instances |
+| `CI_SERVER_HOST` | GitLab host, used when `CI_API_V4_URL` is not set |
 
 ## License
 
