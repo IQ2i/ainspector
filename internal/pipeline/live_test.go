@@ -29,6 +29,7 @@ func TestLive_SecurityFixtures(t *testing.T) {
 		"security-twig-raw":          {"xss"},
 		"security-vue-vhtml":         {"xss"},
 		"security-removed-isgranted": {"access-control"},
+		"security-voter-idor":        {"idor", "access-control"},
 		"security-clean":             nil,
 	}
 
