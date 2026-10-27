@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/iq2i/ainspector/internal/cache"
 	"github.com/iq2i/ainspector/internal/ci"
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/config"
@@ -16,6 +15,7 @@ import (
 	"github.com/iq2i/ainspector/internal/pipeline"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/iq2i/ainspector/internal/publish"
+	"github.com/iq2i/ainspector/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -154,6 +154,12 @@ func review(ctx context.Context, p provider.Provider, newClient func() (llm.Clie
 		languages = append(languages, lang)
 	}
 
+	enabled, err := modes.Enabled([]string{"quality"}, cfg)
+	if err != nil {
+		return err
+	}
+	mode := enabled[0]
+
 	functionsToReview := functions
 	if !force {
 		fmt.Println("Checking for previously reviewed functions...")
@@ -161,19 +167,11 @@ func review(ctx context.Context, p provider.Provider, newClient func() (llm.Clie
 		if err != nil {
 			fmt.Printf("Warning: could not fetch existing comments: %v\n", err)
 		} else {
-			tracker := cache.NewTracker()
-			var reviewedComments []cache.ReviewedComment
-			for _, c := range existingComments {
-				reviewedComments = append(reviewedComments, cache.ReviewedComment{
-					Path: c.Path,
-					Line: c.Line,
-					Hash: cache.ExtractHash(c.Body),
-					Body: c.Body,
-				})
+			self, err := p.CurrentUser(ctx)
+			if err != nil {
+				fmt.Printf("Warning: could not identify the token owner, trusting every existing comment: %v\n", err)
 			}
-			tracker.LoadFromComments(reviewedComments)
-
-			functionsToReview = tracker.FilterUnreviewed(functions)
+			functionsToReview = state.LoadIndex(existingComments, self).FilterUnreviewed(mode, state.RulesDigest(cfg.Rules), functions)
 			skipped := len(functions) - len(functionsToReview)
 			if skipped > 0 {
 				fmt.Printf("Skipped %d already reviewed functions\n", skipped)
@@ -205,12 +203,6 @@ func review(ctx context.Context, p provider.Provider, newClient func() (llm.Clie
 			fmt.Printf("Project context: %s\n", projectContext.Description)
 		}
 	}
-
-	enabled, err := modes.Enabled([]string{"quality"}, cfg)
-	if err != nil {
-		return err
-	}
-	mode := enabled[0]
 
 	fmt.Printf("Reviewing %d functions with LLM...\n", len(functionsToReview))
 	results := pipeline.ReviewUnits(ctx, client, mode, functionsToReview, projectContext)

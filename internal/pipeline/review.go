@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/iq2i/ainspector/internal/cache"
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/modes"
+	"github.com/iq2i/ainspector/internal/state"
 )
 
 // UnitResult is the outcome of reviewing one unit
@@ -36,7 +36,7 @@ func ReviewUnits(ctx context.Context, client llm.Client, m modes.Mode, units []c
 			continue
 		}
 
-		hash := cache.FunctionHash(&u)
+		hash := state.LegacyFunctionHash(u)
 		for i := range result.Findings {
 			result.Findings[i].UnitHash = hash
 		}

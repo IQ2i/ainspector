@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iq2i/ainspector/internal/cache"
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/modes/quality"
+	"github.com/iq2i/ainspector/internal/state"
 )
 
 type fakeClient struct {
@@ -76,8 +76,8 @@ func TestReviewUnits_FindingsCarryUnitHash(t *testing.T) {
 	if f.Explanation != "Bug here" || f.Suggestion != "fix()" {
 		t.Errorf("unexpected finding content: %+v", f)
 	}
-	if f.UnitHash != cache.FunctionHash(&unit) {
-		t.Errorf("expected unit hash %s, got %s", cache.FunctionHash(&unit), f.UnitHash)
+	if f.UnitHash != state.LegacyFunctionHash(unit) {
+		t.Errorf("expected unit hash %s, got %s", state.LegacyFunctionHash(unit), f.UnitHash)
 	}
 }
 

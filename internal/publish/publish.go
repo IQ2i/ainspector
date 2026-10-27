@@ -3,9 +3,9 @@ package publish
 import (
 	"context"
 
-	"github.com/iq2i/ainspector/internal/cache"
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
+	"github.com/iq2i/ainspector/internal/state"
 )
 
 // Policy tells which outputs a mode produces
@@ -26,5 +26,5 @@ type Publisher interface {
 
 // BodyFor renders a finding as a comment body, with the marker that prevents reviewing its unit again
 func BodyFor(f findings.Finding) string {
-	return sanitizeText(f.Explanation) + "\n\n" + cache.FormatHashMarker(f.UnitHash)
+	return sanitizeText(f.Explanation) + "\n\n" + state.FormatMarker(f.UnitHash)
 }
