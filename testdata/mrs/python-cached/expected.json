@@ -60,5 +60,8 @@
       "body": "Underflow is not handled.\n\n\u003c!-- ainspector:fn:799afae16eec --\u003e",
       "suggestion": ""
     }
+  ],
+  "notes": [
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 100 in, 10 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"799afae16eec\"],\"findings\":[]} --\u003e\n"
   ]
 }

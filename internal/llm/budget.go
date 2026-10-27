@@ -22,6 +22,21 @@ type Totals struct {
 	UnpricedCalls int
 }
 
+// Sub returns what was consumed between an earlier snapshot and t
+func (t Totals) Sub(earlier Totals) Totals {
+	return Totals{
+		Usage: Usage{
+			Input:      t.Usage.Input - earlier.Usage.Input,
+			Output:     t.Usage.Output - earlier.Usage.Output,
+			CacheRead:  t.Usage.CacheRead - earlier.Usage.CacheRead,
+			CacheWrite: t.Usage.CacheWrite - earlier.Usage.CacheWrite,
+		},
+		Calls:         t.Calls - earlier.Calls,
+		Cost:          t.Cost - earlier.Cost,
+		UnpricedCalls: t.UnpricedCalls - earlier.UnpricedCalls,
+	}
+}
+
 // Budget wraps a Client to cap the tokens of a run and account for what it consumed.
 // It is safe for concurrent use. The cap is soft: calls already in flight when it is
 // reached still complete.

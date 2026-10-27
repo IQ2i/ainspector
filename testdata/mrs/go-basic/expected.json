@@ -9,7 +9,7 @@
         },
         {
           "role": "user",
-          "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: greet (lines 5-7)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\treturn \"hi \" + name\n+\treturn \"hello \" + name\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc greet(name string) string {\n\treturn \"hello \" + name\n}\n```"
+          "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: divide (lines 9-11)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\treturn a / 2\n+\treturn a / b\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc divide(a, b int) int {\n\treturn a / b\n}\n```"
         }
       ],
       "response_format": {
@@ -61,7 +61,7 @@
         },
         {
           "role": "user",
-          "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: divide (lines 9-11)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\treturn a / 2\n+\treturn a / b\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc divide(a, b int) int {\n\treturn a / b\n}\n```"
+          "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: greet (lines 5-7)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\treturn \"hi \" + name\n+\treturn \"hello \" + name\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc greet(name string) string {\n\treturn \"hello \" + name\n}\n```"
         }
       ],
       "response_format": {
@@ -170,5 +170,8 @@
       "body": "Off-by-one: the loop reads past the end of the slice.\n\n\u003c!-- ainspector:fn:4393ac231f70 --\u003e",
       "suggestion": ""
     }
+  ],
+  "notes": [
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"e9b9b6984b69\",\"085ad365a8a3\",\"4393ac231f70\"],\"findings\":[]} --\u003e\n"
   ]
 }

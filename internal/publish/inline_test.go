@@ -17,6 +17,26 @@ type fakeProvider struct {
 	noteErr  error
 	notes    []string
 	reviews  [][]provider.ReviewComment
+
+	existing  []provider.ExistingComment
+	listErr   error
+	updateErr error
+	updates   map[string]string
+}
+
+func (f *fakeProvider) ListComments(ctx context.Context, number int) ([]provider.ExistingComment, error) {
+	return f.existing, f.listErr
+}
+
+func (f *fakeProvider) UpdateComment(ctx context.Context, number int, id, body string) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	if f.updates == nil {
+		f.updates = map[string]string{}
+	}
+	f.updates[id] = body
+	return nil
 }
 
 func (f *fakeProvider) CreateReview(ctx context.Context, number int, comments []provider.ReviewComment) ([]provider.CommentResult, error) {

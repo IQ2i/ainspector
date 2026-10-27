@@ -68,4 +68,4 @@ func (m *Mode) Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Findin
 
 func (m *Mode) FilterPolicy() findings.Policy { return findings.Policy{} }
 
-func (m *Mode) PublishPolicy() publish.Policy { return publish.Policy{Inline: true} }
+func (m *Mode) PublishPolicy() publish.Policy { return publish.Policy{Inline: true, Summary: true} }

@@ -7,7 +7,6 @@ import (
 
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/config"
-	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/modes"
 	"github.com/iq2i/ainspector/internal/provider"
@@ -82,6 +81,12 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		return nil
 	}
 
+	self, err := deps.Provider.CurrentUser(ctx)
+	if err != nil {
+		fmt.Printf("Warning: could not identify the token owner: %v\n", err)
+		self = ""
+	}
+
 	var index *state.Index
 	if opts.Force {
 		fmt.Println("Force flag set - reviewing all modified functions")
@@ -91,16 +96,15 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		if err != nil {
 			fmt.Printf("Warning: could not fetch existing comments: %v\n", err)
 		} else {
-			self, err := deps.Provider.CurrentUser(ctx)
-			if err != nil {
-				fmt.Printf("Warning: could not identify the token owner, trusting every existing comment: %v\n", err)
+			if self == "" {
+				fmt.Println("Warning: trusting every existing comment")
 			}
 			index = state.LoadIndex(existing, self)
 		}
 	}
 
 	// Created on first use: nothing is needed when every unit was already reviewed
-	var client llm.Client
+	var budget *llm.Budget
 	var projectContext *collect.ProjectContext
 
 	var errs []error
@@ -118,30 +122,28 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			continue
 		}
 
-		if client == nil {
-			if client, err = deps.NewLLM(); err != nil {
+		if budget == nil {
+			client, err := deps.NewLLM()
+			if err != nil {
 				return err
 			}
+			budget = llm.WithBudget(client, cfg.LLM.TokenBudget(), newPricing(cfg), logLine)
 			projectContext = loadProjectContext(deps.ProjectRoot, cfg, units)
 		}
 
 		fmt.Printf("Reviewing %d functions with LLM...\n", len(toReview))
-		results := ReviewUnits(ctx, client, mode, toReview, projectContext)
+		before := budget.Totals()
+		results := ReviewUnits(ctx, budget, mode, toReview, projectContext)
+		run := newRun(mode, toReview, results, budget.Totals().Sub(before), projectContext)
 
-		var published []findings.Finding
-		for _, r := range results {
-			published = append(published, r.Findings...)
+		fmt.Printf("Found %d issues (out of %d functions reviewed)\n", len(run.Published), len(run.Reviewed))
+		if n := len(run.Skipped); n > 0 {
+			fmt.Printf("Warning: %d functions were not reviewed, the token budget was reached\n", n)
 		}
+		fmt.Printf("Tokens used by %s: %d in, %d out, %d read from cache, %d written to cache\n", mode.Name(),
+			run.Usage.Input, run.Usage.Output, run.Usage.CacheRead, run.Usage.CacheWrite)
 
-		fmt.Printf("Found %d issues (out of %d functions reviewed)\n", len(published), len(results))
-
-		if len(published) == 0 {
-			fmt.Println("No issues found, skipping review")
-			continue
-		}
-
-		run := publish.Run{Mode: mode.Name(), Units: toReview, Published: published}
-		if err := publishRun(ctx, deps.Provider, opts, mode, run); err != nil {
+		if err := publishRun(ctx, deps.Provider, opts, self, mode, run); err != nil {
 			fmt.Printf("Warning: mode %s: %v\n", mode.Name(), err)
 			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 		}
@@ -150,25 +152,89 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	return errors.Join(errs...)
 }
 
-func publishRun(ctx context.Context, p provider.Provider, opts Options, mode modes.Mode, run publish.Run) error {
+// newRun gathers what a mode produced and consumed, to publish it
+func newRun(mode modes.Mode, units []collect.ReviewUnit, results []UnitResult, used llm.Totals, pc *collect.ProjectContext) publish.Run {
+	run := publish.Run{
+		Mode:           mode.Name(),
+		Scope:          mode.Scope().String(),
+		Version:        mode.Version(),
+		Units:          units,
+		Usage:          used.Usage,
+		Cost:           used.Cost,
+		CostIncomplete: used.UnpricedCalls > 0,
+	}
+	if pc != nil {
+		run.Notes = pc.Notes
+	}
+
+	for _, r := range results {
+		if run.Model == "" {
+			run.Model = r.Model
+		}
+
+		label := fmt.Sprintf("%s (%s)", r.Unit.Name, r.Unit.FilePath)
+		switch {
+		case r.Skipped:
+			run.Skipped = append(run.Skipped, label)
+		case r.Err != nil:
+			run.Failed = append(run.Failed, label)
+		default:
+			run.Reviewed = append(run.Reviewed, r.Hash)
+			run.Published = append(run.Published, r.Findings...)
+		}
+	}
+	return run
+}
+
+func publishRun(ctx context.Context, p provider.Provider, opts Options, self string, mode modes.Mode, run publish.Run) error {
+	policy := mode.PublishPolicy()
+
 	if opts.DryRun {
 		for _, f := range run.Published {
 			fmt.Printf("Dry run: would comment on %s:%d\n%s\n", f.File, f.StartLine, publish.BodyFor(f))
 		}
+		if policy.Summary {
+			fmt.Printf("Dry run: would publish the summary:\n%s\n", publish.SummaryBody(run, nil))
+		}
 		return nil
 	}
 
-	if !mode.PublishPolicy().Inline {
-		return nil
+	var errs []error
+
+	if policy.Inline && len(run.Published) > 0 {
+		fmt.Println("Posting review with inline suggestions...")
+		if err := publish.NewInline(p, opts.Number).Publish(ctx, run); err != nil {
+			errs = append(errs, fmt.Errorf("failed to create review: %w", err))
+		} else {
+			fmt.Println("Review posted successfully!")
+		}
 	}
 
-	fmt.Println("Posting review with inline suggestions...")
-	if err := publish.NewInline(p, opts.Number).Publish(ctx, run); err != nil {
-		return fmt.Errorf("failed to create review: %w", err)
+	// The summary carries the state of later runs: without the identity of the token owner
+	// it could not tell its own comment from a forged one. Not worth failing the job over.
+	switch {
+	case !policy.Summary:
+	case self == "":
+		fmt.Printf("Warning: summary of %s skipped, the token owner is unknown\n", mode.Name())
+	default:
+		if err := publish.NewSummary(p, opts.Number, self).Publish(ctx, run); err != nil {
+			errs = append(errs, fmt.Errorf("failed to publish the summary: %w", err))
+		}
 	}
 
-	fmt.Println("Review posted successfully!")
-	return nil
+	return errors.Join(errs...)
+}
+
+func newPricing(cfg *config.Config) llm.Pricing {
+	overrides := make(map[string]llm.Price, len(cfg.LLM.Prices))
+	for model, p := range cfg.LLM.Prices {
+		overrides[model] = llm.Price(p)
+	}
+	return llm.NewPricing(overrides)
+}
+
+func logLine(format string, args ...any) {
+	fmt.Printf(format+"\n", args...)
 }
 
 func loadProjectContext(root string, cfg *config.Config, units []collect.ReviewUnit) *collect.ProjectContext {
