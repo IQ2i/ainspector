@@ -1,11 +1,13 @@
 package state
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/provider"
 )
 
@@ -319,5 +321,89 @@ func TestMergeHashes(t *testing.T) {
 	got = MergeHashes(previous, []string{"new"})
 	if len(got) != MaxHashes || got[len(got)-1] != "new" || got[0] != fmt.Sprintf("%012d", 1) {
 		t.Errorf("expected the oldest hash to be dropped, got %d hashes starting with %s", len(got), got[0])
+	}
+}
+
+var security = fakeMode{"security", collect.ScopeFunctionClass, "security/1"}
+
+func TestUnitHash_ClassHeader(t *testing.T) {
+	u := unit("show")
+	withHeader := u
+	withHeader.Enclosing = &collect.ClassHeader{Rendered: "#[IsGranted('ROLE_USER')]\nclass A {}"}
+	otherHeader := u
+	otherHeader.Enclosing = &collect.ClassHeader{Rendered: "class A {}"}
+
+	if UnitHash(security, withHeader, "") == UnitHash(security, otherHeader, "") || UnitHash(security, withHeader, "") == UnitHash(security, u, "") {
+		t.Error("a change of the class header must change the hash at class scope")
+	}
+	if UnitHash(quality, withHeader, "") != UnitHash(quality, u, "") {
+		t.Error("the header must not enter the hash of a function scope mode")
+	}
+}
+
+func TestFindingMarkers(t *testing.T) {
+	marker := FormatFindingMarker("0123456789ab")
+	if marker != "<!-- ainspector:finding:0123456789ab -->" {
+		t.Errorf("unexpected marker %q", marker)
+	}
+	body := "text\n" + marker + "\n" + FormatMarker("aaaaaaaaaaaa") + "\n<!-- ainspector:finding:short -->"
+	if got := ExtractFingerprints(body); len(got) != 1 || got[0] != "0123456789ab" {
+		t.Errorf("unexpected fingerprints %v", got)
+	}
+	if got := ExtractHashes(body); len(got) != 1 || got[0] != "aaaaaaaaaaaa" {
+		t.Errorf("unit hashes must not be confused with fingerprints: %v", got)
+	}
+}
+
+func TestStateBlock_ReportedRoundTrip(t *testing.T) {
+	in := StateBlock{Scope: "function+class", Ver: "security/1", Reported: []findings.Reported{{Fingerprint: "aaaaaaaaaaaa", File: "a.php", Line: 3, Category: "idor", Title: "t"}}}
+	text := FormatStateBlock("security", in)
+	out, ok := ParseStateBlock("security", text)
+	if !ok || len(out.Reported) != 1 || out.Reported[0] != in.Reported[0] {
+		t.Errorf("unexpected block %+v", out)
+	}
+	if strings.Contains(FormatStateBlock("quality", StateBlock{}), "reported") {
+		t.Error("a block without reported findings must keep the format of v1 blocks")
+	}
+}
+
+func TestMergeReported(t *testing.T) {
+	a := findings.Reported{Fingerprint: "a", Title: "old"}
+	b := findings.Reported{Fingerprint: "b"}
+	c := findings.Reported{Fingerprint: "a", Title: "new"}
+
+	got := MergeReported([]findings.Reported{a, b}, []findings.Reported{c})
+	if len(got) != 2 || got[0].Title != "old" || got[1].Fingerprint != "b" {
+		t.Errorf("unexpected merge %+v", got)
+	}
+
+	var many []findings.Reported
+	for i := 0; i < 400; i++ {
+		many = append(many, findings.Reported{Fingerprint: fmt.Sprintf("%012d", i), File: "src/Controller/AccountController.php", Category: "access-control", Title: "Missing access control on the action"})
+	}
+	capped := MergeReported(nil, many)
+	data, _ := json.Marshal(capped)
+	if len(capped) >= len(many) || len(data) > MaxReportedBytes+len(capped) || capped[len(capped)-1] != many[len(many)-1] {
+		t.Errorf("expected the most recent findings within the cap, got %d findings, %d bytes", len(capped), len(data))
+	}
+}
+
+func TestIndex_ReportedFindings(t *testing.T) {
+	block := FormatStateBlock("security", StateBlock{
+		Scope: "function+class", Ver: "security/1", Findings: []string{"bbbbbbbbbbbb"},
+		Reported: []findings.Reported{{Fingerprint: "bbbbbbbbbbbb", File: "a.php", Title: "t"}},
+	})
+	ix := LoadIndex([]provider.ExistingComment{
+		{Author: "bot", Positioned: true, Body: "x\n" + FormatFindingMarker("aaaaaaaaaaaa")},
+		{Author: "bot", Body: "summary\n" + block},
+		{Author: "intruder", Body: FormatFindingMarker("cccccccccccc")},
+	}, "bot")
+
+	seen, previous := ix.ReportedFindings("security")
+	if !seen["aaaaaaaaaaaa"] || !seen["bbbbbbbbbbbb"] || seen["cccccccccccc"] || len(previous) != 1 || previous[0].File != "a.php" {
+		t.Errorf("unexpected result %v %v", seen, previous)
+	}
+	if seen, previous := ix.ReportedFindings("quality"); !seen["aaaaaaaaaaaa"] || seen["bbbbbbbbbbbb"] || previous != nil {
+		t.Errorf("the block of another mode must not count: %v %v", seen, previous)
 	}
 }

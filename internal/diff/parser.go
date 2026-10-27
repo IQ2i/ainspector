@@ -10,6 +10,9 @@ import (
 type ModifiedLines struct {
 	Added   []int // Line numbers of added lines (in new file)
 	Deleted []int // Line numbers of deleted lines (in old file)
+	// DeletedAt holds, for each deleted line that was not blank, the line of the new file that
+	// now sits where it was
+	DeletedAt []int
 }
 
 // ParsePatch parses a unified diff patch and returns the modified line numbers
@@ -50,6 +53,10 @@ func ParsePatch(patch string) (*ModifiedLines, error) {
 					newLine++
 				case '-':
 					result.Deleted = append(result.Deleted, oldLine)
+					// Removing a blank line can open no vulnerability
+					if strings.TrimSpace(line[1:]) != "" {
+						result.DeletedAt = append(result.DeletedAt, newLine)
+					}
 					oldLine++
 				case ' ':
 					// Context line
@@ -70,6 +77,16 @@ func ParsePatch(patch string) (*ModifiedLines, error) {
 // HasModifiedLineInRange checks if any modified line falls within the given range
 func (m *ModifiedLines) HasModifiedLineInRange(startLine, endLine int) bool {
 	for _, line := range m.Added {
+		if line >= startLine && line <= endLine {
+			return true
+		}
+	}
+	return false
+}
+
+// HasDeletionInRange checks if a line was deleted where the given range of the new file now stands
+func (m *ModifiedLines) HasDeletionInRange(startLine, endLine int) bool {
+	for _, line := range m.DeletedAt {
 		if line >= startLine && line <= endLine {
 			return true
 		}

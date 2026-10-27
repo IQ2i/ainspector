@@ -1,0 +1,10 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ account.name }}{% endblock %}
+
+{% block body %}
+    <h1>{{ account.name }}</h1>
+    <p class="meta">Opened on {{ account.createdAt|date('Y-m-d') }}</p>
+    <div class="bio">{{ account.bio|raw }}</div>
+    <a href="{{ path('account_index') }}">Back</a>
+{% endblock %}

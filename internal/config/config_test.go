@@ -339,6 +339,70 @@ publish:
 	if !cfg.HasChangeFilters() {
 		t.Error("change filters expected")
 	}
+	if cfg.SecurityEnabled() || cfg.Modes.Security.Scope != "function+class+related" || cfg.Modes.Security.Findings() != 5 {
+		t.Errorf("unexpected security section: %+v", cfg.Modes.Security)
+	}
+}
+
+func TestParse_SecurityDefaults(t *testing.T) {
+	cfg, err := parse("ainspector.yaml", []byte(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec := cfg.Modes.Security
+	if cfg.SecurityEnabled() || sec.ScopeName() != "function+class" || sec.Findings() != 5 {
+		t.Errorf("unexpected defaults: %+v", sec)
+	}
+	h := sec.Hunks.Resolved()
+	if h.Before != 5 || h.After != 1 || len(h.Extensions) != 5 || h.Extensions[0] != "twig" {
+		t.Errorf("unexpected hunk defaults: %+v", h)
+	}
+	if got := cfg.EnabledModes(); len(got) != 1 || got[0] != "quality" {
+		t.Errorf("only quality runs by default, got %v", got)
+	}
+}
+
+func TestParse_SecuritySettings(t *testing.T) {
+	cfg, err := parse("ainspector.yaml", []byte(`modes:
+  security:
+    enabled: true
+    scope: function
+    model: some-model
+    max_findings: 3
+    hunks: {extensions: [twig], before: 2, after: 4}
+    false_positive: {model: big-model, instructions: "Ignore legacy/"}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec := cfg.Modes.Security
+	if !cfg.SecurityEnabled() || sec.ScopeName() != "function" || sec.Model != "some-model" || sec.Findings() != 3 {
+		t.Errorf("unexpected security section: %+v", sec)
+	}
+	if h := sec.Hunks.Resolved(); h.Before != 2 || h.After != 4 || len(h.Extensions) != 1 {
+		t.Errorf("unexpected hunks: %+v", h)
+	}
+	if sec.FalsePositive.Model != "big-model" || sec.FalsePositive.Instructions != "Ignore legacy/" {
+		t.Errorf("unexpected false positive section: %+v", sec.FalsePositive)
+	}
+	if got := cfg.EnabledModes(); len(got) != 2 || got[1] != "security" {
+		t.Errorf("security must run when enabled, got %v", got)
+	}
+}
+
+func TestParse_InvalidSecuritySettings(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"scope":        "modes:\n  security:\n    scope: everything\n",
+		"max findings": "modes:\n  security:\n    max_findings: -1\n",
+		"hunk before":  "modes:\n  security:\n    hunks: {before: -1}\n",
+		"hunk after":   "modes:\n  security:\n    hunks: {after: -1}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parse("ainspector.yaml", []byte(yaml)); err == nil {
+				t.Errorf("expected an error for %q", yaml)
+			}
+		})
+	}
 }
 
 func TestParse_QualityDisabled(t *testing.T) {

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/iq2i/ainspector/internal/state"
 )
@@ -80,10 +82,24 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 	if n := len(run.Published); n > 0 {
 		issues = fmt.Sprintf("%d %s reported", n, plural(n, "issue"))
 	}
-	fmt.Fprintf(&sb, "Reviewed %d %s, %s.\n", len(run.Reviewed), plural(len(run.Reviewed), "function"), issues)
+	unit := "function"
+	for _, u := range run.Units {
+		if u.Kind != collect.KindFunction {
+			unit = "unit"
+			break
+		}
+	}
+	fmt.Fprintf(&sb, "Reviewed %d %s, %s.\n", len(run.Reviewed), plural(len(run.Reviewed), unit), issues)
 
 	if run.Model != "" {
 		fmt.Fprintf(&sb, "\nModel: `%s`\n", run.Model)
+	}
+	if run.Discarded > 0 {
+		fmt.Fprintf(&sb, "\n%d %s discarded as false %s", run.Discarded, plural(run.Discarded, "finding"), plural(run.Discarded, "positive"))
+		if run.FPModel != "" {
+			fmt.Fprintf(&sb, " by `%s`", run.FPModel)
+		}
+		sb.WriteString(".\n")
 	}
 	u := run.Usage
 	if u.Input+u.Output+u.CacheRead+u.CacheWrite > 0 {
@@ -100,18 +116,26 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 			fmt.Fprintf(&sb, "- %s\n", sanitizeText(item))
 		}
 	}
+	var overflow []string
+	for _, f := range run.Overflow {
+		overflow = append(overflow, fmt.Sprintf("%s:%d [%s] %s", f.File, f.StartLine, f.Severity, oneLine(f.Title)))
+	}
+	writeList(fmt.Sprintf("Not commented, only the %d most severe findings are published:", len(run.Published)), overflow)
 	writeList("Not reviewed, the token budget was reached:", run.Skipped)
 	writeList("Not reviewed, the review failed:", run.Failed)
 	writeList("Notes:", run.Notes)
 
 	var units, fingerprints []string
+	var reported []findings.Reported
 	if previous != nil && previous.Ver == run.Version && previous.Scope == run.Scope {
-		units, fingerprints = previous.Units, previous.Findings
+		units, fingerprints, reported = previous.Units, previous.Findings, previous.Reported
 	}
 	var found []string
+	var foundReports []findings.Reported
 	for _, f := range run.Published {
 		if f.Fingerprint != "" {
 			found = append(found, f.Fingerprint)
+			foundReports = append(foundReports, f.Report())
 		}
 	}
 	block := state.StateBlock{
@@ -119,6 +143,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 		Ver:      run.Version,
 		Units:    state.MergeHashes(units, run.Reviewed),
 		Findings: state.MergeHashes(fingerprints, found),
+		Reported: state.MergeReported(reported, foundReports),
 	}
 	sb.WriteString("\n" + state.FormatStateBlock(run.Mode, block) + "\n")
 

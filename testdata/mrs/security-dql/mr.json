@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "path": "src/Repository/UserRepository.php",
+      "status": "modified",
+      "patch": "@@ -16,8 +16,7 @@\n     public function findByName(string $name): array\n     {\n         return $this->getEntityManager()\n-            ->createQuery('SELECT u FROM App\\Entity\\User u WHERE u.name = :name')\n-            ->setParameter('name', $name)\n+            ->createQuery(\"SELECT u FROM App\\Entity\\User u WHERE u.name = '\" . $name . \"'\")\n             ->getResult();\n     }\n }"
+    }
+  ]
+}

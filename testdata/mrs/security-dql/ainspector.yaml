@@ -1,0 +1,5 @@
+modes:
+  quality:
+    enabled: false
+  security:
+    enabled: true

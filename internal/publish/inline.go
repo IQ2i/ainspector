@@ -33,7 +33,16 @@ func (i *inline) Publish(ctx context.Context, run Run) error {
 			Body:       BodyFor(f),
 			Suggestion: f.Suggestion,
 		}
-		if insideUnit(run.Units, f) {
+		if unit := unitOf(run.Units, f); unit != nil {
+			if f.Suggestion != "" && f.EndLine > f.StartLine {
+				if f.EndLine <= unit.EndLine && f.EndLine-f.StartLine < maxSuggestionLines {
+					c.EndLine = f.EndLine
+				} else {
+					// Applied to the wrong lines, a suggestion would damage the code
+					fmt.Printf("Warning: dropping the suggestion for %s:%d-%d, its lines are not all inside the reviewed code\n", f.File, f.StartLine, f.EndLine)
+					c.Suggestion = ""
+				}
+			}
 			inlineComments = append(inlineComments, c)
 		} else {
 			fmt.Printf("Warning: %s:%d is outside the reviewed code, posting a general comment instead\n", c.Path, c.Line)
@@ -71,15 +80,18 @@ func (i *inline) Publish(ctx context.Context, run Run) error {
 	return nil
 }
 
-// insideUnit tells whether a finding points at lines of a reviewed unit: anything else
-// (class header, related file, invented line) cannot be anchored to the diff.
-func insideUnit(units []collect.ReviewUnit, f findings.Finding) bool {
-	for _, u := range units {
+// maxSuggestionLines caps the lines a single suggestion may replace
+const maxSuggestionLines = 30
+
+// unitOf returns the reviewed unit a finding points at, nil for anything that cannot be anchored
+// to the diff: class header, related file, invented line.
+func unitOf(units []collect.ReviewUnit, f findings.Finding) *collect.ReviewUnit {
+	for i, u := range units {
 		if u.FilePath == f.File && f.StartLine >= u.StartLine && f.StartLine <= u.EndLine {
-			return true
+			return &units[i]
 		}
 	}
-	return false
+	return nil
 }
 
 func fallbackBody(c provider.ReviewComment) string {

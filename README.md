@@ -8,6 +8,7 @@ ainspector automatically analyzes your PRs/MRs, extracts modified functions usin
 
 - Automatic CI environment detection (GitHub Actions, GitLab CI)
 - Function-level analysis using tree-sitter parsing
+- Two review modes: `quality` (bugs, readability, project rules) and `security` (vulnerabilities, with a false positive filter)
 - Reviews only the changed code, not the entire file
 - Native Anthropic API support (prompt caching, structured outputs) and compatibility with any OpenAI-compatible API (OpenAI, Ollama, etc.)
 - Smart caching: skips already reviewed functions across commits, even those without any issue
@@ -98,7 +99,7 @@ ai-review:
 
 Options:
 - `--force`, `-f` - Force re-review of all functions, ignoring the cache. By default, ainspector skips functions that have already been reviewed in previous runs.
-- `--mode` - Review modes to run, comma separated. Defaults to the modes enabled in the configuration (`quality`).
+- `--mode` - Review modes to run, comma separated. Defaults to the modes enabled in the configuration (`quality`, plus `security` when `modes.security.enabled` is set). Available modes: `quality`, `security`.
 - `--dry-run` - Run the review but print the comments instead of posting them.
 
 **ainspector version** - Print the version number
@@ -174,13 +175,24 @@ llm:
   prices:                      # USD per million tokens, for models without a built-in price
     my-model: {input: 1.0, output: 4.0}
 
-# Settings of the quality mode
+# Settings of the quality mode and of the security mode (disabled by default)
 modes:
   quality:
     enabled: true
     model: gpt-4o
     rules:
       - "No global mutable state"
+  security:
+    enabled: true
+    scope: function+class      # function or function+class
+    max_findings: 5            # findings commented per run, the others stay in the summary
+    hunks:                     # files without functions, reviewed as the changed lines plus context
+      extensions: [twig, yaml, yml, vue, env]
+      before: 5
+      after: 1
+    false_positive:
+      model: claude-opus-5-5   # default on the Anthropic backend
+      instructions: "Ignore findings under legacy/"
 
 # Custom review rules enforced by the AI (same as modes.quality.rules)
 rules:
@@ -198,6 +210,8 @@ rules:
 **ignore.authors**, **ignore.title_patterns**, **ignore.labels** - Skip the whole merge request when its author or one of its labels matches (case-insensitive), or when its title matches one of the regular expressions. Handy for dependency bots.
 
 **modes.quality** - `enabled` (default `true`), `model` (default: the model of the LLM backend) and `rules`, which are added after the top-level `rules`.
+
+**modes.security** - Disabled unless `enabled: true`. `scope` is the code given with each unit (`function`, or `function+class` by default, which adds the header of the class). `max_findings` caps the findings commented per run (default `5`). `hunks` tells which files without functions are reviewed, and how many lines of context surround each change (defaults above); lock files (`*.lock`, `package-lock.json`, `pnpm-lock.yaml`) and minified assets are never reviewed that way. `false_positive.model` is the model of the second pass (`claude-opus-5-5` on the Anthropic backend, the default model of the backend otherwise), `false_positive.instructions` is appended to the built-in instructions. `model` is the model of the review itself.
 
 **context.include** - Files to include when generating project context. The AI will read these files to better understand your project's architecture, conventions, and requirements. By default, ainspector automatically searches for common documentation files like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `README.md`, and `.github/copilot-instructions.md`.
 
@@ -228,7 +242,20 @@ These files are given as they are to the AI, within the `context.max_bytes` limi
 
 ### Review Summary
 
-After each review, ainspector posts one summary comment per mode and updates it on the next runs instead of adding another one. It tells how many functions were reviewed and how many issues were reported, the tokens used, the estimated cost, the functions that could not be reviewed (token budget reached, failed requests) and what was left out of the project context. It also carries the hidden state that lets later runs skip the functions already reviewed. Only a summary written by the account of the token is trusted.
+After each review, ainspector posts one summary comment per mode and updates it on the next runs instead of adding another one. It tells how many functions (or units, for the security mode) were reviewed and how many issues were reported, the findings left out by the cap and those discarded as false positives, the tokens used, the estimated cost, the functions that could not be reviewed (token budget reached, failed requests) and what was left out of the project context. It also carries the hidden state that lets later runs skip the functions already reviewed. Only a summary written by the account of the token is trusted.
+
+### Security Review
+
+The `security` mode looks only for vulnerabilities in the code of the merge request: missing or inconsistent access control, insecure direct object references, injection, XSS, CSRF, mass assignment, data exposure, unsafe file uploads, secrets, weak cryptography, unsafe deserialization, denial of service. Every finding comes with a concrete exploitation scenario, a remediation and a confidence level. The mode also reports, with the `low` severity, a protected route whose merge request adds no test of the denied access.
+
+What it reviews, beyond the functions with added lines:
+
+- Functions whose only change is a deletion: a removed `#[IsGranted]`, authorization check or escaping is a signal.
+- Changes outside any function (class attributes, imports, properties).
+- Files without functions (`twig`, `yaml`, `yml`, `vue`, `env` by default): the changed lines with a few lines of context.
+- With `function+class`, the header of the enclosing class: imports, class attributes, properties, constructor and the signature of the other methods, which a controller cannot be judged without. This is available for PHP, TypeScript, JavaScript, Python, Java, C# and Ruby. Go, Rust, C, C++ and Bash have no class header and stay at the `function` scope. A file that was deleted is not reviewed.
+
+To keep the noise low, findings of `info` severity or under 50% confidence are dropped, findings already reported by a previous run are not repeated (even if their line moved), and a second call to a stronger model discards the false positives. That filter never discards denial of service or resource exhaustion findings. If the filter fails, the findings are published unfiltered and the summary says so. Only the `max_findings` most severe findings are commented, the others are listed in the summary. When nothing is found, no inline comment is posted: only the summary.
 
 ### Language-Specific Review Guidelines
 

@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "path": "src/Controller/AccountController.php",
+      "status": "modified",
+      "patch": "@@ -8,7 +8,6 @@\n use Symfony\\Component\\Security\\Http\\Attribute\\IsGranted;\n \n #[Route('/accounts')]\n-#[IsGranted('ROLE_USER')]\n class AccountController extends AbstractController\n {\n     #[Route('/{id}', name: 'account_show')]\n@@ -19,7 +18,6 @@\n     }\n \n     #[Route('/{id}/edit', name: 'account_edit')]\n-    #[IsGranted('ACCOUNT_EDIT', 'account')]\n     public function edit(Account $account): Response\n     {\n         return $this->render('account/edit.html.twig', ['account' => $account]);"
+    }
+  ]
+}

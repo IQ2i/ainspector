@@ -60,6 +60,85 @@ type LanguageConfig struct {
 	// DocComments makes a function start at its preceding /** ... */ block, where
 	// annotation-style metadata (@Route, @IsGranted) lives.
 	DocComments bool
+	// DecoratedKinds are wrappers holding the decorators of the declaration they contain
+	// (Python): a function starts at its wrapper.
+	DecoratedKinds []string
+	// LeadingKinds are siblings decorating the declaration that follows them (TypeScript
+	// decorators in a class body): a function starts at the first of them.
+	LeadingKinds []string
+	// Header tells how the header of an enclosing class is rendered, nil when unsupported
+	Header *HeaderSpec
+}
+
+var (
+	braceClassSpec = HeaderSpec{
+		BodyField:  "body",
+		Braces:     true,
+		Close:      "}",
+		MethodStub: " { ... }",
+	}
+
+	phpHeader = HeaderSpec{
+		BodyField:         "body",
+		Braces:            true,
+		Close:             "}",
+		MemberKinds:       []string{"property_declaration", "const_declaration", "use_declaration", "enum_case"},
+		MethodKinds:       []string{"method_declaration"},
+		ConstructorNames:  []string{"__construct"},
+		MethodStub:        " { ... }",
+		PreludeKinds:      []string{"namespace_use_declaration"},
+		NamespaceKind:     "namespace_definition",
+		NamespaceBodyKind: "compound_statement",
+		FileNamespaceKind: "namespace_definition",
+	}
+
+	scriptHeader = withSpec(braceClassSpec, func(h *HeaderSpec) {
+		h.MemberKinds = []string{"public_field_definition", "field_definition"}
+		h.MethodKinds = []string{"method_definition", "abstract_method_signature"}
+		h.ConstructorNames = []string{"constructor"}
+		h.PreludeKinds = []string{"import_statement"}
+		h.ClassWrappers = []string{"export_statement"}
+	})
+
+	pythonHeader = HeaderSpec{
+		BodyField:        "body",
+		MemberKinds:      []string{"expression_statement"},
+		MethodKinds:      []string{"function_definition"},
+		ConstructorNames: []string{"__init__"},
+		MethodStub:       " ...",
+		PreludeKinds:     []string{"import_statement", "import_from_statement", "future_import_statement"},
+		ClassWrappers:    []string{"decorated_definition"},
+	}
+
+	javaHeader = withSpec(braceClassSpec, func(h *HeaderSpec) {
+		h.MemberKinds = []string{"field_declaration", "constructor_declaration"}
+		h.MethodKinds = []string{"method_declaration"}
+		h.PreludeKinds = []string{"package_declaration", "import_declaration"}
+	})
+
+	csharpHeader = withSpec(braceClassSpec, func(h *HeaderSpec) {
+		h.MemberKinds = []string{"field_declaration", "property_declaration", "constructor_declaration"}
+		h.MethodKinds = []string{"method_declaration"}
+		h.PreludeKinds = []string{"using_directive"}
+		h.NamespaceKind = "namespace_declaration"
+		h.NamespaceBodyKind = "declaration_list"
+		h.FileNamespaceKind = "file_scoped_namespace_declaration"
+	})
+
+	rubyHeader = HeaderSpec{
+		BodyField:        "body",
+		Close:            "end",
+		MemberKinds:      []string{"call", "assignment"},
+		MethodKinds:      []string{"method", "singleton_method"},
+		ConstructorNames: []string{"initialize"},
+		MethodStub:       " ... end",
+		PreludeKinds:     []string{"call"},
+	}
+)
+
+func withSpec(base HeaderSpec, edit func(*HeaderSpec)) *HeaderSpec {
+	edit(&base)
+	return &base
 }
 
 // languageConfigs maps file extensions to language configurations
@@ -86,6 +165,10 @@ func init() {
 				(arrow_function) @function
 				(function_expression) @function
 			`,
+			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
+			EnclosingBarriers: []string{"statement_block"},
+			LeadingKinds:      []string{"decorator"},
+			Header:            scriptHeader,
 		},
 		".jsx": {
 			Name:     "javascript",
@@ -96,6 +179,10 @@ func init() {
 				(arrow_function) @function
 				(function_expression) @function
 			`,
+			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
+			EnclosingBarriers: []string{"statement_block"},
+			LeadingKinds:      []string{"decorator"},
+			Header:            scriptHeader,
 		},
 		// TypeScript
 		".ts": {
@@ -107,6 +194,10 @@ func init() {
 				(arrow_function) @function
 				(function_expression) @function
 			`,
+			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
+			EnclosingBarriers: []string{"statement_block"},
+			LeadingKinds:      []string{"decorator"},
+			Header:            scriptHeader,
 		},
 		".tsx": {
 			Name:     "typescript",
@@ -117,6 +208,10 @@ func init() {
 				(arrow_function) @function
 				(function_expression) @function
 			`,
+			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
+			EnclosingBarriers: []string{"statement_block"},
+			LeadingKinds:      []string{"decorator"},
+			Header:            scriptHeader,
 		},
 		// Python
 		".py": {
@@ -125,6 +220,10 @@ func init() {
 			FunctionQuery: `
 				(function_definition name: (identifier) @name) @function
 			`,
+			EnclosingTypes:    []string{"class_definition"},
+			EnclosingBarriers: []string{"function_definition"},
+			DecoratedKinds:    []string{"decorated_definition"},
+			Header:            &pythonHeader,
 		},
 		// Rust
 		".rs": {
@@ -142,6 +241,9 @@ func init() {
 				(method_declaration name: (identifier) @name) @function
 				(constructor_declaration name: (identifier) @name) @function
 			`,
+			EnclosingTypes:    []string{"class_declaration", "interface_declaration", "record_declaration"},
+			EnclosingBarriers: []string{"object_creation_expression"},
+			Header:            javaHeader,
 		},
 		// C
 		".c": {
@@ -191,6 +293,9 @@ func init() {
 				(method_declaration name: (identifier) @name) @function
 				(constructor_declaration name: (identifier) @name) @function
 			`,
+			EnclosingTypes:    []string{"class_declaration", "struct_declaration", "interface_declaration", "record_declaration"},
+			EnclosingBarriers: []string{"object_creation_expression"},
+			Header:            csharpHeader,
 		},
 		// PHP
 		".php": {
@@ -203,6 +308,7 @@ func init() {
 			EnclosingTypes:    []string{"class_declaration", "enum_declaration", "trait_declaration", "interface_declaration"},
 			EnclosingBarriers: []string{"anonymous_class", "compound_statement"},
 			DocComments:       true,
+			Header:            &phpHeader,
 		},
 		// Ruby
 		".rb": {
@@ -212,6 +318,9 @@ func init() {
 				(method name: (identifier) @name) @function
 				(singleton_method name: (identifier) @name) @function
 			`,
+			EnclosingTypes:    []string{"class", "module"},
+			EnclosingBarriers: []string{"method", "singleton_method"},
+			Header:            &rubyHeader,
 		},
 		// Bash
 		".sh": {
@@ -347,10 +456,7 @@ func (p *Parser) Parse(path string, content []byte) ([]Function, string, error) 
 		}
 
 		if fnNode != nil {
-			start := fnNode.StartByte()
-			if config.DocComments {
-				start = docStart(fnNode, content)
-			}
+			start := declStart(fnNode, config, content)
 			startLine := bytes.Count(content[:start], []byte("\n")) + 1
 			endLine := int(fnNode.EndPosition().Row) + 1
 			key := fmt.Sprintf("%d:%d", startLine, endLine)
@@ -402,131 +508,17 @@ func findEnclosing(node *tree_sitter.Node, config *LanguageConfig, content []byt
 	return nil
 }
 
-// RenderClassHeader renders the context a reviewer needs to judge a method of the
-// given class: namespace and imports, the class declaration with its attributes,
-// properties, constants, traits, enum cases and the constructor. Other methods are
-// replaced by a count.
-func (p *Parser) RenderClassHeader(path string, content []byte, ref *ClassRef) (string, error) {
-	config := GetConfig(path)
-	if config == nil || len(config.EnclosingTypes) == 0 {
-		return "", fmt.Errorf("class header not supported for file: %s", path)
+// declStart returns where a function begins once its decorators and doc comment are included
+func declStart(node *tree_sitter.Node, config *LanguageConfig, content []byte) uint {
+	start := node.StartByte()
+	if parent := node.Parent(); parent != nil && slices.Contains(config.DecoratedKinds, parent.Kind()) {
+		node, start = parent, parent.StartByte()
 	}
-	if ref == nil {
-		return "", fmt.Errorf("nil class reference")
+	for prev := node.PrevNamedSibling(); prev != nil && slices.Contains(config.LeadingKinds, prev.Kind()); prev = prev.PrevNamedSibling() {
+		start = prev.StartByte()
 	}
-
-	lang := tree_sitter.NewLanguage(config.Language)
-	if err := p.parser.SetLanguage(lang); err != nil {
-		return "", fmt.Errorf("failed to set language: %w", err)
+	if config.DocComments {
+		start = min(start, docStart(node, content))
 	}
-	tree := p.parser.Parse(content, nil)
-	defer tree.Close()
-
-	isTarget := func(n *tree_sitter.Node) bool {
-		return slices.Contains(config.EnclosingTypes, n.Kind()) && n.StartByte() == ref.StartByte && n.EndByte() == ref.EndByte
-	}
-	class := tree.RootNode().NamedDescendantForByteRange(ref.StartByte, ref.EndByte)
-	for class != nil && !isTarget(class) {
-		class = class.Parent()
-	}
-	if class == nil {
-		return "", fmt.Errorf("no enclosing type found at bytes %d-%d", ref.StartByte, ref.EndByte)
-	}
-	body := class.ChildByFieldName("body")
-	if body == nil {
-		return "", fmt.Errorf("enclosing type %s has no body", ref.Name)
-	}
-
-	var members []string
-	for i := uint(0); i < body.NamedChildCount(); i++ {
-		member := body.NamedChild(i)
-		start := docStart(member, content)
-		switch member.Kind() {
-		case "property_declaration", "const_declaration", "use_declaration", "enum_case":
-			members = append(members, indentedText(start, member.EndByte(), content))
-		case "method_declaration":
-			name := member.ChildByFieldName("name")
-			methodBody := member.ChildByFieldName("body")
-			switch {
-			case name != nil && strings.EqualFold(name.Utf8Text(content), "__construct"):
-				members = append(members, indentedText(start, member.EndByte(), content))
-			case methodBody != nil:
-				members = append(members, strings.TrimRight(indentedText(start, methodBody.StartByte(), content), " \t\r\n")+" { ... }")
-			default:
-				members = append(members, indentedText(start, member.EndByte(), content))
-			}
-		}
-	}
-
-	header := string(content[docStart(class, content) : body.StartByte()+1])
-	if len(members) > 0 {
-		header += "\n" + strings.Join(members, "\n\n")
-	}
-	header += "\n}"
-	if prelude := renderPrelude(class, content); prelude != "" {
-		header = prelude + "\n\n" + header
-	}
-	return header, nil
-}
-
-// renderPrelude returns the namespace and import statements preceding the class.
-// A brace-delimited namespace gets a synthesized "namespace X;" line.
-func renderPrelude(class *tree_sitter.Node, content []byte) string {
-	container := class.Parent()
-	if container == nil {
-		return ""
-	}
-
-	var lines []string
-	switch {
-	case container.Kind() == "program":
-	case container.Kind() == "compound_statement" && container.Parent() != nil && container.Parent().Kind() == "namespace_definition":
-		if name := container.Parent().ChildByFieldName("name"); name != nil {
-			lines = append(lines, "namespace "+name.Utf8Text(content)+";")
-		}
-	default:
-		return ""
-	}
-
-	for i := uint(0); i < container.NamedChildCount(); i++ {
-		child := container.NamedChild(i)
-		if child.StartByte() >= class.StartByte() {
-			break
-		}
-		switch child.Kind() {
-		case "namespace_definition":
-			if child.ChildByFieldName("body") == nil {
-				lines = []string{child.Utf8Text(content)}
-			}
-		case "namespace_use_declaration":
-			lines = append(lines, child.Utf8Text(content))
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-// docStart returns where a declaration begins once its preceding /** ... */ block is
-// included, or the node start when there is none.
-func docStart(node *tree_sitter.Node, content []byte) uint {
-	prev := node.PrevNamedSibling()
-	if prev == nil || prev.Kind() != "comment" || !strings.HasPrefix(prev.Utf8Text(content), "/**") {
-		return node.StartByte()
-	}
-	if len(bytes.TrimSpace(content[prev.EndByte():node.StartByte()])) > 0 {
-		return node.StartByte()
-	}
-	return prev.StartByte()
-}
-
-// indentedText returns content[start:end] extended back to the beginning of its line
-// when only whitespace precedes it, so that the original indentation is preserved.
-func indentedText(start, end uint, content []byte) string {
-	lineStart := start
-	for lineStart > 0 && (content[lineStart-1] == ' ' || content[lineStart-1] == '\t') {
-		lineStart--
-	}
-	if lineStart > 0 && content[lineStart-1] != '\n' {
-		lineStart = start
-	}
-	return string(content[lineStart:end])
+	return start
 }

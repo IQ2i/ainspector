@@ -195,11 +195,16 @@ func (p *GitHubProvider) createReview(ctx context.Context, number int, comments 
 			body = c.Body + "\n\n" + Fence("suggestion", c.Suggestion)
 		}
 
-		ghComments = append(ghComments, &github.DraftReviewComment{
+		draft := &github.DraftReviewComment{
 			Path: github.String(c.Path),
 			Line: github.Int(c.Line),
 			Body: github.String(body),
-		})
+		}
+		if c.replacesRange() {
+			draft.StartLine = github.Int(c.Line)
+			draft.Line = github.Int(c.EndLine)
+		}
+		ghComments = append(ghComments, draft)
 	}
 
 	review := &github.PullRequestReviewRequest{

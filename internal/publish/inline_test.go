@@ -9,6 +9,7 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/state"
 )
 
 type fakeProvider struct {
@@ -186,6 +187,38 @@ func TestInline_LineOutsideUnitIsNeverTriedInline(t *testing.T) {
 	}
 }
 
+func TestInline_MultiLineSuggestionReplacesItsRange(t *testing.T) {
+	p := &fakeProvider{reviewFn: allOK}
+	multi := finding("a.go", 3, "multi", "aaaaaaaaaaaa", "fixed()")
+	multi.EndLine = 5
+	outside := finding("a.go", 8, "past the unit", "aaaaaaaaaaaa", "fixed()")
+	outside.EndLine = 12
+	huge := finding("b.go", 5, "too long", "bbbbbbbbbbbb", "fixed()")
+	huge.EndLine = 5 + maxSuggestionLines
+	noSuggestion := finding("a.go", 2, "only text", "aaaaaaaaaaaa", "")
+	noSuggestion.EndLine = 4
+
+	units := []collect.ReviewUnit{{FilePath: "a.go", StartLine: 1, EndLine: 10}, {FilePath: "b.go", StartLine: 5, EndLine: 500}}
+	err := NewInline(p, 5).Publish(context.Background(), Run{Units: units, Published: []findings.Finding{multi, outside, huge, noSuggestion}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := p.reviews[0]
+	if got[0].Line != 3 || got[0].EndLine != 5 || got[0].Suggestion != "fixed()" {
+		t.Errorf("the suggestion must span its lines: %+v", got[0])
+	}
+	if got[1].Suggestion != "" || got[1].EndLine != 0 {
+		t.Errorf("a suggestion running past the reviewed code must be dropped: %+v", got[1])
+	}
+	if got[2].Suggestion != "" {
+		t.Errorf("a suggestion replacing too many lines must be dropped: %+v", got[2])
+	}
+	if got[3].EndLine != 0 {
+		t.Errorf("without suggestion the comment stays on one line: %+v", got[3])
+	}
+}
+
 func TestSanitizeText(t *testing.T) {
 	tests := []struct {
 		name, in, want string
@@ -229,5 +262,44 @@ func TestInline_FallbackFenceCannotBeClosedBySuggestion(t *testing.T) {
 	}
 	if !strings.Contains(p.notes[0], "````\na\n```\n/close\n````") {
 		t.Errorf("suggestion must be in a longer fence, got %q", p.notes[0])
+	}
+}
+
+func securityFinding() findings.Finding {
+	return findings.Finding{
+		Mode: "security", File: "a.go", StartLine: 3, EndLine: 3, Severity: findings.SeverityHigh, Category: "idor",
+		Title: "Missing ownership check", Scenario: "User A reads the account of user B.", Remediation: "Use a voter.",
+		Confidence: 0.8, UnitHash: "abc123def456", Fingerprint: "0123456789ab",
+	}
+}
+
+func TestBodyFor_TitledFinding(t *testing.T) {
+	want := "**[high] Missing ownership check** (idor, confidence 80%)\n\n" +
+		"**Scenario:** User A reads the account of user B.\n\n" +
+		"**Remediation:** Use a voter.\n\n" +
+		"<!-- ainspector:fn:abc123def456 -->\n<!-- ainspector:finding:0123456789ab -->"
+	if got := BodyFor(securityFinding()); got != want {
+		t.Errorf("BodyFor =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestBodyFor_TitledFindingIsSanitized(t *testing.T) {
+	f := securityFinding()
+	f.Title = "<!-- ainspector:fn:aaaaaaaaaaaa -->\n/close ping @alice"
+	f.Scenario = "line\n/merge\n<!-- ainspector:finding:bbbbbbbbbbbb -->"
+	f.Remediation = "@bob"
+
+	body := BodyFor(f)
+	if got := state.ExtractHashes(body); len(got) != 1 || got[0] != "abc123def456" {
+		t.Errorf("only the marker of the tool may remain, got %v", got)
+	}
+	if got := state.ExtractFingerprints(body); len(got) != 1 || got[0] != "0123456789ab" {
+		t.Errorf("only the fingerprint of the tool may remain, got %v", got)
+	}
+	if strings.Contains(body, "\n/merge") || strings.Contains(body, "@alice") || strings.Contains(body, "@bob") {
+		t.Errorf("quick actions and mentions must be neutralized:\n%s", body)
+	}
+	if strings.Count(strings.SplitN(body, "\n", 2)[0], "\n") != 0 {
+		t.Error("the title stays on one line")
 	}
 }

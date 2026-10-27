@@ -79,6 +79,30 @@ func TestGitHub_CreateReview(t *testing.T) {
 	}
 }
 
+func TestGitHub_CreateReview_MultiLineSuggestion(t *testing.T) {
+	var review github.PullRequestReviewRequest
+	p := newTestGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &review)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+
+	_, err := p.CreateReview(context.Background(), 1, []ReviewComment{
+		{Path: "a.go", Line: 3, EndLine: 5, Body: "range", Suggestion: "fixed()"},
+		{Path: "b.go", Line: 4, EndLine: 6, Body: "no suggestion"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if c := review.Comments[0]; c.GetStartLine() != 3 || c.GetLine() != 5 {
+		t.Errorf("a range must go from start_line to line, got %d-%d", c.GetStartLine(), c.GetLine())
+	}
+	if c := review.Comments[1]; c.StartLine != nil || c.GetLine() != 4 {
+		t.Errorf("a comment without suggestion stays on its line, got %+v", c)
+	}
+}
+
 func TestGitHub_CreateReview_FailureIsReportedOnEveryComment(t *testing.T) {
 	p := newTestGitHub(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)

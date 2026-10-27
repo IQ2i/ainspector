@@ -1,0 +1,4 @@
+{
+  "front/components/Bio.vue": "{\"findings\": [{\"line\": 8, \"end_line\": 8, \"severity\": \"high\", \"category\": \"xss\", \"title\": \"v-html renders the biography unsanitized\", \"scenario\": \"A user stores <img src=x onerror=alert(document.cookie)> as their biography: v-html injects it into the DOM, so the handler runs for every visitor of the profile page.\", \"remediation\": \"Render the text with {{ bio }}, or sanitize it with DOMPurify before binding it to v-html.\", \"confidence\": 0.9, \"suggestion\": \"\"}]}",
+  "__false_positive__": "{\"verdicts\": [{\"id\": 0, \"keep\": true, \"reason\": \"The bio is bound to v-html as is.\"}]}"
+}

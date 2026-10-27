@@ -141,7 +141,28 @@ func (f *fakeProvider) ListComments(ctx context.Context, number int) ([]provider
 	return f.comment, nil
 }
 
-var functionRe = regexp.MustCompile(`Function: (\S+) \(lines`)
+var (
+	functionRe = regexp.MustCompile(`Function: (\S+) \(lines`)
+	hunkRe     = regexp.MustCompile(`File: (\S+)\nChanged lines: \d+-\d+`)
+)
+
+// falsePositiveKey is the key of responses.json holding the reply of the false positive filter
+const falsePositiveKey = "__false_positive__"
+
+// responseKey tells which scripted reply a request gets: the function name for a function unit,
+// the file path for a hunk, and a fixed key for the false positive filter
+func responseKey(prompt string) (string, bool) {
+	if strings.Contains(prompt, "FINDINGS TO ASSESS") {
+		return falsePositiveKey, true
+	}
+	if m := functionRe.FindStringSubmatch(prompt); m != nil {
+		return m[1], true
+	}
+	if m := hunkRe.FindStringSubmatch(prompt); m != nil {
+		return m[1], true
+	}
+	return "", false
+}
 
 func scriptedLLM(t *testing.T, responses map[string]string, mu *sync.Mutex, requests *[]json.RawMessage) *httptest.Server {
 	t.Helper()
@@ -156,12 +177,9 @@ func scriptedLLM(t *testing.T, responses map[string]string, mu *sync.Mutex, requ
 			t.Errorf("invalid request body: %v", err)
 		}
 
-		m := functionRe.FindStringSubmatch(req.Messages[len(req.Messages)-1].Content)
-		key := ""
-		if m == nil {
-			t.Errorf("cannot find function name in prompt")
-		} else {
-			key = m[1]
+		key, found := responseKey(req.Messages[len(req.Messages)-1].Content)
+		if !found {
+			t.Errorf("cannot find the unit in the prompt")
 		}
 
 		content, ok := responses[key]
@@ -185,6 +203,8 @@ type harness struct {
 	deps     Deps
 	newCalls int
 	mr       mrFixture
+	// responses is read by the scripted server: tests may change it before the run
+	responses map[string]string
 }
 
 func newHarness(t *testing.T, dir string) *harness {
@@ -194,6 +214,7 @@ func newHarness(t *testing.T, dir string) *harness {
 	readJSON(t, filepath.Join(dir, "mr.json"), &h.mr)
 	var responses map[string]string
 	readJSON(t, filepath.Join(dir, "responses.json"), &responses)
+	h.responses = responses
 
 	cfg, err := config.LoadFromPath(filepath.Join(dir, "ainspector.yaml"))
 	if err != nil {

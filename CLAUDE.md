@@ -20,16 +20,16 @@ make lint     # Lint code
 - `internal/provider/` - GitHub/GitLab API abstraction
 - `internal/config/` - Load `ainspector.yaml` config
 - `internal/diff/` - Parse unified diffs
-- `internal/parser/` - Tree-sitter function extraction
-- `internal/collect/` - Build review units from modified files, project context
+- `internal/parser/` - Tree-sitter function extraction, class headers (`header.go`, one `HeaderSpec` per language)
+- `internal/collect/` - Build review units (functions, extended hunks) from modified files, project context
 - `internal/llm/` - `Client` interface, `WithBudget` (token cap, usage, cost); `llm/anthropic/` is the Anthropic backend, `llm/openai/` the OpenAI-compatible one
-- `internal/modes/` - Review modes (`modes/quality/` holds the prompts)
-- `internal/findings/` - Findings reported by modes
+- `internal/modes/` - Review modes (`modes/quality/` and `modes/security/` hold the prompts)
+- `internal/findings/` - Findings reported by modes: fingerprint, threshold, dedup, cap, false positive filter
 - `internal/publish/` - Publish findings (inline comments) and the summary comment of each mode
 - `internal/state/` - Unit hashes and markers used to skip reviewed units
 - `internal/pipeline/` - `Run` orchestrates a whole review
 
-Changing a mode prompt requires bumping its `Version()` and regenerating the goldens (`go test ./internal/modes/quality -update`). Reference merge requests live in `testdata/mrs/`; regenerate their expected output with `go test ./internal/pipeline -update` only when a change of behavior is intended.
+Changing a mode prompt requires bumping its `Version()` and regenerating the goldens (`go test ./internal/modes/quality -update`, `go test ./internal/modes/security -update`). Reference merge requests live in `testdata/mrs/`; regenerate their expected output with `go test ./internal/pipeline -update` only when a change of behavior is intended. `ANTHROPIC_API_KEY=... go test ./internal/pipeline -run Live -v` replays the security ones against the real API.
 
 ## Configuration
 
@@ -52,6 +52,10 @@ modes:
     enabled: true
     rules:
       - "Database queries must use prepared statements"
+  security:
+    enabled: true
+    scope: function+class
+    max_findings: 5
 ```
 
 ## Environment Variables
