@@ -341,6 +341,34 @@ func TestUnitHash_ClassHeader(t *testing.T) {
 	}
 }
 
+func TestUnitHash_RelatedFiles(t *testing.T) {
+	related := fakeMode{"security", collect.ScopeFunctionClassRelated, "security/1"}
+	voter := collect.RelatedFile{Path: "src/Voter.php", Content: "v1"}
+	tpl := collect.RelatedFile{Path: "templates/a.twig", Content: "t"}
+
+	u := unit("show")
+	u.Related = []collect.RelatedFile{voter, tpl}
+	swapped := u
+	swapped.Related = []collect.RelatedFile{tpl, voter}
+	edited := u
+	edited.Related = []collect.RelatedFile{{Path: voter.Path, Content: "v2"}, tpl}
+	without := unit("show")
+
+	hash := UnitHash(related, u, "")
+	if hash != UnitHash(related, swapped, "") {
+		t.Error("the order of the related files must not change the hash")
+	}
+	if hash == UnitHash(related, edited, "") {
+		t.Error("a change of a related file must change the hash")
+	}
+	if hash == UnitHash(related, without, "") {
+		t.Error("the related files must enter the hash")
+	}
+	if UnitHash(security, u, "") != UnitHash(security, without, "") {
+		t.Error("related files must not enter the hash of a mode that does not receive them")
+	}
+}
+
 func TestFindingMarkers(t *testing.T) {
 	marker := FormatFindingMarker("0123456789ab")
 	if marker != "<!-- ainspector:finding:0123456789ab -->" {

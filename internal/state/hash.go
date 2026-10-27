@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/collect"
@@ -42,7 +43,22 @@ func UnitHash(m ModeKey, u collect.ReviewUnit, rulesDigest string) string {
 	if m.Scope() >= collect.ScopeFunctionClass && u.Enclosing != nil {
 		parts = append(parts, u.Enclosing.Rendered)
 	}
+	// Likewise for the files given with it: a change of a voter is a reason to review its controllers
+	if m.Scope() >= collect.ScopeFunctionClassRelated {
+		parts = append(parts, relatedDigest(u.Related))
+	}
 	return shortHash(parts...)
+}
+
+// relatedDigest identifies the content of the related files, whatever order they came in
+func relatedDigest(files []collect.RelatedFile) string {
+	entries := make([]string, 0, len(files))
+	for _, f := range files {
+		sum := sha256.Sum256([]byte(f.Content))
+		entries = append(entries, f.Path+":"+hex.EncodeToString(sum[:]))
+	}
+	sort.Strings(entries)
+	return strings.Join(entries, "\n")
 }
 
 // RulesDigest summarizes the project rules given to a mode
