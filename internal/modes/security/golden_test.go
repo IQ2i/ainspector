@@ -82,6 +82,11 @@ func TestGolden_UserPrompt(t *testing.T) {
 	}
 	deleted := function
 	deleted.DeletedOnly = true
+	withRelated := function
+	withRelated.Related = []collect.RelatedFile{
+		{Path: "src/Security/Voter/AccountVoter.php", Reason: "voter named after Account,\nwhich show receives", Content: "<?php\nclass AccountVoter\n{\n    protected function voteOnAttribute(): bool { return true; }\n}"},
+		{Path: "config/packages/security.yaml", Reason: "firewalls and access_control of the security configuration", Content: "security:\n  access_control: []\n... (truncated)", Truncated: true},
+	}
 	hunk := collect.ReviewUnit{
 		Kind: collect.KindHunk, Name: "lines 3-9", StartLine: 3, EndLine: 9, FilePath: "templates/account/show.html.twig", Language: "twig",
 		Content: "<h1>{{ account.name }}</h1>\n<div>{{ account.bio|raw }}</div>", Diff: "+<div>{{ account.bio|raw }}</div>", ChangeType: "modified",
@@ -90,6 +95,7 @@ func TestGolden_UserPrompt(t *testing.T) {
 	for name, unit := range map[string]collect.ReviewUnit{
 		"function":     function,
 		"deleted-only": deleted,
+		"related":      withRelated,
 		"hunk":         hunk,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -130,10 +136,10 @@ func TestPromptChecksums(t *testing.T) {
 	}
 }
 
-const checksumsVersion = "security/1"
+const checksumsVersion = "security/2"
 
 const (
-	wantBaseChecksum   = "cdab06ce9386aa6915db4eb0ae5ebcdc34d70374d308dd83180d85f4820f2ea7"
+	wantBaseChecksum   = "c8ad80dcb2ac076417c78b053bb80322b847ab3b15f1c8a9253db54a4528ae56"
 	wantSchemaChecksum = "7bf0fcd510cb57ff5838562de0f39a572109646828fb06f1d3cb48dd80ba6dc3"
 )
 

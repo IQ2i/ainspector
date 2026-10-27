@@ -17,6 +17,7 @@ type Environment struct {
 	PRNumber   int    // Pull request / Merge request number
 	Token      string // API token
 	ServerHost string // Server host (for self-hosted instances)
+	CommitSHA  string // Commit checked out by the job
 }
 
 // Detect detects the CI environment from environment variables
@@ -59,6 +60,13 @@ func detectGitHub() (*Environment, error) {
 		return nil, fmt.Errorf("GITHUB_TOKEN not set")
 	}
 
+	// On pull_request the checkout is the merge commit, which never is the head of the PR: the
+	// difference would be reported on every run
+	commitSHA := os.Getenv("GITHUB_SHA")
+	if os.Getenv("GITHUB_EVENT_NAME") == "pull_request" {
+		commitSHA = ""
+	}
+
 	return &Environment{
 		Provider:   "github",
 		Owner:      parts[0],
@@ -66,6 +74,7 @@ func detectGitHub() (*Environment, error) {
 		PRNumber:   prNumber,
 		Token:      token,
 		ServerHost: "github.com",
+		CommitSHA:  commitSHA,
 	}, nil
 }
 
@@ -152,5 +161,6 @@ func detectGitLab() (*Environment, error) {
 		PRNumber:   mrNumber,
 		Token:      token,
 		ServerHost: serverHost,
+		CommitSHA:  os.Getenv("CI_COMMIT_SHA"),
 	}, nil
 }

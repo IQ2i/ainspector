@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -71,12 +73,18 @@ type ModesConfig struct {
 }
 
 const (
-	// DefaultSecurityScope is the context given to the security mode: the function and its class
-	DefaultSecurityScope       = "function+class"
+	// DefaultSecurityScope is the context given to the security mode: the function, its class
+	// and the files related to it
+	DefaultSecurityScope       = "function+class+related"
 	DefaultSecurityMaxFindings = 5
 	DefaultHunkBefore          = 5
 	DefaultHunkAfter           = 1
+	DefaultRelatedMaxFiles     = 6
+	DefaultRelatedMaxBytes     = 40000
 )
+
+// KnownRelatedPresets are the resolvers of related files that can be named in the configuration
+var KnownRelatedPresets = []string{"symfony", "vue"}
 
 // DefaultHunkExtensions are the files without functions that the security mode reviews as hunks
 var DefaultHunkExtensions = []string{"twig", "yaml", "yml", "vue", "env"}
@@ -85,13 +93,24 @@ var DefaultHunkExtensions = []string{"twig", "yaml", "yml", "vue", "env"}
 type SecurityConfig struct {
 	// Enabled defaults to false
 	Enabled *bool `yaml:"enabled"`
-	// Scope is "function", "function+class" (the default) or "function+class+related"
+	// Scope is "function", "function+class" or "function+class+related" (the default)
 	Scope string `yaml:"scope"`
 	Model string `yaml:"model"`
 	// MaxFindings caps the findings published per run, defaults to DefaultSecurityMaxFindings
 	MaxFindings   int                 `yaml:"max_findings"`
 	Hunks         HunksConfig         `yaml:"hunks"`
+	Related       RelatedConfig       `yaml:"related"`
 	FalsePositive FalsePositiveConfig `yaml:"false_positive"`
+}
+
+// RelatedConfig tells which files related to a unit are given with it, with the scope
+// function+class+related. Zero values select the defaults.
+type RelatedConfig struct {
+	// Presets defaults to all of KnownRelatedPresets
+	Presets []string `yaml:"presets"`
+	// MaxFiles and MaxBytes cap the related files of one unit
+	MaxFiles int `yaml:"max_files"`
+	MaxBytes int `yaml:"max_bytes"`
 }
 
 // HunksConfig tells how files without functions are reviewed: the changed lines with a few
@@ -196,6 +215,15 @@ func parse(source string, data []byte) (*Config, error) {
 	if sec := cfg.Modes.Security; sec.MaxFindings < 0 || sec.Hunks.Before < 0 || sec.Hunks.After < 0 {
 		return nil, fmt.Errorf("%s: modes.security.max_findings and modes.security.hunks must not be negative", source)
 	}
+	rel := cfg.Modes.Security.Related
+	if rel.MaxFiles < 0 || rel.MaxBytes < 0 {
+		return nil, fmt.Errorf("%s: modes.security.related.max_files and max_bytes must not be negative", source)
+	}
+	for _, preset := range rel.Presets {
+		if !slices.Contains(KnownRelatedPresets, preset) {
+			return nil, fmt.Errorf("%s: unknown modes.security.related.presets entry %q (expected one of %s)", source, preset, strings.Join(KnownRelatedPresets, ", "))
+		}
+	}
 	if cfg.LLM.MaxTokensPerRun < 0 || cfg.Context.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: llm.max_tokens_per_run and context.max_bytes must not be negative", source)
 	}
@@ -253,6 +281,20 @@ func (h HunksConfig) Resolved() HunksConfig {
 		h.After = DefaultHunkAfter
 	}
 	return h
+}
+
+// Resolved returns the related files settings with their defaults applied
+func (r RelatedConfig) Resolved() RelatedConfig {
+	if len(r.Presets) == 0 {
+		r.Presets = KnownRelatedPresets
+	}
+	if r.MaxFiles == 0 {
+		r.MaxFiles = DefaultRelatedMaxFiles
+	}
+	if r.MaxBytes == 0 {
+		r.MaxBytes = DefaultRelatedMaxBytes
+	}
+	return r
 }
 
 // EnabledModes returns the modes that run when none is requested explicitly

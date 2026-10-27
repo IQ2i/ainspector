@@ -64,17 +64,15 @@ func newSecurity(cfg *config.Config) (*security.Mode, error) {
 	if err != nil {
 		return nil, err
 	}
-	if scope == collect.ScopeFunctionClassRelated {
-		fmt.Println("Warning: related files are not supported yet, the security mode uses the scope function+class")
-		scope = collect.ScopeFunctionClass
-	}
 
 	hunks := sec.Hunks.Resolved()
+	related := sec.Related.Resolved()
 	return security.New(security.Config{
 		Model:       sec.Model,
 		Scope:       scope,
 		MaxFindings: sec.Findings(),
 		Hunks:       collect.HunkPolicy{Extensions: hunks.Extensions, Before: hunks.Before, After: hunks.After},
+		Related:     collect.RelatedPolicy{Presets: related.Presets, MaxFiles: related.MaxFiles, MaxBytes: related.MaxBytes},
 		FalsePositive: findings.FPConfig{
 			Model:        sec.FalsePositive.Model,
 			Instructions: sec.FalsePositive.Instructions,
