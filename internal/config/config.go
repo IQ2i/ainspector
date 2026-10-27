@@ -14,7 +14,42 @@ type Config struct {
 	Context ContextConfig `yaml:"context"`
 	// Rules applies to the quality mode, before modes.quality.rules
 	Rules []string    `yaml:"rules"`
+	LLM   LLMConfig   `yaml:"llm"`
 	Modes ModesConfig `yaml:"modes"`
+}
+
+const (
+	// DefaultMaxTokensPerRun caps the tokens a run may consume, all modes together
+	DefaultMaxTokensPerRun = 400000
+	// DefaultContextMaxBytes caps the size of the project context sent with every request
+	DefaultContextMaxBytes = 32768
+)
+
+// LLMConfig holds the settings of the LLM backend
+type LLMConfig struct {
+	// Provider is "anthropic" or "openai". Empty picks anthropic when ANTHROPIC_API_KEY is set.
+	Provider string `yaml:"provider"`
+	// MaxTokensPerRun caps the tokens consumed by a run, defaults to DefaultMaxTokensPerRun
+	MaxTokensPerRun int `yaml:"max_tokens_per_run"`
+	// Prices overrides the built-in price table, by model name
+	Prices map[string]Price `yaml:"prices"`
+}
+
+// Price is the cost of a model in USD per million tokens. CacheRead and CacheWrite default
+// to the usual multipliers of Input when left at zero.
+type Price struct {
+	Input      float64 `yaml:"input"`
+	Output     float64 `yaml:"output"`
+	CacheRead  float64 `yaml:"cache_read"`
+	CacheWrite float64 `yaml:"cache_write"`
+}
+
+// TokenBudget returns the token cap of a run
+func (c LLMConfig) TokenBudget() int {
+	if c.MaxTokensPerRun > 0 {
+		return c.MaxTokensPerRun
+	}
+	return DefaultMaxTokensPerRun
 }
 
 // IgnoreConfig holds what to ignore during review
@@ -48,6 +83,16 @@ type ContextConfig struct {
 	Include []string `yaml:"include"`
 	// Exclude contains glob patterns to exclude (takes priority over Include)
 	Exclude []string `yaml:"exclude"`
+	// MaxBytes caps the project context, defaults to DefaultContextMaxBytes
+	MaxBytes int `yaml:"max_bytes"`
+}
+
+// Limit returns the size cap of the project context in bytes
+func (c ContextConfig) Limit() int {
+	if c.MaxBytes > 0 {
+		return c.MaxBytes
+	}
+	return DefaultContextMaxBytes
 }
 
 // configFileNames lists the supported configuration file names in order of priority
@@ -94,6 +139,20 @@ func parse(source string, data []byte) (*Config, error) {
 	for _, pattern := range cfg.Ignore.TitlePatterns {
 		if _, err := regexp.Compile(pattern); err != nil {
 			return nil, fmt.Errorf("%s: invalid ignore.title_patterns entry %q: %w", source, pattern, err)
+		}
+	}
+
+	switch cfg.LLM.Provider {
+	case "", "anthropic", "openai":
+	default:
+		return nil, fmt.Errorf("%s: invalid llm.provider %q (expected anthropic or openai)", source, cfg.LLM.Provider)
+	}
+	if cfg.LLM.MaxTokensPerRun < 0 || cfg.Context.MaxBytes < 0 {
+		return nil, fmt.Errorf("%s: llm.max_tokens_per_run and context.max_bytes must not be negative", source)
+	}
+	for model, p := range cfg.LLM.Prices {
+		if p.Input < 0 || p.Output < 0 || p.CacheRead < 0 || p.CacheWrite < 0 {
+			return nil, fmt.Errorf("%s: llm.prices.%s must not be negative", source, model)
 		}
 	}
 

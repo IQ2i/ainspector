@@ -1,6 +1,7 @@
 package quality
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 func TestMode_Identity(t *testing.T) {
 	m := New("some-model", []string{"r1"})
 
-	if m.Name() != "quality" || m.Model() != "some-model" || m.Version() != "quality/1" {
+	if m.Name() != "quality" || m.Model() != "some-model" || m.Version() != "quality/2" {
 		t.Errorf("unexpected identity: %s %s %s", m.Name(), m.Model(), m.Version())
 	}
 	if len(m.Rules()) != 1 || m.Rules()[0] != "r1" {
@@ -31,8 +32,9 @@ func TestMode_Identity(t *testing.T) {
 func TestMode_Parse(t *testing.T) {
 	m := New("", nil)
 	u := collect.ReviewUnit{FilePath: "pkg/a.go"}
+	doc := `{"issues":[{"line":7,"description":"Nil deref","suggestion":"check it"},{"line":9,"description":"Leak","suggestion":""}]}`
 
-	got, err := m.Parse(llm.Response{Text: `{"issues":[{"line":7,"description":"Nil deref","suggestion":"check it"},{"line":9,"description":"Leak","suggestion":""}]}`}, u)
+	got, err := m.Parse(llm.Response{JSON: json.RawMessage(doc)}, u)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,10 +49,48 @@ func TestMode_Parse(t *testing.T) {
 	}
 }
 
-func TestMode_ParseLGTM(t *testing.T) {
-	got, err := New("", nil).Parse(llm.Response{Text: " LGTM\n"}, collect.ReviewUnit{})
+func TestMode_ParseNoIssues(t *testing.T) {
+	got, err := New("", nil).Parse(llm.Response{JSON: json.RawMessage(`{"issues":[]}`)}, collect.ReviewUnit{})
 	if err != nil || len(got) != 0 {
 		t.Errorf("expected no findings, got %v / %v", got, err)
+	}
+}
+
+func TestMode_ParseStructuredOutputIsNotCleaned(t *testing.T) {
+	m := New("", nil)
+
+	// A document that does not have the shape of the schema is an error, not something to salvage
+	for _, doc := range []string{
+		`Here it is: {"issues":[]}`,
+		`{"issues":"none"}`,
+		`{"issues":[{"line":"3","description":"d","suggestion":""}]}`,
+	} {
+		if _, err := m.Parse(llm.Response{JSON: json.RawMessage(doc)}, collect.ReviewUnit{}); err == nil {
+			t.Errorf("expected an error for %q", doc)
+		}
+	}
+}
+
+// Backends without strict schemas may add fields: dropping the unit would fail it again at every run
+func TestMode_ParseIgnoresUnknownFields(t *testing.T) {
+	doc := `{"issues":[{"line":3,"description":"Bug","suggestion":"","severity":"high"}],"summary":"x"}`
+	got, err := New("", nil).Parse(llm.Response{JSON: json.RawMessage(doc)}, collect.ReviewUnit{FilePath: "a.go"})
+	if err != nil || len(got) != 1 || got[0].StartLine != 3 {
+		t.Errorf("expected the issue to be parsed, got %+v / %v", got, err)
+	}
+}
+
+func TestMode_ParseTextFallback(t *testing.T) {
+	m := New("", nil)
+
+	got, err := m.Parse(llm.Response{Text: " LGTM\n"}, collect.ReviewUnit{})
+	if err != nil || len(got) != 0 {
+		t.Errorf("expected no findings for LGTM, got %v / %v", got, err)
+	}
+
+	got, err = m.Parse(llm.Response{Text: "Review:\n{\"issues\":[{\"line\":3,\"description\":\"Bug\",\"suggestion\":\"\"}]}"}, collect.ReviewUnit{FilePath: "a.go"})
+	if err != nil || len(got) != 1 || got[0].StartLine != 3 {
+		t.Errorf("expected the issue to be salvaged from text, got %v / %v", got, err)
 	}
 }
 
@@ -59,13 +99,16 @@ func TestMode_BuildRequest(t *testing.T) {
 
 	req := New("m", []string{"Rule one"}).BuildRequest(u, nil)
 
-	if req.Model != "m" || len(req.System) != 1 || len(req.Messages) != 1 || req.Messages[0].Role != "user" {
+	if req.Model != "m" || len(req.System) != 2 || len(req.Messages) != 1 || req.Messages[0].Role != "user" {
 		t.Fatalf("unexpected request shape: %+v", req)
 	}
-	if !strings.Contains(req.System[0].Text, "Rule one") || !strings.Contains(req.System[0].Text, "FOR PYTHON") {
-		t.Error("system prompt should contain rules and language checks")
+	if !req.System[0].Cache || req.System[1].Cache {
+		t.Error("only the stable prefix must be cached")
 	}
-	if req.System[0].Text != buildSystemPrompt("python", nil, []string{"Rule one"}) {
-		t.Error("system prompt should be the legacy one, byte for byte")
+	if !strings.Contains(req.System[0].Text, "Rule one") || !strings.Contains(req.System[1].Text, "FOR PYTHON") {
+		t.Error("the prefix should contain the rules and the second block the language checks")
+	}
+	if req.Schema == nil || req.Schema.Name != "code_review" || string(req.Schema.JSON) != string(reviewSchema) {
+		t.Errorf("expected the review schema, got %+v", req.Schema)
 	}
 }

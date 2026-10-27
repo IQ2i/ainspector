@@ -10,9 +10,7 @@ For the modified lines, identify ONLY actual issues:
 - Code that could cause runtime errors
 
 RESPONSE FORMAT:
-If there are NO issues, respond with exactly: LGTM
-
-If there ARE issues, respond with a JSON object in this exact format:
+Respond with a JSON object in this exact format:
 {
   "issues": [
     {
@@ -22,6 +20,8 @@ If there ARE issues, respond with a JSON object in this exact format:
     }
   ]
 }
+
+If there are NO issues, respond with an empty list: {"issues": []}
 
 IMPORTANT RULES:
 - The "line" field must be an actual line number from the file (between the function's start and end lines)
@@ -35,6 +35,7 @@ IMPORTANT RULES:
 === README.md ===
 # Demo
 
+<<< cache breakpoint >>>
 
 LANGUAGE-SPECIFIC CHECKS FOR PYTHON:
 - Verify proper exception handling (catch specific exceptions, not bare except)

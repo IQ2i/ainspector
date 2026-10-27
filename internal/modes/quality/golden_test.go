@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/llm"
 )
 
 var update = flag.Bool("update", false, "regenerate golden files")
@@ -35,6 +37,18 @@ func assertGolden(t *testing.T, path string, got []byte) {
 	}
 }
 
+// renderBlocks shows the system blocks as sent, with the cache breakpoint where it applies
+func renderBlocks(blocks []llm.Block) string {
+	parts := make([]string, len(blocks))
+	for i, b := range blocks {
+		parts[i] = b.Text
+		if b.Cache {
+			parts[i] += "\n<<< cache breakpoint >>>"
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
 func sortedLanguages() []string {
 	langs := []string{"unknown"}
 	for l := range languageSpecificRules {
@@ -46,9 +60,8 @@ func sortedLanguages() []string {
 
 func TestGolden_SystemPrompt(t *testing.T) {
 	contexts := map[string]*collect.ProjectContext{
-		"nil":    nil,
-		"raw":    {Description: "=== README.md ===\n# Demo\n", IsRaw: true},
-		"legacy": {Description: "A Go CLI tool for code review."},
+		"nil": nil,
+		"raw": {Description: "=== README.md ===\n# Demo\n"},
 	}
 	ruleSets := map[int][]string{
 		0: nil,
@@ -60,7 +73,7 @@ func TestGolden_SystemPrompt(t *testing.T) {
 			for n, rules := range ruleSets {
 				name := fmt.Sprintf("%s-%s-r%d.txt", lang, ctxName, n)
 				t.Run(name, func(t *testing.T) {
-					got := buildSystemPrompt(lang, pc, rules)
+					got := renderBlocks(buildSystemBlocks(lang, pc, rules))
 					assertGolden(t, filepath.Join("testdata", "golden", "system", name), []byte(got))
 				})
 			}
@@ -117,9 +130,9 @@ func TestPromptChecksums(t *testing.T) {
 }
 
 // checksumsVersion is the mode version the checksums below belong to
-const checksumsVersion = "quality/1"
+const checksumsVersion = "quality/2"
 
-const wantBaseChecksum = "97c92f5d530e9458aef5898b70e54ab7f55d098ca218155f370ad00a8e8fe037"
+const wantBaseChecksum = "de97be02eec6c6b1b9da10625fe91dfa5b2f47655165a8e548aa62625a061146"
 
 var wantRuleChecksums = map[string]string{
 	"bash":       "a9e9d437de8091fdca22c69b77f39babd3b8ff7aa82db4af5fc92783d25e5d5a",

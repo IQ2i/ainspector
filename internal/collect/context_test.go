@@ -1,385 +1,225 @@
 package collect
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/config"
-	"github.com/iq2i/ainspector/internal/llm/openai"
 )
 
-func TestFindContextFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create various config files
-	files := map[string]string{
-		"package.json":  `{"name": "test"}`,
-		"README.md":     "# Test",
-		"go.mod":        "module test",
-		"composer.json": `{"name": "test"}`,
-		"CLAUDE.md":     "Claude instructions",
-	}
-
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
+}
 
-	found, err := findContextFiles(tmpDir)
+func paths(files []contextFile) []string {
+	out := make([]string, len(files))
+	for i, f := range files {
+		out[i] = f.path
+	}
+	return out
+}
+
+func TestFindContextFiles_OrderAndSelection(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"package.json":                    `{"name": "test"}`,
+		"README.md":                       "# Test",
+		"go.mod":                          "module test",
+		"go.sum":                          "checksums",
+		"composer.json":                   `{"name": "test"}`,
+		"CLAUDE.md":                       "Claude instructions",
+		".github/copilot-instructions.md": "Copilot",
+		"unrelated.txt":                   "ignored",
+	})
+
+	found, _, err := findContextFiles(dir, config.DefaultContextMaxBytes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(found) != len(files) {
-		t.Errorf("expected %d files, got %d", len(files), len(found))
-	}
-
-	for name := range files {
-		if _, ok := found[name]; !ok {
-			t.Errorf("expected to find %s", name)
-		}
+	want := []string{"CLAUDE.md", ".github/copilot-instructions.md", "README.md", "composer.json", "go.mod", "package.json"}
+	if got := paths(found); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("expected %v, got %v", want, got)
 	}
 }
 
 func TestFindContextFiles_GlobPattern(t *testing.T) {
-	tmpDir := t.TempDir()
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"MyProject.csproj": `<Project Sdk="Microsoft.NET.Sdk"></Project>`})
 
-	// Create a .csproj file (matches *.csproj pattern)
-	csprojContent := `<Project Sdk="Microsoft.NET.Sdk"></Project>`
-	if err := os.WriteFile(filepath.Join(tmpDir, "MyProject.csproj"), []byte(csprojContent), 0644); err != nil {
-		t.Fatal(err)
+	found, _, err := findContextFiles(dir, config.DefaultContextMaxBytes)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
+	if got := paths(found); len(got) != 1 || got[0] != "MyProject.csproj" {
+		t.Errorf("expected the csproj file, got %v", got)
+	}
+}
 
-	found, err := findContextFiles(tmpDir)
+func TestGenerateProjectContext_WellKnownFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"README.md": "# Test", "CLAUDE.md": "Keep it small", "go.mod": "module test"})
+
+	pc, err := GenerateProjectContext(dir, []string{"go"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should find the .csproj file via glob pattern
-	foundCsproj := false
-	for file := range found {
-		if strings.HasSuffix(file, ".csproj") {
-			foundCsproj = true
-			break
-		}
+	want := "=== CLAUDE.md ===\nKeep it small\n\n=== README.md ===\n# Test\n\n=== go.mod ===\nmodule test\n\n"
+	if pc.Description != want {
+		t.Errorf("unexpected description:\n%q", pc.Description)
 	}
-
-	if !foundCsproj {
-		t.Error("expected to find .csproj file via glob pattern")
-	}
-}
-
-func TestBuildContextPrompt(t *testing.T) {
-	files := map[string]string{
-		"README.md":    "# Test Project",
-		"package.json": `{"name": "test"}`,
-		"CLAUDE.md":    "AI instructions",
-	}
-
-	languages := []string{"javascript", "typescript"}
-
-	prompt := buildContextPrompt(files, languages)
-
-	// Check that prompt contains all expected elements
-	if !strings.Contains(prompt, "Analyze this project") {
-		t.Error("prompt should contain instruction")
-	}
-
-	if !strings.Contains(prompt, "javascript") {
-		t.Error("prompt should contain detected languages")
-	}
-
-	if !strings.Contains(prompt, "README.md") {
-		t.Error("prompt should contain README.md")
-	}
-
-	if !strings.Contains(prompt, "package.json") {
-		t.Error("prompt should contain package.json")
-	}
-
-	if !strings.Contains(prompt, "CLAUDE.md") {
-		t.Error("prompt should contain CLAUDE.md")
-	}
-}
-
-func TestBuildContextPrompt_TruncatesLongContent(t *testing.T) {
-	// Create a very long file content
-	longContent := strings.Repeat("x", 5000)
-
-	files := map[string]string{
-		"README.md": longContent,
-	}
-
-	prompt := buildContextPrompt(files, []string{"go"})
-
-	// Prompt should be truncated
-	if strings.Count(prompt, "x") == 5000 {
-		t.Error("expected content to be truncated")
-	}
-
-	if !strings.Contains(prompt, "truncated") {
-		t.Error("expected truncation marker")
-	}
-}
-
-func TestGenerateProjectContext_WithFiles(t *testing.T) {
-	// Create a temporary project directory
-	tmpDir := t.TempDir()
-
-	// Create sample files
-	packageJSON := `{
-  "name": "test-project",
-  "dependencies": {
-    "react": "^18.0.0"
-  }
-}`
-	if err := os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte(packageJSON), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	readme := "# Test Project\nA simple React application"
-	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte(readme), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Mock LLM server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := openai.ChatResponse{
-			Choices: []struct {
-				Message openai.ChatMessage `json:"message"`
-			}{
-				{Message: openai.ChatMessage{
-					Role:    "assistant",
-					Content: "A React web application using modern JavaScript",
-				}},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	client := openai.New(server.URL, "test-key", "gpt-4")
-	ctx := context.Background()
-
-	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"javascript"}, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if projectContext.Description == "" {
-		t.Error("expected non-empty description")
-	}
-
-	if !strings.Contains(projectContext.Description, "React") {
-		t.Error("expected description to mention React")
-	}
-
-	if len(projectContext.Languages) != 1 || projectContext.Languages[0] != "javascript" {
-		t.Errorf("expected languages [javascript], got %v", projectContext.Languages)
-	}
-
-	if projectContext.IsRaw {
-		t.Error("expected IsRaw to be false for legacy mode")
+	if len(pc.Languages) != 1 || len(pc.Notes) != 0 {
+		t.Errorf("unexpected languages or notes: %+v", pc)
 	}
 }
 
 func TestGenerateProjectContext_NoFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("should not call LLM when no files are found")
-	}))
-	defer server.Close()
-
-	client := openai.New(server.URL, "test-key", "gpt-4")
-	ctx := context.Background()
-
-	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
+	pc, err := GenerateProjectContext(t.TempDir(), []string{"go"}, &config.ContextConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if projectContext.Description != "" {
-		t.Error("expected empty description when no files found")
-	}
-
-	if len(projectContext.Languages) != 1 || projectContext.Languages[0] != "go" {
-		t.Errorf("expected languages [go], got %v", projectContext.Languages)
-	}
-
-	if projectContext.IsRaw {
-		t.Error("expected IsRaw to be false for legacy mode")
-	}
-}
-
-func TestGenerateProjectContext_LLMFailure(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a file to trigger LLM call
-	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("test"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Mock failing LLM server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server.Close()
-
-	client := openai.New(server.URL, "test-key", "gpt-4")
-	ctx := context.Background()
-
-	// Should not return error, just empty context
-	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
-	if err != nil {
-		t.Fatalf("should not return error on LLM failure: %v", err)
-	}
-
-	if projectContext.Description != "" {
-		t.Error("expected empty description on LLM failure")
-	}
-
-	if projectContext.IsRaw {
-		t.Error("expected IsRaw to be false for legacy mode")
+	if pc.Description != "" || len(pc.Notes) != 0 {
+		t.Errorf("expected an empty context, got %+v", pc)
 	}
 }
 
 func TestGenerateProjectContext_WithConfig(t *testing.T) {
-	tmpDir := t.TempDir()
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"README.md": "# Test Project", "docs/guide.md": "# Guide", "CLAUDE.md": "not listed"})
 
-	// Create test files
-	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# Test Project"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.MkdirAll(filepath.Join(tmpDir, "docs"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "docs/guide.md"), []byte("# Guide"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create config with include patterns
-	contextConfig := &config.ContextConfig{
-		Include: []string{"README.md", "docs/guide.md"},
-	}
-
-	// Mock LLM server (should NOT be called)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("LLM should not be called when using config-based context")
-	}))
-	defer server.Close()
-
-	client := openai.New(server.URL, "test-key", "gpt-4")
-	ctx := context.Background()
-
-	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, contextConfig)
+	pc, err := GenerateProjectContext(dir, []string{"go"}, &config.ContextConfig{Include: []string{"README.md", "docs/guide.md"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if projectContext.Description == "" {
-		t.Error("expected non-empty description")
+	for _, want := range []string{"=== README.md ===\n# Test Project", "=== docs/guide.md ===\n# Guide"} {
+		if !strings.Contains(pc.Description, want) {
+			t.Errorf("expected description to contain %q, got %q", want, pc.Description)
+		}
 	}
-
-	if !projectContext.IsRaw {
-		t.Error("expected IsRaw to be true for config-based context")
-	}
-
-	// Should contain both files
-	if !strings.Contains(projectContext.Description, "=== README.md ===") {
-		t.Error("expected description to contain README.md")
-	}
-
-	if !strings.Contains(projectContext.Description, "=== docs/guide.md ===") {
-		t.Error("expected description to contain docs/guide.md")
-	}
-
-	if !strings.Contains(projectContext.Description, "# Test Project") {
-		t.Error("expected description to contain README content")
+	if strings.Contains(pc.Description, "not listed") {
+		t.Error("files outside context.include must not be read")
 	}
 }
 
-func TestGenerateProjectContext_BackwardCompatibility(t *testing.T) {
-	tmpDir := t.TempDir()
+func TestGenerateProjectContext_MaxBytesCutsAndReports(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"CLAUDE.md":    "rules",
+		"README.md":    strings.Repeat("r", 5000),
+		"go.mod":       "module test",
+		"package.json": "{}",
+	})
 
-	// Create a file that would be picked up by legacy mode
-	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# Test"), 0644); err != nil {
+	pc, err := GenerateProjectContext(dir, nil, &config.ContextConfig{MaxBytes: 1000})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(pc.Description) > 1000 {
+		t.Errorf("context exceeds the limit: %d bytes", len(pc.Description))
+	}
+	if !strings.HasPrefix(pc.Description, "=== CLAUDE.md ===\nrules\n\n=== README.md ===\n") || !strings.HasSuffix(pc.Description, "... (truncated)\n") {
+		t.Errorf("unexpected description: %q", pc.Description)
+	}
+	if len(pc.Notes) != 1 || !strings.Contains(pc.Notes[0], "README.md truncated") || !strings.Contains(pc.Notes[0], "go.mod, package.json") {
+		t.Errorf("unexpected notes: %v", pc.Notes)
+	}
+}
+
+func TestGenerateProjectContext_TooLittleRoomLeavesTheFileOut(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"CLAUDE.md": strings.Repeat("a", 90), "README.md": strings.Repeat("r", 500)})
+
+	pc, err := GenerateProjectContext(dir, nil, &config.ContextConfig{MaxBytes: 200})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(pc.Description, "README.md") {
+		t.Errorf("a file that cannot be useful when cut must be left out: %q", pc.Description)
+	}
+	if len(pc.Notes) != 1 || !strings.Contains(pc.Notes[0], "left out: README.md") {
+		t.Errorf("unexpected notes: %v", pc.Notes)
+	}
+}
+
+func TestGenerateProjectContext_DefaultLimit(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"README.md": strings.Repeat("r", config.DefaultContextMaxBytes*2)})
+
+	pc, err := GenerateProjectContext(dir, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pc.Description) > config.DefaultContextMaxBytes || len(pc.Notes) != 1 {
+		t.Errorf("expected the default limit to apply, got %d bytes and %v", len(pc.Description), pc.Notes)
+	}
+}
+
+func TestCutAtRune(t *testing.T) {
+	s := "aé€𝄞"
+	for n := 0; n <= len(s); n++ {
+		got := cutAtRune(s, n)
+		if len(got) > n || !strings.HasPrefix(s, got) {
+			t.Errorf("cutAtRune(%d) = %q", n, got)
+		}
+		for _, r := range got {
+			if r == '�' {
+				t.Errorf("cutAtRune(%d) split a character: %q", n, got)
+			}
+		}
+	}
+}
+
+func TestFindContextFiles_SymlinkOutsideTheProjectIsIgnored(t *testing.T) {
+	outside := t.TempDir()
+	writeFiles(t, outside, map[string]string{"secret": "GITLAB_TOKEN=glpat-secret"})
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"CLAUDE.md": "rules", "real.md": "inside"})
+	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(dir, "README.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink("real.md", filepath.Join(dir, "AGENTS.md")); err != nil {
 		t.Fatal(err)
 	}
 
-	// Mock LLM server (should be called in legacy mode)
-	llmCalled := false
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		llmCalled = true
-		resp := openai.ChatResponse{
-			Choices: []struct {
-				Message openai.ChatMessage `json:"message"`
-			}{
-				{Message: openai.ChatMessage{
-					Role:    "assistant",
-					Content: "A test project",
-				}},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	client := openai.New(server.URL, "test-key", "gpt-4")
-	ctx := context.Background()
-
-	tests := []struct {
-		name          string
-		contextConfig *config.ContextConfig
-		expectLLMCall bool
-		expectIsRaw   bool
-	}{
-		{
-			name:          "nil config - use legacy",
-			contextConfig: nil,
-			expectLLMCall: true,
-			expectIsRaw:   false,
-		},
-		{
-			name:          "empty config - use legacy",
-			contextConfig: &config.ContextConfig{},
-			expectLLMCall: true,
-			expectIsRaw:   false,
-		},
-		{
-			name: "config with patterns - no LLM",
-			contextConfig: &config.ContextConfig{
-				Include: []string{"README.md"},
-			},
-			expectLLMCall: false,
-			expectIsRaw:   true,
-		},
+	found, warnings, err := findContextFiles(dir, config.DefaultContextMaxBytes)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			llmCalled = false
+	if got := strings.Join(paths(found), ","); got != "CLAUDE.md,AGENTS.md" {
+		t.Errorf("expected the link inside the project to be kept and the other ignored, got %s", got)
+	}
+	for _, f := range found {
+		if strings.Contains(f.content, "glpat") {
+			t.Errorf("content of a file outside the project leaked: %q", f.content)
+		}
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "README.md") {
+		t.Errorf("expected one warning naming the link, got %v", warnings)
+	}
+}
 
-			projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, tt.contextConfig)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+func TestFindContextFiles_ReadsAtMostTheLimit(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"README.md": strings.Repeat("x", 5000)})
 
-			if llmCalled != tt.expectLLMCall {
-				t.Errorf("LLM called = %v, want %v", llmCalled, tt.expectLLMCall)
-			}
-
-			if projectContext.IsRaw != tt.expectIsRaw {
-				t.Errorf("IsRaw = %v, want %v", projectContext.IsRaw, tt.expectIsRaw)
-			}
-		})
+	found, _, err := findContextFiles(dir, 100)
+	if err != nil || len(found) != 1 || len(found[0].content) != 100 {
+		t.Errorf("expected 100 bytes read, got %v / %v", found, err)
 	}
 }

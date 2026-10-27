@@ -6,9 +6,10 @@ import (
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/llm"
 )
 
-// LGTMMarker is returned by the LLM when there are no issues to report.
+// LGTMMarker is how a reply without structured output says there are no issues to report.
 const LGTMMarker = "LGTM"
 
 const baseSystemPrompt = `You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.
@@ -23,9 +24,7 @@ For the modified lines, identify ONLY actual issues:
 - Code that could cause runtime errors
 
 RESPONSE FORMAT:
-If there are NO issues, respond with exactly: LGTM
-
-If there ARE issues, respond with a JSON object in this exact format:
+Respond with a JSON object in this exact format:
 {
   "issues": [
     {
@@ -35,6 +34,8 @@ If there ARE issues, respond with a JSON object in this exact format:
     }
   ]
 }
+
+If there are NO issues, respond with an empty list: {"issues": []}
 
 IMPORTANT RULES:
 - The "line" field must be an actual line number from the file (between the function's start and end lines)
@@ -167,38 +168,53 @@ LANGUAGE-SPECIFIC CHECKS FOR BASH:
 - Verify safe handling of user input`,
 }
 
-// buildSystemPrompt creates a language-specific system prompt with optional project context and rules
-func buildSystemPrompt(language string, projectContext *collect.ProjectContext, rules []string) string {
-	prompt := baseSystemPrompt
+// buildSystemBlocks splits the system prompt in a stable prefix, shared by every unit of a run
+// and marked for caching, and the checks specific to the language of the unit.
+func buildSystemBlocks(language string, projectContext *collect.ProjectContext, rules []string) []llm.Block {
+	prefix := baseSystemPrompt
 
-	// Add project context if available
 	if projectContext != nil && projectContext.Description != "" {
-		if projectContext.IsRaw {
-			// Raw file contents from config
-			prompt += "\n\n=== PROJECT CONTEXT ===\n" + projectContext.Description
-		} else {
-			// LLM-generated summary (legacy)
-			prompt += "\n\nPROJECT CONTEXT:\n" + projectContext.Description
-		}
+		prefix += "\n\n=== PROJECT CONTEXT ===\n" + projectContext.Description
 	}
 
-	// Add project-specific rules
 	if len(rules) > 0 {
-		prompt += "\n\n=== PROJECT RULES (MUST BE ENFORCED) ===\n"
-		prompt += "The following rules are specific to this project and MUST be enforced.\n"
-		prompt += "Report any violations of these rules explicitly in your review:\n\n"
+		prefix += "\n\n=== PROJECT RULES (MUST BE ENFORCED) ===\n"
+		prefix += "The following rules are specific to this project and MUST be enforced.\n"
+		prefix += "Report any violations of these rules explicitly in your review:\n\n"
 		for i, rule := range rules {
-			prompt += fmt.Sprintf("%d. %s\n", i+1, rule)
+			prefix += fmt.Sprintf("%d. %s\n", i+1, rule)
 		}
 	}
 
-	// Add language-specific rules
-	if rules, ok := languageSpecificRules[language]; ok {
-		prompt += "\n" + rules
+	blocks := []llm.Block{{Text: prefix, Cache: true}}
+	if langRules, ok := languageSpecificRules[language]; ok {
+		blocks = append(blocks, llm.Block{Text: strings.TrimPrefix(langRules, "\n")})
 	}
-
-	return prompt
+	return blocks
 }
+
+// reviewSchema is the JSON schema of ReviewResponse. Every property is required and none is
+// free-form beyond these, as strict structured outputs demand.
+var reviewSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "line": {"type": "integer"},
+          "description": {"type": "string"},
+          "suggestion": {"type": "string"}
+        },
+        "required": ["line", "description", "suggestion"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["issues"],
+  "additionalProperties": false
+}`)
 
 // Suggestion represents a code suggestion for a specific issue.
 type Suggestion struct {
@@ -212,7 +228,8 @@ type ReviewResponse struct {
 	Issues []Suggestion `json:"issues"`
 }
 
-// parseReviewResponse parses the LLM response into structured suggestions.
+// parseReviewResponse parses a free-text reply into structured suggestions. It is the fallback
+// for backends that returned no structured output.
 func parseReviewResponse(response string) []Suggestion {
 	trimmed := strings.TrimSpace(response)
 

@@ -1,6 +1,7 @@
 package quality
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -282,7 +283,7 @@ func TestBuildSystemPrompt_BasePromptAlwaysPresent(t *testing.T) {
 		essentials := []string{
 			"You are an expert code reviewer",
 			"RESPONSE FORMAT",
-			"LGTM",
+			`{"issues": []}`,
 			"JSON object",
 		}
 
@@ -437,43 +438,63 @@ func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 	}
 }
 
-func TestBuildSystemPrompt_RawVsLegacy(t *testing.T) {
-	tests := []struct {
-		name           string
-		projectContext *collect.ProjectContext
-		expectHeader   string
-	}{
-		{
-			name: "raw context",
-			projectContext: &collect.ProjectContext{
-				Description: "=== README.md ===\nContent",
-				Languages:   []string{"go"},
-				IsRaw:       true,
-			},
-			expectHeader: "=== PROJECT CONTEXT ===",
-		},
-		{
-			name: "legacy context",
-			projectContext: &collect.ProjectContext{
-				Description: "A Go project",
-				Languages:   []string{"go"},
-				IsRaw:       false,
-			},
-			expectHeader: "PROJECT CONTEXT:",
-		},
+func TestBuildSystemPrompt_ContextHeader(t *testing.T) {
+	pc := &collect.ProjectContext{Description: "=== README.md ===\nContent", Languages: []string{"go"}}
+
+	prompt := buildSystemPrompt("go", pc, nil)
+
+	if !strings.Contains(prompt, "=== PROJECT CONTEXT ===\n=== README.md ===\nContent") {
+		t.Errorf("expected the context under its header, got %q", prompt)
+	}
+}
+
+// buildSystemPrompt is the system prompt as one text, the way a backend without blocks sees it
+func buildSystemPrompt(language string, pc *collect.ProjectContext, rules []string) string {
+	var texts []string
+	for _, b := range buildSystemBlocks(language, pc, rules) {
+		texts = append(texts, b.Text)
+	}
+	return strings.Join(texts, "\n\n")
+}
+
+func TestBuildSystemBlocks_CacheBoundary(t *testing.T) {
+	pc := &collect.ProjectContext{Description: "=== README.md ===\nDemo\n"}
+	rules := []string{"Rule one"}
+
+	blocks := buildSystemBlocks("go", pc, rules)
+	if len(blocks) != 2 || !blocks[0].Cache || blocks[1].Cache {
+		t.Fatalf("expected a cached prefix then a plain language block, got %+v", blocks)
+	}
+	for _, want := range []string{"You are an expert code reviewer", "PROJECT CONTEXT", "Demo", "Rule one"} {
+		if !strings.Contains(blocks[0].Text, want) {
+			t.Errorf("the stable prefix should contain %q", want)
+		}
+	}
+	if strings.Contains(blocks[0].Text, "LANGUAGE-SPECIFIC") || !strings.HasPrefix(blocks[1].Text, "LANGUAGE-SPECIFIC CHECKS FOR GO") {
+		t.Errorf("language rules belong to the second block, got %q", blocks[1].Text)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			prompt := buildSystemPrompt("go", tt.projectContext, nil)
+	// The prefix is what every unit shares, whatever its language
+	other := buildSystemBlocks("python", pc, rules)
+	if other[0].Text != blocks[0].Text {
+		t.Error("the cached prefix must not depend on the language")
+	}
 
-			if !strings.Contains(prompt, tt.expectHeader) {
-				t.Errorf("expected prompt to contain %q", tt.expectHeader)
-			}
+	if unknown := buildSystemBlocks("unknown", pc, rules); len(unknown) != 1 || !unknown[0].Cache {
+		t.Errorf("a language without rules has the prefix only, got %+v", unknown)
+	}
+}
 
-			if !strings.Contains(prompt, tt.projectContext.Description) {
-				t.Error("expected prompt to contain description")
-			}
-		})
+func TestReviewSchema(t *testing.T) {
+	var schema struct {
+		Required   []string       `json:"required"`
+		Properties map[string]any `json:"properties"`
+		Additional bool           `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(reviewSchema, &schema); err != nil {
+		t.Fatalf("invalid schema: %v", err)
+	}
+	if schema.Additional || len(schema.Required) != 1 || schema.Required[0] != "issues" || schema.Properties["issues"] == nil {
+		t.Errorf("unexpected schema %+v", schema)
 	}
 }

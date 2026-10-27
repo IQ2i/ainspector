@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -321,5 +322,63 @@ func createTestFile(t *testing.T, baseDir, relPath, content string) {
 
 	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write file %s: %v", fullPath, err)
+	}
+}
+
+func TestCollectContextFiles_SymlinkOutsideTheProjectIsRefused(t *testing.T) {
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("TOKEN=secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ok.md"), []byte("fine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(dir, "leak.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	cfg := &ContextConfig{Include: []string{"*.md", "../" + filepath.Base(outside) + "/secret"}}
+	files, warnings, err := cfg.CollectContextFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(files) != 1 || files["ok.md"] != "fine" {
+		t.Errorf("only the file inside the project may be read, got %v", files)
+	}
+	if len(warnings) == 0 {
+		t.Error("expected a warning for the refused link")
+	}
+}
+
+func TestReadProjectFile(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "project")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello world"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ReadProjectFile(dir, "a.txt", 5)
+	if err != nil || string(got) != "hello" {
+		t.Errorf("expected the first 5 bytes, got %q / %v", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "sibling.txt"), []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadProjectFile(dir, "../sibling.txt", 5); !errors.Is(err, ErrOutsideRoot) {
+		t.Errorf("a .. segment must be refused, got %v", err)
+	}
+	if _, err := ReadProjectFile(dir, "sub", 5); err == nil {
+		t.Error("a directory is not a regular file")
+	}
+	if _, err := ReadProjectFile(dir, "missing", 5); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("expected a not-exist error, got %v", err)
 	}
 }

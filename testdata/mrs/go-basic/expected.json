@@ -5,66 +5,173 @@
       "messages": [
         {
           "role": "system",
-          "content": "You are a technical analyst. You will receive project configuration files and documentation.\n\nYour task is to generate a CONCISE project context (2-4 sentences) that includes:\n- Primary language(s) and framework(s)\n- Key dependencies or libraries\n- Project type (web app, CLI tool, library, etc.)\n- Any critical architectural patterns mentioned\n\nKeep it brief and focused on what's most relevant for code review.\nDo NOT include version numbers, build configurations, or minor details.\nRespond with ONLY the context description, no preamble or explanation."
-        },
-        {
-          "role": "user",
-          "content": "Analyze this project and provide a concise context description.\n\nDetected languages: go\n\nProject files:\n\n=== CLAUDE.md ===\nKeep functions small.\n\n\n=== README.md ===\n# Demo\n\nA small Go CLI.\n\n\n"
-        }
-      ]
-    },
-    {
-      "model": "test-model",
-      "messages": [
-        {
-          "role": "system",
-          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nIf there are NO issues, respond with exactly: LGTM\n\nIf there ARE issues, respond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\nPROJECT CONTEXT:\nA small Go command line tool.\n\nLANGUAGE-SPECIFIC CHECKS FOR GO:\n- Verify all errors are properly handled (no ignored errors)\n- Check for potential nil pointer dereferences\n- Ensure goroutines won't leak (proper cleanup/cancellation)\n- Verify context is properly propagated in function signatures\n- Check for race conditions in concurrent code\n- Ensure defer statements are used correctly (not in loops unless intended)\n- Verify proper use of channels (close on sender side, check for closed channels)"
-        },
-        {
-          "role": "user",
-          "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: greet (lines 5-7)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\treturn \"hi \" + name\n+\treturn \"hello \" + name\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc greet(name string) string {\n\treturn \"hello \" + name\n}\n```"
-        }
-      ]
-    },
-    {
-      "model": "test-model",
-      "messages": [
-        {
-          "role": "system",
-          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nIf there are NO issues, respond with exactly: LGTM\n\nIf there ARE issues, respond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\nPROJECT CONTEXT:\nA small Go command line tool.\n\nLANGUAGE-SPECIFIC CHECKS FOR GO:\n- Verify all errors are properly handled (no ignored errors)\n- Check for potential nil pointer dereferences\n- Ensure goroutines won't leak (proper cleanup/cancellation)\n- Verify context is properly propagated in function signatures\n- Check for race conditions in concurrent code\n- Ensure defer statements are used correctly (not in loops unless intended)\n- Verify proper use of channels (close on sender side, check for closed channels)"
+          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nRespond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIf there are NO issues, respond with an empty list: {\"issues\": []}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\n=== PROJECT CONTEXT ===\n=== CLAUDE.md ===\nKeep functions small.\n\n\n=== README.md ===\n# Demo\n\nA small Go CLI.\n\n\n\n\nLANGUAGE-SPECIFIC CHECKS FOR GO:\n- Verify all errors are properly handled (no ignored errors)\n- Check for potential nil pointer dereferences\n- Ensure goroutines won't leak (proper cleanup/cancellation)\n- Verify context is properly propagated in function signatures\n- Check for race conditions in concurrent code\n- Ensure defer statements are used correctly (not in loops unless intended)\n- Verify proper use of channels (close on sender side, check for closed channels)"
         },
         {
           "role": "user",
           "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: divide (lines 9-11)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\treturn a / 2\n+\treturn a / b\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc divide(a, b int) int {\n\treturn a / b\n}\n```"
         }
-      ]
+      ],
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "code_review",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "line": {
+                      "type": "integer"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "suggestion": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "line",
+                    "description",
+                    "suggestion"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "issues"
+            ],
+            "additionalProperties": false
+          },
+          "strict": true
+        }
+      }
     },
     {
       "model": "test-model",
       "messages": [
         {
           "role": "system",
-          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nIf there are NO issues, respond with exactly: LGTM\n\nIf there ARE issues, respond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\nPROJECT CONTEXT:\nA small Go command line tool.\n\nLANGUAGE-SPECIFIC CHECKS FOR GO:\n- Verify all errors are properly handled (no ignored errors)\n- Check for potential nil pointer dereferences\n- Ensure goroutines won't leak (proper cleanup/cancellation)\n- Verify context is properly propagated in function signatures\n- Check for race conditions in concurrent code\n- Ensure defer statements are used correctly (not in loops unless intended)\n- Verify proper use of channels (close on sender side, check for closed channels)"
+          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nRespond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIf there are NO issues, respond with an empty list: {\"issues\": []}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\n=== PROJECT CONTEXT ===\n=== CLAUDE.md ===\nKeep functions small.\n\n\n=== README.md ===\n# Demo\n\nA small Go CLI.\n\n\n\n\nLANGUAGE-SPECIFIC CHECKS FOR GO:\n- Verify all errors are properly handled (no ignored errors)\n- Check for potential nil pointer dereferences\n- Ensure goroutines won't leak (proper cleanup/cancellation)\n- Verify context is properly propagated in function signatures\n- Check for race conditions in concurrent code\n- Ensure defer statements are used correctly (not in loops unless intended)\n- Verify proper use of channels (close on sender side, check for closed channels)"
+        },
+        {
+          "role": "user",
+          "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: greet (lines 5-7)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\treturn \"hi \" + name\n+\treturn \"hello \" + name\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc greet(name string) string {\n\treturn \"hello \" + name\n}\n```"
+        }
+      ],
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "code_review",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "line": {
+                      "type": "integer"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "suggestion": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "line",
+                    "description",
+                    "suggestion"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "issues"
+            ],
+            "additionalProperties": false
+          },
+          "strict": true
+        }
+      }
+    },
+    {
+      "model": "test-model",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nRespond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIf there are NO issues, respond with an empty list: {\"issues\": []}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\n=== PROJECT CONTEXT ===\n=== CLAUDE.md ===\nKeep functions small.\n\n\n=== README.md ===\n# Demo\n\nA small Go CLI.\n\n\n\n\nLANGUAGE-SPECIFIC CHECKS FOR GO:\n- Verify all errors are properly handled (no ignored errors)\n- Check for potential nil pointer dereferences\n- Ensure goroutines won't leak (proper cleanup/cancellation)\n- Verify context is properly propagated in function signatures\n- Check for race conditions in concurrent code\n- Ensure defer statements are used correctly (not in loops unless intended)\n- Verify proper use of channels (close on sender side, check for closed channels)"
         },
         {
           "role": "user",
           "content": "Review the changes in this go function:\n\nFile: main.go\nFunction: printAll (lines 13-17)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-\tfor i := 0; i \u003c len(items); i++ {\n+\tfor i := 0; i \u003c= len(items); i++ {\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```go\nfunc printAll(items []string) {\n\tfor i := 0; i \u003c= len(items); i++ {\n\t\tfmt.Println(items[i])\n\t}\n}\n```"
         }
-      ]
+      ],
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "code_review",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "line": {
+                      "type": "integer"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "suggestion": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "line",
+                    "description",
+                    "suggestion"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "issues"
+            ],
+            "additionalProperties": false
+          },
+          "strict": true
+        }
+      }
     }
   ],
   "comments": [
     {
       "path": "main.go",
       "line": 10,
-      "body": "Division by zero is not checked.\n\n\u003c!-- ainspector:fn:b294ea0de663 --\u003e",
+      "body": "Division by zero is not checked.\n\n\u003c!-- ainspector:fn:085ad365a8a3 --\u003e",
       "suggestion": "\tif b == 0 {\n\t\treturn 0\n\t}\n\treturn a / b"
     },
     {
       "path": "main.go",
       "line": 14,
-      "body": "Off-by-one: the loop reads past the end of the slice.\n\n\u003c!-- ainspector:fn:1f16acb335f2 --\u003e",
+      "body": "Off-by-one: the loop reads past the end of the slice.\n\n\u003c!-- ainspector:fn:4393ac231f70 --\u003e",
       "suggestion": ""
     }
+  ],
+  "notes": [
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"e9b9b6984b69\",\"085ad365a8a3\",\"4393ac231f70\"],\"findings\":[]} --\u003e\n"
   ]
 }

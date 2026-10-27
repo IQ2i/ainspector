@@ -12,7 +12,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/config"
@@ -53,6 +56,7 @@ type expectedComment struct {
 type expectedRun struct {
 	LLMRequests []json.RawMessage `json:"llm_requests"`
 	Comments    []expectedComment `json:"comments"`
+	Notes       []string          `json:"notes"`
 }
 
 type fakeProvider struct {
@@ -61,6 +65,7 @@ type fakeProvider struct {
 	posted  []provider.ReviewComment
 	writes  int
 	comment []provider.ExistingComment
+	notes   []string
 	self    string
 	postErr error
 }
@@ -87,14 +92,39 @@ func (f *fakeProvider) CurrentUser(ctx context.Context) (string, error) {
 	return f.self, nil
 }
 
+// PostComment keeps the note like a real PR/MR would, so that the next run finds it
 func (f *fakeProvider) PostComment(ctx context.Context, number int, body string) (string, error) {
 	f.writes++
-	return "1", f.postErr
+	if f.postErr != nil {
+		return "", f.postErr
+	}
+	id := strconv.Itoa(len(f.comment) + 1)
+	f.comment = append(f.comment, provider.ExistingComment{ID: id, Author: f.self, Body: body})
+	f.notes = append(f.notes, id)
+	return id, nil
 }
 
 func (f *fakeProvider) UpdateComment(ctx context.Context, number int, id, body string) error {
 	f.writes++
+	for i := range f.comment {
+		if f.comment[i].ID == id {
+			f.comment[i].Body = body
+		}
+	}
 	return nil
+}
+
+// noteBodies returns the current body of every general note written by the run
+func (f *fakeProvider) noteBodies() []string {
+	var bodies []string
+	for _, id := range f.notes {
+		for _, c := range f.comment {
+			if c.ID == id {
+				bodies = append(bodies, c.Body)
+			}
+		}
+	}
+	return bodies
 }
 
 func (f *fakeProvider) CreateReview(ctx context.Context, number int, comments []provider.ReviewComment) ([]provider.CommentResult, error) {
@@ -113,42 +143,44 @@ func (f *fakeProvider) ListComments(ctx context.Context, number int) ([]provider
 
 var functionRe = regexp.MustCompile(`Function: (\S+) \(lines`)
 
-func scriptedLLM(t *testing.T, responses map[string]string, requests *[]json.RawMessage) *httptest.Server {
+func scriptedLLM(t *testing.T, responses map[string]string, mu *sync.Mutex, requests *[]json.RawMessage) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
 		*requests = append(*requests, json.RawMessage(body))
+		mu.Unlock()
 
 		var req openai.ChatRequest
 		if err := json.Unmarshal(body, &req); err != nil {
 			t.Errorf("invalid request body: %v", err)
 		}
 
-		key := "__context__"
-		if !strings.Contains(req.Messages[0].Content, "technical analyst") {
-			m := functionRe.FindStringSubmatch(req.Messages[len(req.Messages)-1].Content)
-			if m == nil {
-				t.Errorf("cannot find function name in prompt")
-			} else {
-				key = m[1]
-			}
+		m := functionRe.FindStringSubmatch(req.Messages[len(req.Messages)-1].Content)
+		key := ""
+		if m == nil {
+			t.Errorf("cannot find function name in prompt")
+		} else {
+			key = m[1]
 		}
 
 		content, ok := responses[key]
 		if !ok {
 			t.Errorf("no scripted response for %q", key)
-			content = "LGTM"
+			content = `{"issues": []}`
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []any{map[string]any{"message": map[string]string{"role": "assistant", "content": content}}},
+			"usage":   map[string]int{"prompt_tokens": 100, "completion_tokens": 10},
 		})
 	}))
 }
 
 type harness struct {
 	fake     *fakeProvider
+	mu       sync.Mutex
 	requests []json.RawMessage
 	deps     Deps
 	newCalls int
@@ -168,12 +200,12 @@ func newHarness(t *testing.T, dir string) *harness {
 		t.Fatal(err)
 	}
 
-	h.fake = &fakeProvider{mr: h.mr, head: filepath.Join(dir, "head")}
+	h.fake = &fakeProvider{mr: h.mr, head: filepath.Join(dir, "head"), self: "ainspector-bot"}
 	for _, c := range h.mr.ExistingComments {
-		h.fake.comment = append(h.fake.comment, provider.ExistingComment{Path: c.Path, Line: c.Line, Body: c.Body})
+		h.fake.comment = append(h.fake.comment, provider.ExistingComment{Author: h.fake.self, Path: c.Path, Line: c.Line, Body: c.Body})
 	}
 
-	server := scriptedLLM(t, responses, &h.requests)
+	server := scriptedLLM(t, responses, &h.mu, &h.requests)
 	t.Cleanup(server.Close)
 
 	h.deps = Deps{
@@ -188,8 +220,19 @@ func newHarness(t *testing.T, dir string) *harness {
 	return h
 }
 
+// keepPostedComments makes the inline comments of the run visible to the next one
+func (h *harness) keepPostedComments() {
+	for _, c := range h.fake.posted {
+		h.fake.comment = append(h.fake.comment, provider.ExistingComment{Author: h.fake.self, Path: c.Path, Line: c.Line, Body: c.Body, Positioned: true})
+	}
+}
+
 func (h *harness) result() expectedRun {
-	got := expectedRun{LLMRequests: h.requests}
+	// Units are reviewed concurrently: requests are compared in a stable order
+	requests := append([]json.RawMessage(nil), h.requests...)
+	sort.Slice(requests, func(i, j int) bool { return string(requests[i]) < string(requests[j]) })
+
+	got := expectedRun{LLMRequests: requests, Notes: h.fake.noteBodies()}
 	for _, c := range h.fake.posted {
 		got.Comments = append(got.Comments, expectedComment{Path: c.Path, Line: c.Line, Body: c.Body, Suggestion: c.Suggestion})
 	}
@@ -259,9 +302,7 @@ func TestRun_SecondRunReviewsNothing(t *testing.T) {
 		t.Fatalf("expected 1 comment on the first run, got %d", len(h.fake.posted))
 	}
 
-	for _, c := range h.fake.posted {
-		h.fake.comment = append(h.fake.comment, provider.ExistingComment{Path: c.Path, Line: c.Line, Body: c.Body})
-	}
+	h.keepPostedComments()
 	h.fake.posted = nil
 	h.requests = nil
 	h.newCalls = 0
@@ -278,9 +319,110 @@ func TestRun_SecondRunReviewsNothing(t *testing.T) {
 	}
 }
 
+func TestRun_SecondRunSkipsCleanUnitsThanksToTheStateBlock(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 3 || len(h.fake.posted) != 2 {
+		t.Fatalf("expected 3 reviews and 2 comments on the first run, got %d and %d", len(h.requests), len(h.fake.posted))
+	}
+
+	// Only two of the three units left an inline marker: the third one (greet) is known
+	// from the state block of the summary alone
+	h.keepPostedComments()
+	h.fake.posted = nil
+	h.requests = nil
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 0 {
+		t.Errorf("a clean unit must not be reviewed again, got %d requests", len(h.requests))
+	}
+}
+
+func TestRun_SummaryWithoutFindings(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+	h.fake.mr.Change.Author = "alice"
+	h.fake.mr.Change.Title = "Fix"
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(h.fake.posted) != 0 {
+		t.Errorf("no inline comment expected, got %d", len(h.fake.posted))
+	}
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 || !strings.Contains(notes[0], "Reviewed 1 function, no issue found.") {
+		t.Errorf("expected a summary note, got %v", notes)
+	}
+}
+
+func TestRun_SummaryIsUpdatedNotDuplicated(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+
+	for i := 0; i < 2; i++ {
+		if err := Run(context.Background(), h.deps, Options{Number: 1, Force: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(h.fake.notes) != 1 {
+		t.Errorf("the second run must update the first summary, got %d notes", len(h.fake.notes))
+	}
+}
+
+func TestRun_BudgetExhaustionIsReportedInTheSummary(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.deps.Config.LLM.MaxTokensPerRun = 1
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(h.requests) != 1 {
+		t.Errorf("only the first unit fits the budget, got %d requests", len(h.requests))
+	}
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 {
+		t.Fatalf("expected a summary, got %v", notes)
+	}
+	for _, want := range []string{"Reviewed 1 function", "the token budget was reached:\n- divide (main.go)\n- printAll (main.go)", "Tokens: 100 in, 10 out"} {
+		if !strings.Contains(notes[0], want) {
+			t.Errorf("summary should contain %q, got:\n%s", want, notes[0])
+		}
+	}
+}
+
+func TestRun_SummaryIsSkippedWithoutTheTokenOwner(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "php-symfony"))
+	h.fake.self = ""
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Errorf("a missing identity must not fail the job, got %v", err)
+	}
+	if len(h.fake.posted) != 1 || len(h.fake.notes) != 0 {
+		t.Errorf("the inline comment must still be posted and no summary written, got %d and %d", len(h.fake.posted), len(h.fake.notes))
+	}
+}
+
+func TestRun_DryRunPrintsTheSummaryWithoutWriting(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+	h.fake.mr.Change.Author = "alice"
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1, DryRun: true}); err != nil {
+		t.Fatal(err)
+	}
+	if h.fake.writes != 0 || len(h.fake.notes) != 0 {
+		t.Errorf("dry run must not write, got %d writes", h.fake.writes)
+	}
+}
+
 func TestRun_ForgedMarkerDoesNotSkipTheReview(t *testing.T) {
 	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "php-symfony"))
-	h.fake.self = "ainspector-bot"
 
 	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
 		t.Fatal(err)
