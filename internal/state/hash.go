@@ -17,7 +17,10 @@ const (
 	HashLength = 12
 )
 
-var markerRegex = regexp.MustCompile(`<!-- ainspector:fn:([a-f0-9]{12}) -->`)
+var (
+	markerRegex  = regexp.MustCompile(`<!-- ainspector:fn:([a-f0-9]{12}) -->`)
+	findingRegex = regexp.MustCompile(`<!-- ainspector:finding:([a-f0-9]{12}) -->`)
+)
 
 // ModeKey is what identifies a review mode in a unit hash
 type ModeKey interface {
@@ -34,7 +37,12 @@ func shortHash(parts ...string) string {
 // UnitHash identifies a unit for one mode. It changes with the mode version, its scope
 // and the project rules, so that any of them invalidates previous reviews.
 func UnitHash(m ModeKey, u collect.ReviewUnit, rulesDigest string) string {
-	return shortHash(m.Name(), m.Scope().String(), m.Version(), rulesDigest, u.FilePath, u.Name, u.Content, u.Diff)
+	parts := []string{m.Name(), m.Scope().String(), m.Version(), rulesDigest, u.FilePath, u.Name, u.Content, u.Diff}
+	// A change of the class around a function is a change of what the reviewer sees
+	if m.Scope() >= collect.ScopeFunctionClass && u.Enclosing != nil {
+		parts = append(parts, u.Enclosing.Rendered)
+	}
+	return shortHash(parts...)
 }
 
 // RulesDigest summarizes the project rules given to a mode
@@ -63,4 +71,19 @@ func ExtractHashes(body string) []string {
 		hashes = append(hashes, m[1])
 	}
 	return hashes
+}
+
+// FormatFindingMarker creates the marker that tells a finding was already reported, whatever
+// line it moves to
+func FormatFindingMarker(fingerprint string) string {
+	return "<!-- ainspector:finding:" + fingerprint + " -->"
+}
+
+// ExtractFingerprints returns the fingerprints of all finding markers found in a comment body
+func ExtractFingerprints(body string) []string {
+	var fingerprints []string
+	for _, m := range findingRegex.FindAllStringSubmatch(body, -1) {
+		fingerprints = append(fingerprints, m[1])
+	}
+	return fingerprints
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/provider"
 )
 
@@ -16,6 +17,8 @@ const (
 	legacyMode = "quality"
 	// MaxHashes caps the hashes kept in a state block
 	MaxHashes = 500
+	// MaxReportedBytes caps the size of the findings remembered in a state block
+	MaxReportedBytes = 8000
 )
 
 var stateRegex = regexp.MustCompile(`(?s)<!-- ainspector:state:([a-z0-9_-]+) (\{.*?\}) -->`)
@@ -27,6 +30,8 @@ type StateBlock struct {
 	Ver      string   `json:"ver"`
 	Units    []string `json:"units"`
 	Findings []string `json:"findings"`
+	// Reported tells what the findings were, to hand them to the false positive filter
+	Reported []findings.Reported `json:"reported,omitempty"`
 }
 
 // FormatStateBlock renders the state block of a mode as an HTML comment
@@ -34,6 +39,7 @@ func FormatStateBlock(mode string, b StateBlock) string {
 	b.V = stateVersion
 	b.Units = capHashes(b.Units)
 	b.Findings = capHashes(b.Findings)
+	b.Reported = capReported(b.Reported)
 	if b.Units == nil {
 		b.Units = []string{}
 	}
@@ -72,6 +78,31 @@ func MergeHashes(previous, current []string) []string {
 	return capHashes(merged)
 }
 
+// MergeReported returns the union of previous and current by fingerprint, oldest first,
+// keeping the most recent ones that fit in MaxReportedBytes
+func MergeReported(previous, current []findings.Reported) []findings.Reported {
+	seen := make(map[string]bool, len(previous)+len(current))
+	var merged []findings.Reported
+	for _, r := range append(append([]findings.Reported{}, previous...), current...) {
+		if !seen[r.Fingerprint] {
+			seen[r.Fingerprint] = true
+			merged = append(merged, r)
+		}
+	}
+	return capReported(merged)
+}
+
+func capReported(rs []findings.Reported) []findings.Reported {
+	size := 0
+	for i := len(rs) - 1; i >= 0; i-- {
+		data, _ := json.Marshal(rs[i])
+		if size += len(data) + 1; size > MaxReportedBytes {
+			return rs[i+1:]
+		}
+	}
+	return rs
+}
+
 func capHashes(hashes []string) []string {
 	if len(hashes) > MaxHashes {
 		return hashes[len(hashes)-MaxHashes:]
@@ -81,21 +112,25 @@ func capHashes(hashes []string) []string {
 
 // Index knows which units were already reviewed, from the comments of a PR/MR
 type Index struct {
-	markers map[string]bool
-	blocks  map[string]StateBlock
+	markers  map[string]bool
+	findings map[string]bool
+	blocks   map[string]StateBlock
 }
 
 // LoadIndex reads inline markers and state blocks from existing comments. When self is
 // set, only the comments it wrote count: anyone else on the PR/MR could forge a marker
 // to prevent a unit from being reviewed.
 func LoadIndex(comments []provider.ExistingComment, self string) *Index {
-	ix := &Index{markers: make(map[string]bool), blocks: make(map[string]StateBlock)}
+	ix := &Index{markers: make(map[string]bool), findings: make(map[string]bool), blocks: make(map[string]StateBlock)}
 	for _, c := range comments {
 		if self != "" && !strings.EqualFold(c.Author, self) {
 			continue
 		}
 		for _, h := range ExtractHashes(c.Body) {
 			ix.markers[h] = true
+		}
+		for _, fp := range ExtractFingerprints(c.Body) {
+			ix.findings[fp] = true
 		}
 		for _, m := range stateRegex.FindAllStringSubmatch(c.Body, -1) {
 			if b, ok := ParseStateBlock(m[1], c.Body); ok {
@@ -110,6 +145,23 @@ func LoadIndex(comments []provider.ExistingComment, self string) *Index {
 func (ix *Index) Block(mode string) (StateBlock, bool) {
 	b, ok := ix.blocks[mode]
 	return b, ok
+}
+
+// ReportedFindings returns the fingerprints of the findings a mode already reported, from its
+// inline comments and its state block, and what the block remembers of them
+func (ix *Index) ReportedFindings(mode string) (map[string]bool, []findings.Reported) {
+	seen := make(map[string]bool, len(ix.findings))
+	for fp := range ix.findings {
+		seen[fp] = true
+	}
+	b, ok := ix.blocks[mode]
+	if !ok {
+		return seen, nil
+	}
+	for _, fp := range b.Findings {
+		seen[fp] = true
+	}
+	return seen, b.Reported
 }
 
 // Len returns the number of distinct inline markers found

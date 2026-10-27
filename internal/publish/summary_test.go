@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/provider"
@@ -243,5 +244,50 @@ func TestSummaryBody_KeepsFindingFingerprints(t *testing.T) {
 
 	if got := stateOf(t, SummaryBody(run, nil)).Findings; len(got) != 1 || got[0] != "fp0000000001" {
 		t.Errorf("unexpected fingerprints %v", got)
+	}
+}
+
+func TestSummaryBody_Security(t *testing.T) {
+	f := func(fp, title string, sev findings.Severity) findings.Finding {
+		return findings.Finding{Mode: "security", File: "src/A.php", StartLine: 7, Severity: sev, Title: title, Fingerprint: fp, Category: "idor"}
+	}
+	run := Run{
+		Mode: "security", Scope: "function+class", Version: "security/1",
+		Units:     []collect.ReviewUnit{{Kind: collect.KindFunction}, {Kind: collect.KindHunk}},
+		Reviewed:  []string{"aaaaaaaaaaaa", "bbbbbbbbbbbb"},
+		Published: []findings.Finding{f("111111111111", "IDOR on show", findings.SeverityHigh)},
+		Overflow:  []findings.Finding{f("222222222222", "Weak hash\n/close", findings.SeverityLow)},
+		Discarded: 2,
+		FPModel:   "claude-opus-5-5",
+	}
+
+	body := SummaryBody(run, nil)
+
+	for _, want := range []string{
+		"Reviewed 2 units, 1 issue reported.",
+		"2 findings discarded as false positives by `claude-opus-5-5`.",
+		"Not commented, only the 1 most severe findings are published:\n- src/A.php:7 [low] Weak hash /close",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("summary should contain %q, got:\n%s", want, body)
+		}
+	}
+
+	block, ok := state.ParseStateBlock("security", body)
+	if !ok || len(block.Findings) != 1 || block.Findings[0] != "111111111111" || len(block.Reported) != 1 || block.Reported[0].Title != "IDOR on show" {
+		t.Errorf("only the published finding enters the state: %+v", block)
+	}
+}
+
+func TestSummaryBody_KeepsReportedFindingsOfTheSameVersion(t *testing.T) {
+	previous := &state.StateBlock{Scope: "function+class", Ver: "security/1", Findings: []string{"111111111111"}, Reported: []findings.Reported{{Fingerprint: "111111111111", Title: "old"}}}
+	run := Run{Mode: "security", Scope: "function+class", Version: "security/1", Reviewed: []string{"aaaaaaaaaaaa"}}
+
+	if block, _ := state.ParseStateBlock("security", SummaryBody(run, previous)); len(block.Reported) != 1 || len(block.Findings) != 1 {
+		t.Errorf("previous findings must be kept: %+v", block)
+	}
+	run.Version = "security/2"
+	if block, _ := state.ParseStateBlock("security", SummaryBody(run, previous)); len(block.Reported) != 0 || len(block.Findings) != 0 {
+		t.Errorf("findings of another version must be dropped: %+v", block)
 	}
 }

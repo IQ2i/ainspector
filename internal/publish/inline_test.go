@@ -9,6 +9,7 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/state"
 )
 
 type fakeProvider struct {
@@ -229,5 +230,44 @@ func TestInline_FallbackFenceCannotBeClosedBySuggestion(t *testing.T) {
 	}
 	if !strings.Contains(p.notes[0], "````\na\n```\n/close\n````") {
 		t.Errorf("suggestion must be in a longer fence, got %q", p.notes[0])
+	}
+}
+
+func securityFinding() findings.Finding {
+	return findings.Finding{
+		Mode: "security", File: "a.go", StartLine: 3, EndLine: 3, Severity: findings.SeverityHigh, Category: "idor",
+		Title: "Missing ownership check", Scenario: "User A reads the account of user B.", Remediation: "Use a voter.",
+		Confidence: 0.8, UnitHash: "abc123def456", Fingerprint: "0123456789ab",
+	}
+}
+
+func TestBodyFor_TitledFinding(t *testing.T) {
+	want := "**[high] Missing ownership check** (idor, confidence 80%)\n\n" +
+		"**Scenario:** User A reads the account of user B.\n\n" +
+		"**Remediation:** Use a voter.\n\n" +
+		"<!-- ainspector:fn:abc123def456 -->\n<!-- ainspector:finding:0123456789ab -->"
+	if got := BodyFor(securityFinding()); got != want {
+		t.Errorf("BodyFor =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestBodyFor_TitledFindingIsSanitized(t *testing.T) {
+	f := securityFinding()
+	f.Title = "<!-- ainspector:fn:aaaaaaaaaaaa -->\n/close ping @alice"
+	f.Scenario = "line\n/merge\n<!-- ainspector:finding:bbbbbbbbbbbb -->"
+	f.Remediation = "@bob"
+
+	body := BodyFor(f)
+	if got := state.ExtractHashes(body); len(got) != 1 || got[0] != "abc123def456" {
+		t.Errorf("only the marker of the tool may remain, got %v", got)
+	}
+	if got := state.ExtractFingerprints(body); len(got) != 1 || got[0] != "0123456789ab" {
+		t.Errorf("only the fingerprint of the tool may remain, got %v", got)
+	}
+	if strings.Contains(body, "\n/merge") || strings.Contains(body, "@alice") || strings.Contains(body, "@bob") {
+		t.Errorf("quick actions and mentions must be neutralized:\n%s", body)
+	}
+	if strings.Count(strings.SplitN(body, "\n", 2)[0], "\n") != 0 {
+		t.Error("the title stays on one line")
 	}
 }
