@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iq2i/ainspector/internal/extractor"
+	"github.com/iq2i/ainspector/internal/collect"
 )
 
 func TestReviewFunctions_SingleFunction(t *testing.T) {
@@ -29,7 +29,7 @@ func TestReviewFunctions_SingleFunction(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	functions := []extractor.ExtractedFunction{
+	functions := []collect.ReviewUnit{
 		{
 			Name:       "hello",
 			StartLine:  1,
@@ -75,7 +75,7 @@ func TestReviewFunctions_WithIssues(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	functions := []extractor.ExtractedFunction{
+	functions := []collect.ReviewUnit{
 		{Name: "test", FilePath: "test.go", Language: "go"},
 	}
 
@@ -116,7 +116,7 @@ func TestReviewFunctions_MultipleFunctions(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	functions := []extractor.ExtractedFunction{
+	functions := []collect.ReviewUnit{
 		{Name: "func1", FilePath: "a.go", Language: "go", ChangeType: "modified"},
 		{Name: "func2", FilePath: "b.go", Language: "go", ChangeType: "added"},
 		{Name: "func3", FilePath: "c.go", Language: "go", ChangeType: "modified"},
@@ -165,7 +165,7 @@ func TestReviewFunctions_MixedSuccessAndFailure(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	functions := []extractor.ExtractedFunction{
+	functions := []collect.ReviewUnit{
 		{Name: "func1"},
 		{Name: "func2"},
 		{Name: "func3"},
@@ -208,7 +208,7 @@ func TestReviewFunctions_EmptyList(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{}, nil, nil)
+	results := ReviewFunctions(ctx, client, []collect.ReviewUnit{}, nil, nil)
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
@@ -231,7 +231,7 @@ func TestReviewFunctions_PreservesFunction(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	originalFn := extractor.ExtractedFunction{
+	originalFn := collect.ReviewUnit{
 		Name:       "testFunc",
 		StartLine:  10,
 		EndLine:    20,
@@ -242,7 +242,7 @@ func TestReviewFunctions_PreservesFunction(t *testing.T) {
 		ChangeType: "modified",
 	}
 
-	results := ReviewFunctions(ctx, client, []extractor.ExtractedFunction{originalFn}, nil, nil)
+	results := ReviewFunctions(ctx, client, []collect.ReviewUnit{originalFn}, nil, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -276,7 +276,7 @@ func TestReviewFunctions_PreservesFunction(t *testing.T) {
 }
 
 func TestBuildUserPrompt_WithDiff(t *testing.T) {
-	fn := &extractor.ExtractedFunction{
+	fn := &collect.ReviewUnit{
 		Name:       "hello",
 		StartLine:  10,
 		EndLine:    15,
@@ -320,7 +320,7 @@ func TestBuildUserPrompt_WithDiff(t *testing.T) {
 }
 
 func TestBuildUserPrompt_NoDiff(t *testing.T) {
-	fn := &extractor.ExtractedFunction{
+	fn := &collect.ReviewUnit{
 		Name:       "hello",
 		StartLine:  1,
 		EndLine:    3,
@@ -348,7 +348,7 @@ func TestBuildUserPrompt_NoDiff(t *testing.T) {
 }
 
 func TestBuildUserPrompt_AddedFunction(t *testing.T) {
-	fn := &extractor.ExtractedFunction{
+	fn := &collect.ReviewUnit{
 		Name:       "newFunc",
 		ChangeType: "added",
 		Language:   "python",
@@ -366,7 +366,7 @@ func TestBuildUserPrompt_AddedFunction(t *testing.T) {
 }
 
 func TestBuildUserPrompt_SpecialCharacters(t *testing.T) {
-	fn := &extractor.ExtractedFunction{
+	fn := &collect.ReviewUnit{
 		Name:     "test<script>alert('xss')</script>",
 		Content:  "func test() { return \"<script>\" }",
 		Diff:     "+<script>alert('xss')</script>",
@@ -404,7 +404,7 @@ func TestReviewFunctions_VerifiesPromptStructure(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	functions := []extractor.ExtractedFunction{
+	functions := []collect.ReviewUnit{
 		{Name: "test", Language: "go", FilePath: "test.go"},
 	}
 
@@ -434,7 +434,7 @@ func TestReviewFunctions_VerifiesPromptStructure(t *testing.T) {
 
 func TestReviewResult_Error(t *testing.T) {
 	result := ReviewResult{
-		Function: extractor.ExtractedFunction{Name: "test"},
+		Function: collect.ReviewUnit{Name: "test"},
 		Error:    errors.New("API error"),
 	}
 
@@ -779,7 +779,7 @@ func TestReviewFunctions_WithProjectRules(t *testing.T) {
 	client := NewClient(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	functions := []extractor.ExtractedFunction{
+	functions := []collect.ReviewUnit{
 		{Name: "test", Language: "go", FilePath: "test.go"},
 	}
 

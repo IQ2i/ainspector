@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"regexp"
 
-	"github.com/iq2i/ainspector/internal/extractor"
+	"github.com/iq2i/ainspector/internal/collect"
 )
 
 const (
@@ -22,7 +22,7 @@ var hashRegex = regexp.MustCompile(`<!-- ainspector:fn:([a-f0-9]{12}) -->`)
 // FunctionHash generates a unique hash for an extracted function.
 // The hash is based on file path, function name, content, and diff to ensure
 // that any change to the function or its modifications triggers a re-review.
-func FunctionHash(fn *extractor.ExtractedFunction) string {
+func FunctionHash(fn *collect.ReviewUnit) string {
 	data := fn.FilePath + ":" + fn.Name + ":" + fn.Content + ":" + fn.Diff
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])[:HashLength]

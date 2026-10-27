@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"github.com/iq2i/ainspector/internal/extractor"
+	"github.com/iq2i/ainspector/internal/collect"
 )
 
 // ReviewedComment represents a previously posted review comment with its hash
@@ -35,14 +35,14 @@ func (t *Tracker) LoadFromComments(comments []ReviewedComment) {
 }
 
 // IsReviewed checks if a function has already been reviewed
-func (t *Tracker) IsReviewed(fn *extractor.ExtractedFunction) bool {
+func (t *Tracker) IsReviewed(fn *collect.ReviewUnit) bool {
 	hash := FunctionHash(fn)
 	return t.reviewed[hash]
 }
 
 // FilterUnreviewed returns only functions that haven't been reviewed yet
-func (t *Tracker) FilterUnreviewed(functions []extractor.ExtractedFunction) []extractor.ExtractedFunction {
-	var result []extractor.ExtractedFunction
+func (t *Tracker) FilterUnreviewed(functions []collect.ReviewUnit) []collect.ReviewUnit {
+	var result []collect.ReviewUnit
 	for _, fn := range functions {
 		if !t.IsReviewed(&fn) {
 			result = append(result, fn)

@@ -3,11 +3,11 @@ package cache
 import (
 	"testing"
 
-	"github.com/iq2i/ainspector/internal/extractor"
+	"github.com/iq2i/ainspector/internal/collect"
 )
 
 func TestFunctionHash_Deterministic(t *testing.T) {
-	fn := &extractor.ExtractedFunction{
+	fn := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "main.go",
 		Content:  "func TestFunc() {}",
@@ -27,14 +27,14 @@ func TestFunctionHash_Deterministic(t *testing.T) {
 }
 
 func TestFunctionHash_DifferentContent(t *testing.T) {
-	fn1 := &extractor.ExtractedFunction{
+	fn1 := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "main.go",
 		Content:  "func TestFunc() {}",
 		Diff:     "+func TestFunc() {}",
 	}
 
-	fn2 := &extractor.ExtractedFunction{
+	fn2 := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "main.go",
 		Content:  "func TestFunc() { return }",
@@ -50,14 +50,14 @@ func TestFunctionHash_DifferentContent(t *testing.T) {
 }
 
 func TestFunctionHash_DifferentPath(t *testing.T) {
-	fn1 := &extractor.ExtractedFunction{
+	fn1 := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "main.go",
 		Content:  "func TestFunc() {}",
 		Diff:     "+func TestFunc() {}",
 	}
 
-	fn2 := &extractor.ExtractedFunction{
+	fn2 := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "other.go",
 		Content:  "func TestFunc() {}",
@@ -73,14 +73,14 @@ func TestFunctionHash_DifferentPath(t *testing.T) {
 }
 
 func TestFunctionHash_DifferentDiff(t *testing.T) {
-	fn1 := &extractor.ExtractedFunction{
+	fn1 := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "main.go",
 		Content:  "func TestFunc() { a := 1; b := 2 }",
 		Diff:     "+a := 1",
 	}
 
-	fn2 := &extractor.ExtractedFunction{
+	fn2 := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "main.go",
 		Content:  "func TestFunc() { a := 1; b := 2 }",
@@ -180,7 +180,7 @@ func TestTracker_FilterUnreviewed(t *testing.T) {
 	tracker := NewTracker()
 
 	// Create a function and compute its hash
-	fn1 := extractor.ExtractedFunction{
+	fn1 := collect.ReviewUnit{
 		Name:     "Func1",
 		FilePath: "main.go",
 		Content:  "func Func1() {}",
@@ -194,14 +194,14 @@ func TestTracker_FilterUnreviewed(t *testing.T) {
 	})
 
 	// Create another function that hasn't been reviewed
-	fn2 := extractor.ExtractedFunction{
+	fn2 := collect.ReviewUnit{
 		Name:     "Func2",
 		FilePath: "main.go",
 		Content:  "func Func2() {}",
 		Diff:     "+func Func2() {}",
 	}
 
-	functions := []extractor.ExtractedFunction{fn1, fn2}
+	functions := []collect.ReviewUnit{fn1, fn2}
 	unreviewed := tracker.FilterUnreviewed(functions)
 
 	if len(unreviewed) != 1 {
@@ -216,7 +216,7 @@ func TestTracker_FilterUnreviewed(t *testing.T) {
 func TestTracker_IsReviewed(t *testing.T) {
 	tracker := NewTracker()
 
-	fn := &extractor.ExtractedFunction{
+	fn := &collect.ReviewUnit{
 		Name:     "TestFunc",
 		FilePath: "main.go",
 		Content:  "func TestFunc() {}",

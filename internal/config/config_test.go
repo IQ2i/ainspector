@@ -21,6 +21,7 @@ func TestLoad(t *testing.T) {
 		}
 		if cfg == nil {
 			t.Fatal("expected non-nil config")
+			return
 		}
 		if len(cfg.Ignore.Paths) != 0 {
 			t.Errorf("expected empty paths, got %v", cfg.Ignore.Paths)

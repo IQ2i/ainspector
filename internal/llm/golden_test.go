@@ -14,7 +14,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/iq2i/ainspector/internal/extractor"
+	"github.com/iq2i/ainspector/internal/collect"
 )
 
 var update = flag.Bool("update", false, "regenerate golden files")
@@ -75,7 +75,7 @@ func TestGolden_SystemPrompt(t *testing.T) {
 func TestGolden_UserPrompt(t *testing.T) {
 	for _, lang := range sortedLanguages() {
 		for _, withDiff := range []bool{true, false} {
-			fn := &extractor.ExtractedFunction{
+			fn := &collect.ReviewUnit{
 				Name:       "handle",
 				StartLine:  10,
 				EndLine:    14,

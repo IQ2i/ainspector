@@ -7,8 +7,8 @@ import (
 
 	"github.com/iq2i/ainspector/internal/cache"
 	"github.com/iq2i/ainspector/internal/ci"
+	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/config"
-	"github.com/iq2i/ainspector/internal/extractor"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/spf13/cobra"
@@ -126,9 +126,9 @@ func review(ctx context.Context, p provider.Provider, newClient func() (*llm.Cli
 
 	fmt.Printf("Found %d modified files\n", len(files))
 
-	ext := extractor.New(p, cfg)
-	defer ext.Close()
-	functions, err := ext.ExtractModifiedFunctions(ctx, files)
+	collector := collect.New(p, cfg)
+	defer collector.Close()
+	functions, err := collector.Collect(ctx, collect.Request{Files: files})
 	if err != nil {
 		return fmt.Errorf("failed to extract functions: %w", err)
 	}

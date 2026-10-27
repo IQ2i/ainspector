@@ -102,7 +102,7 @@ func generateConfigBasedContext(projectRoot string, languages []string, contextC
 
 	for _, path := range paths {
 		content := files[path]
-		sb.WriteString(fmt.Sprintf("=== %s ===\n", path))
+		fmt.Fprintf(&sb, "=== %s ===\n", path)
 		sb.WriteString(content)
 		sb.WriteString("\n\n")
 	}
@@ -216,7 +216,7 @@ func buildContextPrompt(files map[string]string, languages []string) string {
 	sb.WriteString("Analyze this project and provide a concise context description.\n\n")
 
 	if len(languages) > 0 {
-		sb.WriteString(fmt.Sprintf("Detected languages: %s\n\n", strings.Join(languages, ", ")))
+		fmt.Fprintf(&sb, "Detected languages: %s\n\n", strings.Join(languages, ", "))
 	}
 
 	sb.WriteString("Project files:\n\n")
@@ -228,7 +228,7 @@ func buildContextPrompt(files map[string]string, languages []string) string {
 	// Process AI instruction files first
 	for _, file := range aiFiles {
 		if content, ok := files[file]; ok {
-			sb.WriteString(fmt.Sprintf("=== %s ===\n", file))
+			fmt.Fprintf(&sb, "=== %s ===\n", file)
 			// Limit content to avoid overwhelming the LLM
 			if len(content) > 3000 {
 				sb.WriteString(content[:3000] + "\n... (truncated)\n")
@@ -241,7 +241,7 @@ func buildContextPrompt(files map[string]string, languages []string) string {
 
 	// Process README
 	if content, ok := files[readme]; ok {
-		sb.WriteString(fmt.Sprintf("=== %s ===\n", readme))
+		fmt.Fprintf(&sb, "=== %s ===\n", readme)
 		if len(content) > 2000 {
 			sb.WriteString(content[:2000] + "\n... (truncated)\n")
 		} else {
@@ -264,7 +264,7 @@ func buildContextPrompt(files map[string]string, languages []string) string {
 			continue
 		}
 
-		sb.WriteString(fmt.Sprintf("=== %s ===\n", file))
+		fmt.Fprintf(&sb, "=== %s ===\n", file)
 		// Limit content for config files
 		if len(content) > 1500 {
 			sb.WriteString(content[:1500] + "\n... (truncated)\n")

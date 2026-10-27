@@ -42,6 +42,7 @@ func TestGetConfig(t *testing.T) {
 			if tt.shouldExist {
 				if config == nil {
 					t.Fatalf("expected config for %s, got nil", tt.path)
+					return
 				}
 				if config.Name != tt.expectedName {
 					t.Errorf("expected language %s, got %s", tt.expectedName, config.Name)
@@ -62,6 +63,7 @@ func TestGetConfig_CaseInsensitive(t *testing.T) {
 			config := GetConfig(path)
 			if config == nil {
 				t.Fatalf("expected config for %s, got nil", path)
+				return
 			}
 			if config.Name != "go" {
 				t.Errorf("expected language go, got %s", config.Name)

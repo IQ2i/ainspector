@@ -1,4 +1,4 @@
-package extractor
+package collect
 
 import (
 	"context"
@@ -45,7 +45,7 @@ func (m *mockProvider) GetReviewComments(ctx context.Context, number int) ([]pro
 	return nil, nil
 }
 
-func TestExtractModifiedFunctions_SkipsDeletedFiles(t *testing.T) {
+func TestCollect_SkipsDeletedFiles(t *testing.T) {
 	mock := &mockProvider{files: map[string]string{}}
 	e := New(mock, nil)
 	defer e.Close()
@@ -55,7 +55,7 @@ func TestExtractModifiedFunctions_SkipsDeletedFiles(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestExtractModifiedFunctions_SkipsDeletedFiles(t *testing.T) {
 	}
 }
 
-func TestExtractModifiedFunctions_SkipsUnsupportedFiles(t *testing.T) {
+func TestCollect_SkipsUnsupportedFiles(t *testing.T) {
 	mock := &mockProvider{files: map[string]string{
 		"data.json": `{"key": "value"}`,
 	}}
@@ -77,7 +77,7 @@ func TestExtractModifiedFunctions_SkipsUnsupportedFiles(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestExtractModifiedFunctions_SkipsUnsupportedFiles(t *testing.T) {
 	}
 }
 
-func TestExtractModifiedFunctions_SingleModifiedFunction(t *testing.T) {
+func TestCollect_SingleModifiedFunction(t *testing.T) {
 	goCode := `package main
 
 func hello() {
@@ -114,7 +114,7 @@ func hello() {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +137,7 @@ func hello() {
 	}
 }
 
-func TestExtractModifiedFunctions_AddedFile(t *testing.T) {
+func TestCollect_AddedFile(t *testing.T) {
 	goCode := `package main
 
 func newFunc() {
@@ -163,7 +163,7 @@ func newFunc() {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -177,7 +177,7 @@ func newFunc() {
 	}
 }
 
-func TestExtractModifiedFunctions_MultipleFunctions(t *testing.T) {
+func TestCollect_MultipleFunctions(t *testing.T) {
 	// Note: The code must match the NEW state after the patch is applied
 	goCode := `package main
 
@@ -219,7 +219,7 @@ func third() {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -244,7 +244,7 @@ func third() {
 	}
 }
 
-func TestExtractModifiedFunctions_MultipleFiles(t *testing.T) {
+func TestCollect_MultipleFiles(t *testing.T) {
 	mock := &mockProvider{files: map[string]string{
 		"a.go": `package main
 
@@ -288,7 +288,7 @@ func funcB() {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -310,7 +310,7 @@ func funcB() {
 	}
 }
 
-func TestExtractModifiedFunctions_ContinuesOnFileError(t *testing.T) {
+func TestCollect_ContinuesOnFileError(t *testing.T) {
 	mock := &mockProvider{files: map[string]string{
 		"good.go": `package main
 
@@ -343,7 +343,7 @@ func goodFunc() {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,7 +358,7 @@ func goodFunc() {
 	}
 }
 
-func TestExtractModifiedFunctions_NoModifiedFunctions(t *testing.T) {
+func TestCollect_NoModifiedFunctions(t *testing.T) {
 	goCode := `package main
 
 import "fmt"
@@ -385,7 +385,7 @@ func unchanged() {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -395,7 +395,7 @@ func unchanged() {
 	}
 }
 
-func TestExtractModifiedFunctions_ExtractsDiff(t *testing.T) {
+func TestCollect_ExtractsDiff(t *testing.T) {
 	goCode := `package main
 
 func hello() {
@@ -421,7 +421,7 @@ func hello() {
 	}
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, files)
+	result, err := e.Collect(ctx, Request{Files: files})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -436,13 +436,13 @@ func hello() {
 	}
 }
 
-func TestExtractModifiedFunctions_EmptyFileList(t *testing.T) {
+func TestCollect_EmptyFileList(t *testing.T) {
 	mock := &mockProvider{files: map[string]string{}}
 	e := New(mock, nil)
 	defer e.Close()
 
 	ctx := context.Background()
-	result, err := e.ExtractModifiedFunctions(ctx, []provider.ModifiedFile{})
+	result, err := e.Collect(ctx, Request{Files: []provider.ModifiedFile{}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -456,7 +456,8 @@ func TestNew(t *testing.T) {
 	mock := &mockProvider{}
 	e := New(mock, nil)
 	if e == nil {
-		t.Fatal("expected non-nil extractor")
+		t.Fatal("expected non-nil collector")
+		return
 	}
 	if e.parser == nil {
 		t.Error("expected parser to be initialized")

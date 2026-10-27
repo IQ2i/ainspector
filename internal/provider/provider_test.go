@@ -46,6 +46,7 @@ func TestNewGitHubProvider(t *testing.T) {
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")
+		return
 	}
 	if p.owner != "owner" {
 		t.Errorf("expected owner 'owner', got %s", p.owner)
@@ -63,6 +64,7 @@ func TestNewGitHubProvider_NoToken(t *testing.T) {
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")
+		return
 	}
 	if p.client == nil {
 		t.Error("expected client to be initialized even without token")
@@ -74,6 +76,7 @@ func TestNewGitLabProvider(t *testing.T) {
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")
+		return
 	}
 	if p.projectID != "owner/repo" {
 		t.Errorf("expected projectID 'owner/repo', got %s", p.projectID)
@@ -88,6 +91,7 @@ func TestNewGitLabProvider_NoToken(t *testing.T) {
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")
+		return
 	}
 	if p.projectID != "owner/repo" {
 		t.Errorf("expected projectID 'owner/repo', got %s", p.projectID)
@@ -99,6 +103,7 @@ func TestNewGitLabProvider_SelfHosted(t *testing.T) {
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")
+		return
 	}
 	if p.projectID != "group/project" {
 		t.Errorf("expected projectID 'group/project', got %s", p.projectID)

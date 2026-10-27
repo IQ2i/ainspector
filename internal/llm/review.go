@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/iq2i/ainspector/internal/extractor"
+	"github.com/iq2i/ainspector/internal/collect"
 )
 
 // LGTMMarker is returned by the LLM when there are no issues to report.
@@ -215,7 +215,7 @@ type ReviewResponse struct {
 
 // ReviewResult contains the review result for a function.
 type ReviewResult struct {
-	Function    extractor.ExtractedFunction
+	Function    collect.ReviewUnit
 	Suggestions []Suggestion
 	RawReview   string // Original response for debugging
 	Error       error
@@ -233,7 +233,7 @@ func (r *ReviewResult) HasIssues() bool {
 // ReviewFunctions reviews each function using the LLM and returns the results.
 // If projectContext is provided, it will be included in the system prompt for better context.
 // If rules are provided, they will be enforced as mandatory project-specific rules.
-func ReviewFunctions(ctx context.Context, client *Client, functions []extractor.ExtractedFunction, projectContext *ProjectContext, rules []string) []ReviewResult {
+func ReviewFunctions(ctx context.Context, client *Client, functions []collect.ReviewUnit, projectContext *ProjectContext, rules []string) []ReviewResult {
 	results := make([]ReviewResult, 0, len(functions))
 
 	for _, fn := range functions {
@@ -291,7 +291,7 @@ func parseReviewResponse(response string) []Suggestion {
 	return reviewResp.Issues
 }
 
-func buildUserPrompt(fn *extractor.ExtractedFunction) string {
+func buildUserPrompt(fn *collect.ReviewUnit) string {
 	diffSection := ""
 	if fn.Diff != "" {
 		diffSection = fmt.Sprintf("\n\n## Changes (REVIEW THESE):\n```diff\n%s\n```", fn.Diff)
