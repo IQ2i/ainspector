@@ -62,6 +62,74 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 100 in, 10 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"799afae16eec\"],\"findings\":[],\"open\":[{\"fp\":\"af66e0439e86\",\"file\":\"app.py\",\"line\":6,\"title\":\"Underflow is not handled.\",\"end\":6,\"unit\":\"799afae16eec\"}]} --\u003e\n"
-  ]
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 100 in, 10 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"799afae16eec\"],\"findings\":[],\"open\":[{\"fp\":\"e72d2e90a41f\",\"file\":\"app.py\",\"line\":6,\"title\":\"Underflow is not handled.\",\"end\":6,\"unit\":\"799afae16eec\",\"ul\":5}]} --\u003e\n"
+  ],
+  "code_quality": [
+    {
+      "description": "Underflow is not handled.",
+      "check_name": "ainspector/quality",
+      "fingerprint": "e72d2e90a41f",
+      "severity": "minor",
+      "location": {
+        "path": "app.py",
+        "lines": {
+          "begin": 6
+        }
+      }
+    }
+  ],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "quality",
+        "scope": "function",
+        "version": "quality/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "function",
+            "file": "app.py",
+            "name": "sub",
+            "start_line": 5,
+            "end_line": 6,
+            "change_type": "modified",
+            "hash": "799afae16eec",
+            "status": "reviewed"
+          }
+        ],
+        "already_reviewed": 1,
+        "published": [
+          {
+            "mode": "quality",
+            "file": "app.py",
+            "start_line": 6,
+            "end_line": 6,
+            "explanation": "Underflow is not handled.",
+            "unit_hash": "799afae16eec"
+          }
+        ],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 100,
+          "output": 10,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }

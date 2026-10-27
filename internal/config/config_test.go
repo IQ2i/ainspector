@@ -551,3 +551,35 @@ func TestCheckOutputPath(t *testing.T) {
 		}
 	}
 }
+
+func TestParse_PublishPaths(t *testing.T) {
+	cfg, err := parse("ainspector.yaml", []byte(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CodeQualityPath() != "gl-code-quality-report.json" || cfg.ArtifactPath() != "ainspector-report.json" {
+		t.Errorf("unexpected defaults %q %q", cfg.CodeQualityPath(), cfg.ArtifactPath())
+	}
+
+	cfg, err = parse("ainspector.yaml", []byte("publish:\n  code_quality: reports/cq.json\n  artifact: \"\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CodeQualityPath() != "reports/cq.json" || cfg.ArtifactPath() != "" {
+		t.Errorf("a configured path wins and an empty one disables the report, got %q %q", cfg.CodeQualityPath(), cfg.ArtifactPath())
+	}
+}
+
+func TestParse_PublishPathsInvalid(t *testing.T) {
+	for name, doc := range map[string]string{
+		"absolute":     "publish:\n  code_quality: /tmp/cq.json\n",
+		"parent":       "publish:\n  artifact: ../report.json\n",
+		"parent (mid)": "publish:\n  artifact: a/../../report.json\n",
+		"same file":    "publish:\n  code_quality: out/r.json\n  artifact: out/./r.json\n",
+		"default":      "publish:\n  code_quality: ainspector-report.json\n",
+	} {
+		if _, err := parse("ainspector.yaml", []byte(doc)); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}

@@ -266,6 +266,139 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 2 units, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"5105de3db5cf\",\"80bc098f5628\"],\"findings\":[\"4993fb75669b\",\"738c215ba735\"],\"reported\":[{\"fp\":\"4993fb75669b\",\"file\":\"src/Controller/AccountController.php\",\"line\":21,\"category\":\"access-control\",\"title\":\"edit() lost its #[IsGranted] check\"},{\"fp\":\"738c215ba735\",\"file\":\"src/Controller/AccountController.php\",\"line\":11,\"category\":\"access-control\",\"title\":\"Class-level #[IsGranted('ROLE_USER')] removed\"}],\"open\":[{\"fp\":\"4993fb75669b\",\"file\":\"src/Controller/AccountController.php\",\"line\":21,\"category\":\"access-control\",\"title\":\"edit() lost its #[IsGranted] check\",\"end\":21,\"sev\":\"critical\",\"unit\":\"5105de3db5cf\"},{\"fp\":\"738c215ba735\",\"file\":\"src/Controller/AccountController.php\",\"line\":11,\"category\":\"access-control\",\"title\":\"Class-level #[IsGranted('ROLE_USER')] removed\",\"end\":11,\"sev\":\"high\",\"unit\":\"80bc098f5628\"}]} --\u003e\n"
-  ]
+    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 2 units, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"5105de3db5cf\",\"80bc098f5628\"],\"findings\":[\"4993fb75669b\",\"738c215ba735\"],\"reported\":[{\"fp\":\"4993fb75669b\",\"file\":\"src/Controller/AccountController.php\",\"line\":21,\"category\":\"access-control\",\"title\":\"edit() lost its #[IsGranted] check\"},{\"fp\":\"738c215ba735\",\"file\":\"src/Controller/AccountController.php\",\"line\":11,\"category\":\"access-control\",\"title\":\"Class-level #[IsGranted('ROLE_USER')] removed\"}],\"open\":[{\"fp\":\"4993fb75669b\",\"file\":\"src/Controller/AccountController.php\",\"line\":21,\"category\":\"access-control\",\"title\":\"edit() lost its #[IsGranted] check\",\"end\":21,\"sev\":\"critical\",\"unit\":\"5105de3db5cf\",\"ul\":20},{\"fp\":\"738c215ba735\",\"file\":\"src/Controller/AccountController.php\",\"line\":11,\"category\":\"access-control\",\"title\":\"Class-level #[IsGranted('ROLE_USER')] removed\",\"end\":11,\"sev\":\"high\",\"unit\":\"80bc098f5628\",\"ul\":6}]} --\u003e\n"
+  ],
+  "code_quality": [
+    {
+      "description": "edit() lost its #[IsGranted] check",
+      "check_name": "ainspector/security/access-control",
+      "fingerprint": "4993fb75669b",
+      "severity": "blocker",
+      "categories": [
+        "Security"
+      ],
+      "location": {
+        "path": "src/Controller/AccountController.php",
+        "lines": {
+          "begin": 21
+        }
+      }
+    },
+    {
+      "description": "Class-level #[IsGranted('ROLE_USER')] removed",
+      "check_name": "ainspector/security/access-control",
+      "fingerprint": "738c215ba735",
+      "severity": "critical",
+      "categories": [
+        "Security"
+      ],
+      "location": {
+        "path": "src/Controller/AccountController.php",
+        "lines": {
+          "begin": 11
+        }
+      }
+    }
+  ],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "security",
+        "scope": "function+class+related",
+        "version": "security/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "function",
+            "file": "src/Controller/AccountController.php",
+            "name": "edit",
+            "start_line": 20,
+            "end_line": 24,
+            "change_type": "modified",
+            "deleted_only": true,
+            "hash": "5105de3db5cf",
+            "status": "reviewed",
+            "enclosing": "AccountController"
+          },
+          {
+            "kind": "hunk",
+            "file": "src/Controller/AccountController.php",
+            "name": "lines 6-12",
+            "start_line": 6,
+            "end_line": 12,
+            "change_type": "modified",
+            "hash": "80bc098f5628",
+            "status": "reviewed"
+          }
+        ],
+        "already_reviewed": 0,
+        "published": [
+          {
+            "mode": "security",
+            "file": "src/Controller/AccountController.php",
+            "start_line": 21,
+            "end_line": 21,
+            "severity": "critical",
+            "category": "access-control",
+            "title": "edit() lost its #[IsGranted] check",
+            "explanation": "",
+            "remediation": "Restore #[IsGranted('ACCOUNT_EDIT', 'account')] on the action.",
+            "scenario": "The merge request removes #[IsGranted('ACCOUNT_EDIT', 'account')]: any visitor can now open /accounts/{id}/edit for any account and modify it.",
+            "confidence": 0.95,
+            "unit_hash": "5105de3db5cf",
+            "fingerprint": "4993fb75669b"
+          },
+          {
+            "mode": "security",
+            "file": "src/Controller/AccountController.php",
+            "start_line": 11,
+            "end_line": 11,
+            "severity": "high",
+            "category": "access-control",
+            "title": "Class-level #[IsGranted('ROLE_USER')] removed",
+            "explanation": "",
+            "remediation": "Restore #[IsGranted('ROLE_USER')] on the class.",
+            "scenario": "Removing the class attribute leaves every action of the controller reachable without authentication unless it carries its own check: an anonymous visitor can call the actions that have none.",
+            "confidence": 0.9,
+            "unit_hash": "80bc098f5628",
+            "fingerprint": "738c215ba735"
+          }
+        ],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [
+          {
+            "id": 0,
+            "fingerprint": "4993fb75669b",
+            "keep": true,
+            "reason": "The check was removed from the action."
+          },
+          {
+            "id": 1,
+            "fingerprint": "738c215ba735",
+            "keep": true,
+            "reason": "The class attribute was removed."
+          }
+        ],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 300,
+          "output": 30,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }

@@ -108,6 +108,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 		NewLLM:      func() (llm.Client, error) { return newLLMClient(cfg.LLM) },
 		Config:      cfg,
 		ProjectRoot: projectRoot,
+		ReportDir:   projectRoot,
 	}, pipeline.Options{
 		Number:      env.PRNumber,
 		CheckoutSHA: env.CommitSHA,

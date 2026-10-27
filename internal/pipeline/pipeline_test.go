@@ -57,6 +57,9 @@ type expectedRun struct {
 	LLMRequests []json.RawMessage `json:"llm_requests"`
 	Comments    []expectedComment `json:"comments"`
 	Notes       []string          `json:"notes"`
+	// CodeQuality and Artifact are the files written by the run, when it wrote them
+	CodeQuality json.RawMessage `json:"code_quality,omitempty"`
+	Artifact    json.RawMessage `json:"artifact,omitempty"`
 }
 
 type fakeProvider struct {
@@ -203,6 +206,8 @@ type harness struct {
 	deps     Deps
 	newCalls int
 	mr       mrFixture
+	// reportDir receives the reports of the run, never the fixtures
+	reportDir string
 	// responses is read by the scripted server: tests may change it before the run
 	responses map[string]string
 }
@@ -229,8 +234,10 @@ func newHarness(t *testing.T, dir string) *harness {
 	server := scriptedLLM(t, responses, &h.mu, &h.requests)
 	t.Cleanup(server.Close)
 
+	h.reportDir = t.TempDir()
 	h.deps = Deps{
-		Provider: h.fake,
+		Provider:  h.fake,
+		ReportDir: h.reportDir,
 		NewLLM: func() (llm.Client, error) {
 			h.newCalls++
 			return openai.New(server.URL, "key", "test-model"), nil
@@ -248,12 +255,23 @@ func (h *harness) keepPostedComments() {
 	}
 }
 
+// report returns a file written by the run, nil when there is none
+func (h *harness) report(name string) json.RawMessage {
+	data, err := os.ReadFile(filepath.Join(h.reportDir, name))
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
 func (h *harness) result() expectedRun {
 	// Units are reviewed concurrently: requests are compared in a stable order
 	requests := append([]json.RawMessage(nil), h.requests...)
 	sort.Slice(requests, func(i, j int) bool { return string(requests[i]) < string(requests[j]) })
 
 	got := expectedRun{LLMRequests: requests, Notes: h.fake.noteBodies()}
+	got.CodeQuality = h.report("gl-code-quality-report.json")
+	got.Artifact = h.report("ainspector-report.json")
 	for _, c := range h.fake.posted {
 		got.Comments = append(got.Comments, expectedComment{Path: c.Path, Line: c.Line, Body: c.Body, Suggestion: c.Suggestion})
 	}
@@ -508,6 +526,9 @@ func TestRun_IgnoredChange(t *testing.T) {
 			}
 			if tt.wantIgnored && (h.newCalls != 0 || h.fake.writes != 0) {
 				t.Error("an ignored change must not create the LLM client nor write anything")
+			}
+			if tt.wantIgnored && (h.report("gl-code-quality-report.json") != nil || h.report("ainspector-report.json") != nil) {
+				t.Error("an ignored change must not write a report")
 			}
 		})
 	}

@@ -161,6 +161,106 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"fd28a5d6aa02\"],\"findings\":[\"ad60e436acd8\"],\"reported\":[{\"fp\":\"ad60e436acd8\",\"file\":\"src/Controller/InvoiceController.php\",\"line\":28,\"category\":\"idor\",\"title\":\"The invoice voter lets any user read any invoice\"}],\"open\":[{\"fp\":\"ad60e436acd8\",\"file\":\"src/Controller/InvoiceController.php\",\"line\":28,\"category\":\"idor\",\"title\":\"The invoice voter lets any user read any invoice\",\"end\":28,\"sev\":\"high\",\"unit\":\"fd28a5d6aa02\"}]} --\u003e\n"
-  ]
+    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"fd28a5d6aa02\"],\"findings\":[\"ad60e436acd8\"],\"reported\":[{\"fp\":\"ad60e436acd8\",\"file\":\"src/Controller/InvoiceController.php\",\"line\":28,\"category\":\"idor\",\"title\":\"The invoice voter lets any user read any invoice\"}],\"open\":[{\"fp\":\"ad60e436acd8\",\"file\":\"src/Controller/InvoiceController.php\",\"line\":28,\"category\":\"idor\",\"title\":\"The invoice voter lets any user read any invoice\",\"end\":28,\"sev\":\"high\",\"unit\":\"fd28a5d6aa02\",\"ul\":26}]} --\u003e\n"
+  ],
+  "code_quality": [
+    {
+      "description": "The invoice voter lets any user read any invoice",
+      "check_name": "ainspector/security/idor",
+      "fingerprint": "ad60e436acd8",
+      "severity": "critical",
+      "categories": [
+        "Security"
+      ],
+      "location": {
+        "path": "src/Controller/InvoiceController.php",
+        "lines": {
+          "begin": 28
+        }
+      }
+    }
+  ],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "security",
+        "scope": "function+class+related",
+        "version": "security/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "function",
+            "file": "src/Controller/InvoiceController.php",
+            "name": "show",
+            "start_line": 26,
+            "end_line": 31,
+            "change_type": "modified",
+            "hash": "fd28a5d6aa02",
+            "status": "reviewed",
+            "enclosing": "InvoiceController",
+            "related": [
+              {
+                "path": "src/Security/Voter/InvoiceVoter.php",
+                "reason": "voter named after Invoice, which show receives"
+              },
+              {
+                "path": "config/packages/security.yaml",
+                "reason": "firewalls and access_control of the security configuration"
+              },
+              {
+                "path": "templates/invoice/show.html.twig",
+                "reason": "template rendered by show"
+              }
+            ]
+          }
+        ],
+        "already_reviewed": 0,
+        "published": [
+          {
+            "mode": "security",
+            "file": "src/Controller/InvoiceController.php",
+            "start_line": 28,
+            "end_line": 28,
+            "severity": "high",
+            "category": "idor",
+            "title": "The invoice voter lets any user read any invoice",
+            "explanation": "",
+            "remediation": "Make InvoiceVoter::voteOnAttribute() grant INVOICE_VIEW only when the owner of the invoice is the current user.",
+            "scenario": "An authenticated user requests /invoices/42 for an invoice owned by someone else: #[IsGranted('INVOICE_VIEW')] looks like a check, but InvoiceVoter grants the attribute to any logged-in user without comparing the invoice owner, so the invoice of another customer is disclosed.",
+            "confidence": 0.9,
+            "unit_hash": "fd28a5d6aa02",
+            "fingerprint": "ad60e436acd8"
+          }
+        ],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [
+          {
+            "id": 0,
+            "fingerprint": "ad60e436acd8",
+            "keep": true,
+            "reason": "The voter shown in the related files never compares the owner of the invoice to the current user."
+          }
+        ],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 200,
+          "output": 20,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }

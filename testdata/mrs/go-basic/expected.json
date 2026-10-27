@@ -172,6 +172,114 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"e9b9b6984b69\",\"085ad365a8a3\",\"4393ac231f70\"],\"findings\":[],\"open\":[{\"fp\":\"14c98a2d98d1\",\"file\":\"main.go\",\"line\":10,\"title\":\"Division by zero is not checked.\",\"end\":10,\"unit\":\"085ad365a8a3\"},{\"fp\":\"a46639c1f457\",\"file\":\"main.go\",\"line\":14,\"title\":\"Off-by-one: the loop reads past the end of the slice.\",\"end\":14,\"unit\":\"4393ac231f70\"}]} --\u003e\n"
-  ]
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/2\",\"units\":[\"e9b9b6984b69\",\"085ad365a8a3\",\"4393ac231f70\"],\"findings\":[],\"open\":[{\"fp\":\"888a8eb36629\",\"file\":\"main.go\",\"line\":10,\"title\":\"Division by zero is not checked.\",\"end\":10,\"unit\":\"085ad365a8a3\",\"ul\":9},{\"fp\":\"8a36724d86db\",\"file\":\"main.go\",\"line\":14,\"title\":\"Off-by-one: the loop reads past the end of the slice.\",\"end\":14,\"unit\":\"4393ac231f70\",\"ul\":13}]} --\u003e\n"
+  ],
+  "code_quality": [
+    {
+      "description": "Division by zero is not checked.",
+      "check_name": "ainspector/quality",
+      "fingerprint": "888a8eb36629",
+      "severity": "minor",
+      "location": {
+        "path": "main.go",
+        "lines": {
+          "begin": 10
+        }
+      }
+    },
+    {
+      "description": "Off-by-one: the loop reads past the end of the slice.",
+      "check_name": "ainspector/quality",
+      "fingerprint": "8a36724d86db",
+      "severity": "minor",
+      "location": {
+        "path": "main.go",
+        "lines": {
+          "begin": 14
+        }
+      }
+    }
+  ],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "quality",
+        "scope": "function",
+        "version": "quality/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "function",
+            "file": "main.go",
+            "name": "greet",
+            "start_line": 5,
+            "end_line": 7,
+            "change_type": "modified",
+            "hash": "e9b9b6984b69",
+            "status": "reviewed"
+          },
+          {
+            "kind": "function",
+            "file": "main.go",
+            "name": "divide",
+            "start_line": 9,
+            "end_line": 11,
+            "change_type": "modified",
+            "hash": "085ad365a8a3",
+            "status": "reviewed"
+          },
+          {
+            "kind": "function",
+            "file": "main.go",
+            "name": "printAll",
+            "start_line": 13,
+            "end_line": 17,
+            "change_type": "modified",
+            "hash": "4393ac231f70",
+            "status": "reviewed"
+          }
+        ],
+        "already_reviewed": 0,
+        "published": [
+          {
+            "mode": "quality",
+            "file": "main.go",
+            "start_line": 10,
+            "end_line": 10,
+            "explanation": "Division by zero is not checked.",
+            "unit_hash": "085ad365a8a3"
+          },
+          {
+            "mode": "quality",
+            "file": "main.go",
+            "start_line": 14,
+            "end_line": 14,
+            "explanation": "Off-by-one: the loop reads past the end of the slice.",
+            "unit_hash": "4393ac231f70"
+          }
+        ],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 300,
+          "output": 30,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }

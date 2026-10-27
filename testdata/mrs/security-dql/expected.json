@@ -161,6 +161,92 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"14c17f496390\"],\"findings\":[\"8388ec77f2f1\"],\"reported\":[{\"fp\":\"8388ec77f2f1\",\"file\":\"src/Repository/UserRepository.php\",\"line\":19,\"category\":\"injection\",\"title\":\"DQL injection in findByName\"}],\"open\":[{\"fp\":\"8388ec77f2f1\",\"file\":\"src/Repository/UserRepository.php\",\"line\":19,\"category\":\"injection\",\"title\":\"DQL injection in findByName\",\"end\":19,\"sev\":\"critical\",\"unit\":\"14c17f496390\"}]} --\u003e\n"
-  ]
+    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"14c17f496390\"],\"findings\":[\"8388ec77f2f1\"],\"reported\":[{\"fp\":\"8388ec77f2f1\",\"file\":\"src/Repository/UserRepository.php\",\"line\":19,\"category\":\"injection\",\"title\":\"DQL injection in findByName\"}],\"open\":[{\"fp\":\"8388ec77f2f1\",\"file\":\"src/Repository/UserRepository.php\",\"line\":19,\"category\":\"injection\",\"title\":\"DQL injection in findByName\",\"end\":19,\"sev\":\"critical\",\"unit\":\"14c17f496390\",\"ul\":16}]} --\u003e\n"
+  ],
+  "code_quality": [
+    {
+      "description": "DQL injection in findByName",
+      "check_name": "ainspector/security/injection",
+      "fingerprint": "8388ec77f2f1",
+      "severity": "blocker",
+      "categories": [
+        "Security"
+      ],
+      "location": {
+        "path": "src/Repository/UserRepository.php",
+        "lines": {
+          "begin": 19
+        }
+      }
+    }
+  ],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "security",
+        "scope": "function+class+related",
+        "version": "security/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "function",
+            "file": "src/Repository/UserRepository.php",
+            "name": "findByName",
+            "start_line": 16,
+            "end_line": 21,
+            "change_type": "modified",
+            "hash": "14c17f496390",
+            "status": "reviewed",
+            "enclosing": "UserRepository"
+          }
+        ],
+        "already_reviewed": 0,
+        "published": [
+          {
+            "mode": "security",
+            "file": "src/Repository/UserRepository.php",
+            "start_line": 19,
+            "end_line": 19,
+            "severity": "critical",
+            "category": "injection",
+            "title": "DQL injection in findByName",
+            "explanation": "",
+            "remediation": "Bind the value with setParameter() instead of concatenating it.",
+            "scenario": "An attacker submits a name such as ' OR '1'='1 to the search form: the value is concatenated into the DQL query, so they read every user and can extend the query to extract other tables.",
+            "confidence": 0.95,
+            "unit_hash": "14c17f496390",
+            "fingerprint": "8388ec77f2f1"
+          }
+        ],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [
+          {
+            "id": 0,
+            "fingerprint": "8388ec77f2f1",
+            "keep": true,
+            "reason": "The name is concatenated into the query."
+          }
+        ],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 200,
+          "output": 20,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }

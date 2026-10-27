@@ -134,4 +134,6 @@ func (m *Mode) FilterPolicy() findings.Policy {
 	}
 }
 
-func (m *Mode) PublishPolicy() publish.Policy { return publish.Policy{Inline: true, Summary: true} }
+func (m *Mode) PublishPolicy() publish.Policy {
+	return publish.Policy{Inline: true, Summary: true, CodeQuality: true, Artifact: true}
+}
