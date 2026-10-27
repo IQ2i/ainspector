@@ -2,6 +2,7 @@ package parser
 
 import (
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -698,5 +699,79 @@ const arrow = () => {
 	}
 	if !hasAnonymous {
 		t.Log("Note: Anonymous functions may or may not have <anonymous> name depending on tree-sitter query")
+	}
+}
+
+const symfonyController = `<?php
+
+namespace App\Controller;
+
+use App\Entity\Post;
+use App\Repository\PostRepository;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
+
+#[Route('/posts')]
+final class PostController extends AbstractController
+{
+    use LoggerAwareTrait;
+
+    public const PAGE_SIZE = 20;
+
+    private int $counter = 0;
+
+    public function __construct(private readonly PostRepository $posts)
+    {
+        $this->counter = 1;
+    }
+
+    #[Route('/{id}', name: 'post_show')]
+    #[IsGranted('POST_VIEW', 'post')]
+    public function show(Post $post): Response
+    {
+        return $this->render('post/show.html.twig', ['post' => $post]);
+    }
+
+    public function list(): Response
+    {
+        return new Response('list');
+    }
+}
+`
+
+func findFunction(t *testing.T, functions []Function, name string) Function {
+	t.Helper()
+	for _, fn := range functions {
+		if fn.Name == name {
+			return fn
+		}
+	}
+	t.Fatalf("function %q not found", name)
+	return Function{}
+}
+
+func TestParser_ParsePHPAttributes(t *testing.T) {
+	p := NewParser()
+	defer p.Close()
+
+	functions, _, err := p.Parse("PostController.php", []byte(symfonyController))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	show := findFunction(t, functions, "show")
+
+	if show.StartLine != 23 {
+		t.Errorf("expected StartLine 23 (first attribute), got %d", show.StartLine)
+	}
+	if !strings.HasPrefix(show.Content, "#[Route('/{id}', name: 'post_show')]") {
+		t.Errorf("content should start with the Route attribute, got:\n%s", show.Content)
+	}
+	if !strings.Contains(show.Content, "#[IsGranted('POST_VIEW', 'post')]") {
+		t.Errorf("content should include the IsGranted attribute, got:\n%s", show.Content)
+	}
+
+	list := findFunction(t, functions, "list")
+	if strings.Contains(list.Content, "#[") {
+		t.Errorf("method without attribute must not capture neighbours' attributes, got:\n%s", list.Content)
 	}
 }
