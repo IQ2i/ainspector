@@ -3,6 +3,7 @@ package publish
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
@@ -31,10 +32,10 @@ func (i *inline) Publish(ctx context.Context, run Run) error {
 			Path:       f.File,
 			Line:       f.StartLine,
 			Body:       BodyFor(f),
-			Suggestion: f.Suggestion,
+			Suggestion: safeSuggestion(f),
 		}
 		if unit := unitOf(run.Units, f); unit != nil {
-			if f.Suggestion != "" && f.EndLine > f.StartLine {
+			if c.Suggestion != "" && f.EndLine > f.StartLine {
 				if f.EndLine <= unit.EndLine && f.EndLine-f.StartLine < maxSuggestionLines {
 					c.EndLine = f.EndLine
 				} else {
@@ -94,8 +95,19 @@ func unitOf(units []collect.ReviewUnit, f findings.Finding) *collect.ReviewUnit 
 	return nil
 }
 
+// safeSuggestion drops a suggestion that holds an ainspector marker: it is code written by the
+// model, posted as is, and a marker in the comment of the token owner would be taken for its own
+func safeSuggestion(f findings.Finding) string {
+	if strings.Contains(f.Suggestion, "ainspector:") {
+		fmt.Printf("Warning: dropping the suggestion for %s:%d, it holds an ainspector marker\n", f.File, f.StartLine)
+		return ""
+	}
+	return f.Suggestion
+}
+
 func fallbackBody(c provider.ReviewComment) string {
-	body := fmt.Sprintf("**%s:%d**\n\n%s", c.Path, c.Line, c.Body)
+	// The path is the name of a file of the change: it must not forge a marker either
+	body := fmt.Sprintf("**%s:%d**\n\n%s", sanitizeText(c.Path), c.Line, c.Body)
 	if c.Suggestion != "" {
 		body += "\n\n" + provider.Fence("", c.Suggestion)
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/llm/openai"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/publish"
 )
 
 var update = flag.Bool("update", false, "regenerate expected.json of reference merge requests")
@@ -71,6 +72,19 @@ type fakeProvider struct {
 	notes   []string
 	self    string
 	postErr error
+	// reactions are the thumbs of the comments by ID, reactionErr is returned with them
+	reactions   map[string]provider.ReactionCount
+	reactionErr error
+}
+
+func (f *fakeProvider) ListReactions(ctx context.Context, number int, ids []string) (map[string]provider.ReactionCount, error) {
+	got := make(map[string]provider.ReactionCount)
+	for _, id := range ids {
+		if c, ok := f.reactions[id]; ok {
+			got[id] = c
+		}
+	}
+	return got, f.reactionErr
 }
 
 func (f *fakeProvider) GetModifiedFiles(ctx context.Context, number int) ([]provider.ModifiedFile, error) {
@@ -250,8 +264,9 @@ func newHarness(t *testing.T, dir string) *harness {
 
 // keepPostedComments makes the inline comments of the run visible to the next one
 func (h *harness) keepPostedComments() {
-	for _, c := range h.fake.posted {
-		h.fake.comment = append(h.fake.comment, provider.ExistingComment{Author: h.fake.self, Path: c.Path, Line: c.Line, Body: c.Body, Positioned: true})
+	for i, c := range h.fake.posted {
+		id := fmt.Sprintf("inline-%d", i+1)
+		h.fake.comment = append(h.fake.comment, provider.ExistingComment{ID: id, Author: h.fake.self, Path: c.Path, Line: c.Line, Body: c.Body, Positioned: true})
 	}
 }
 
@@ -591,5 +606,323 @@ func readJSON(t *testing.T, path string, v any) {
 	}
 	if err := json.Unmarshal(data, v); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", path, err))
+	}
+}
+
+func TestRun_VendoredAndUnsafeFilesAreNotReviewed(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "mrs", "go-basic")
+	baseline := newHarness(t, dir)
+	if err := Run(context.Background(), baseline.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newHarness(t, dir)
+	main := h.fake.mr.Files[0]
+	for _, path := range []string{"vendor/acme/lib.go", "web/node_modules/x/index.go", "evil\n::error::injected.go"} {
+		extra := main
+		extra.Path = path
+		h.fake.mr.Files = append(h.fake.mr.Files, extra)
+	}
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(h.requests) != len(baseline.requests) {
+		t.Errorf("got %d requests, want %d: only the regular file is reviewed", len(h.requests), len(baseline.requests))
+	}
+}
+
+func TestDropUnsafePaths(t *testing.T) {
+	files := []provider.ModifiedFile{{Path: "a.go"}, {Path: "b\r\n.go"}, {Path: "c.go", OldPath: "d\x1b[2K.go"}}
+	got, n := dropUnsafePaths(files)
+	if len(got) != 1 || got[0].Path != "a.go" || n != 2 {
+		t.Errorf("got %+v, %d dropped", got, n)
+	}
+}
+
+func TestRun_EnvironmentCapBeatsTheConfiguration(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.deps.Config.LLM.MaxTokensPerRun = 1000000
+	h.deps.MaxTokens = 1
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 1 {
+		t.Errorf("the cap of the environment leaves room for one unit only, got %d requests", len(h.requests))
+	}
+
+	h = newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.deps.Config.LLM.MaxTokensPerRun = 1
+	h.deps.MaxTokens = 1000000
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 1 {
+		t.Errorf("a high cap in the environment must not raise the configuration, got %d requests", len(h.requests))
+	}
+}
+
+func TestRun_ConfigurationChangeIsFlagged(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.fake.mr.Files = append(h.fake.mr.Files, h.fake.mr.Files[0])
+	h.fake.mr.Files[len(h.fake.mr.Files)-1].Path = "ainspector.yaml"
+	h.fake.mr.Files[len(h.fake.mr.Files)-1].Patch = "@@ -1 +1 @@\n-rules: []\n+rules: [x]\n"
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 || !strings.Contains(notes[0], "This change modifies ainspector.yaml") {
+		t.Errorf("the summary should flag the configuration change, got %v", notes)
+	}
+}
+
+// captureStdout returns what fn printed on the standard output
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	done := make(chan string)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- string(data)
+	}()
+	defer func() { os.Stdout = old }()
+
+	fn()
+	_ = w.Close()
+	os.Stdout = old
+	return <-done
+}
+
+func TestRun_SecretsNeverReachLogsCommentsOrReports(t *testing.T) {
+	const apiKey = "sk-ant-sentinel-0123456789"
+	const token = "glpat-sentinel-0123456789"
+
+	// An endpoint that rejects the key and echoes it, as some do
+	rejecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, "Incorrect API key provided: "+apiKey+" (token "+token+")")
+	}))
+	defer rejecting.Close()
+
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.deps.Secrets = []string{apiKey, token}
+	h.deps.NewLLM = func() (llm.Client, error) { return openai.New(rejecting.URL, apiKey, "test-model"), nil }
+
+	var runErr error
+	out := captureStdout(t, func() { runErr = Run(context.Background(), h.deps, Options{Number: 1}) })
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	if !strings.Contains(out, "failed") {
+		t.Fatalf("the failed review should be logged, got:\n%s", out)
+	}
+
+	var published []string
+	published = append(published, out)
+	for _, c := range h.fake.posted {
+		published = append(published, c.Body, c.Suggestion)
+	}
+	published = append(published, h.fake.noteBodies()...)
+	for _, name := range []string{"gl-code-quality-report.json", "ainspector-report.json"} {
+		published = append(published, string(h.report(name)))
+	}
+	for _, text := range published {
+		for _, secret := range []string{apiKey, token} {
+			if strings.Contains(text, secret) {
+				t.Errorf("a secret leaked:\n%s", text)
+			}
+		}
+	}
+}
+
+func TestRun_ReactionsToEarlierCommentsAreRecorded(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.fake.posted) == 0 {
+		t.Fatal("the first run should comment")
+	}
+	h.keepPostedComments()
+	h.fake.reactions = map[string]provider.ReactionCount{"inline-1": {Up: 2}, "inline-2": {Down: 1}}
+	h.fake.reactionErr = errors.New("one note could not be read")
+
+	out := captureStdout(t, func() {
+		if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(out, "could not read all the reactions") {
+		t.Errorf("the partial failure should be logged, got:\n%s", out)
+	}
+
+	var doc struct {
+		Modes []struct{ Feedback []publish.Feedback }
+	}
+	if err := json.Unmarshal(h.report("ainspector-report.json"), &doc); err != nil {
+		t.Fatal(err)
+	}
+	fb := doc.Modes[0].Feedback
+	if len(fb) != 2 || fb[0].Up != 2 || fb[1].Down != 1 || fb[0].File == "" || fb[0].Unit == "" {
+		t.Errorf("unexpected feedback %+v", fb)
+	}
+}
+
+func TestRun_NoReactionsAreReadUnderForce(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	h.keepPostedComments()
+	h.fake.reactions = map[string]provider.ReactionCount{"inline-1": {Up: 1}}
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1, Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(h.report("ainspector-report.json")), `"feedback"`) {
+		t.Error("--force does not read the earlier comments")
+	}
+}
+
+// withConfigChange adds a modified ainspector.yaml to the change
+func (h *harness) withConfigChange() {
+	h.fake.mr.Files = append(h.fake.mr.Files, h.fake.mr.Files[0])
+	last := &h.fake.mr.Files[len(h.fake.mr.Files)-1]
+	last.Path, last.OldPath = "ainspector.yaml", ""
+	last.Patch = "@@ -1 +1 @@\n-rules: []\n+rules: [x]\n"
+}
+
+func TestRun_ConfigurationChangeIsNoticedWhenTheRunStopsEarly(t *testing.T) {
+	stops := map[string]func(h *harness){
+		"ignored author": func(h *harness) { h.fake.mr.Change.Author = "Renovate-Bot" },
+		"no mode enabled": func(h *harness) {
+			off := false
+			h.deps.Config.Modes.Quality.Enabled = &off
+		},
+		"nothing left to review": func(h *harness) { h.deps.Config.Ignore.Paths = []string{"**"} },
+	}
+
+	for name, stop := range stops {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+			h.withConfigChange()
+			stop(h)
+
+			for range 2 {
+				if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if len(h.requests) != 0 {
+				t.Error("the run must have stopped before the LLM")
+			}
+			notes := h.fake.noteBodies()
+			if len(notes) != 1 || !strings.Contains(notes[0], publish.NoticeMarker) || !strings.Contains(notes[0], "modifies `ainspector.yaml`") {
+				t.Errorf("expected one notice about the configuration, got %v", notes)
+			}
+		})
+	}
+}
+
+func TestRun_NoNoticeWhenTheConfigurationIsLeftAlone(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+	h.fake.mr.Change.Author = "Renovate-Bot"
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if h.fake.writes != 0 {
+		t.Errorf("nothing should be written, got %v", h.fake.noteBodies())
+	}
+}
+
+func TestRun_NoticeIsNotWrittenInDryRunNorWithoutTheTokenOwner(t *testing.T) {
+	for name, opts := range map[string]struct {
+		dryRun bool
+		self   string
+	}{
+		"dry run":      {dryRun: true, self: "ainspector-bot"},
+		"unknown self": {self: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+			h.withConfigChange()
+			h.fake.mr.Change.Author = "Renovate-Bot"
+			h.fake.self = opts.self
+
+			if err := Run(context.Background(), h.deps, Options{Number: 1, DryRun: opts.dryRun}); err != nil {
+				t.Fatal(err)
+			}
+			if h.fake.writes != 0 {
+				t.Errorf("nothing should be written, got %v", h.fake.noteBodies())
+			}
+		})
+	}
+}
+
+func TestRun_FilesKeptOutOfReviewAreListedInTheSummary(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	main := h.fake.mr.Files[0]
+	for _, path := range []string{"vendor/acme/lib.go", "src/Foo/vendor/x.go", "web/node_modules/x/index.go", "evil\n::error::injected.go"} {
+		extra := main
+		extra.Path = path
+		h.fake.mr.Files = append(h.fake.mr.Files, extra)
+	}
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 {
+		t.Fatalf("expected the summary, got %v", notes)
+	}
+	for _, want := range []string{"src/Foo/vendor/x.go", "web/node_modules/x/index.go", "1 file skipped, the name holds control characters"} {
+		if !strings.Contains(notes[0], want) {
+			t.Errorf("the summary should mention %q:\n%s", want, notes[0])
+		}
+	}
+	if strings.Contains(notes[0], "vendor/acme/lib.go") || strings.Contains(notes[0], "::error::") {
+		t.Errorf("unexpected paths in the summary:\n%s", notes[0])
+	}
+}
+
+func TestRun_ChangeThatOnlyTouchesNestedVendorDirectoriesIsNoticed(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	for i := range h.fake.mr.Files {
+		h.fake.mr.Files[i].Path = "src/Foo/vendor/" + h.fake.mr.Files[i].Path
+	}
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	notes := h.fake.noteBodies()
+	if len(h.requests) != 0 || len(notes) != 1 || !strings.Contains(notes[0], publish.NoticeMarker) || !strings.Contains(notes[0], "src/Foo/vendor/") {
+		t.Errorf("expected a notice naming the hidden files, got %v", notes)
+	}
+}
+
+func TestHiddenNote_CapsTheList(t *testing.T) {
+	var files []provider.ModifiedFile
+	for i := range 25 {
+		files = append(files, provider.ModifiedFile{Path: fmt.Sprintf("a/vendor/f%d.go", i)})
+	}
+	files = append(files, provider.ModifiedFile{Path: "vendor/root.go"}, provider.ModifiedFile{Path: "a/node_modules/gone.js", Status: "deleted"})
+
+	note := hiddenNote(files)
+	if !strings.Contains(note, "(and 5 more)") || strings.Contains(note, "root.go") || strings.Contains(note, "gone.js") {
+		t.Errorf("note = %q", note)
+	}
+	if hiddenNote(files[25:]) != "" {
+		t.Error("the vendor directory of the root and deleted files are not worth a note")
 	}
 }

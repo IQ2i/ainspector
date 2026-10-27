@@ -42,18 +42,13 @@ func (s *summary) Publish(ctx context.Context, run Run) error {
 		return fmt.Errorf("failed to list comments: %w", err)
 	}
 
-	marker := SummaryMarker(run.Mode)
 	var id string
 	var previous *state.StateBlock
-	for _, c := range existing {
-		if c.Positioned || !strings.EqualFold(c.Author, s.self) || !strings.Contains(c.Body, marker) {
-			continue
-		}
+	if c, ok := ownNote(existing, s.self, SummaryMarker(run.Mode)); ok {
 		id = c.ID
 		if b, ok := state.ParseStateBlock(run.Mode, c.Body); ok {
 			previous = &b
 		}
-		break
 	}
 
 	body := SummaryBody(run, previous)
@@ -101,10 +96,13 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 		}
 		sb.WriteString(".\n")
 	}
+	if line := feedbackLine(run.Feedback); line != "" {
+		fmt.Fprintf(&sb, "\n%s\n", line)
+	}
 	u := run.Usage
 	if u.Input+u.Output+u.CacheRead+u.CacheWrite > 0 {
 		fmt.Fprintf(&sb, "\nTokens: %d in, %d out, %d read from cache, %d written to cache\n", u.Input, u.Output, u.CacheRead, u.CacheWrite)
-		fmt.Fprintf(&sb, "Estimated cost: %s\n", formatCost(run.Cost, run.CostIncomplete))
+		fmt.Fprintf(&sb, "Estimated cost: %s\n", FormatCost(run.Cost, run.CostIncomplete))
 	}
 
 	writeList := func(title string, items []string) {
@@ -151,6 +149,24 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 	return sb.String()
 }
 
+// feedbackLine counts the earlier comments that reviewers found useful (more thumbs up than
+// down), not useful (more down than up), or left without a verdict
+func feedbackLine(feedback []Feedback) string {
+	if len(feedback) == 0 {
+		return ""
+	}
+	var useful, useless int
+	for _, f := range feedback {
+		switch {
+		case f.Up > f.Down:
+			useful++
+		case f.Down > f.Up:
+			useless++
+		}
+	}
+	return fmt.Sprintf("Reactions to earlier comments: %d useful, %d not useful, %d without a verdict.", useful, useless, len(feedback)-useful-useless)
+}
+
 func plural(n int, word string) string {
 	if n == 1 {
 		return word
@@ -158,7 +174,8 @@ func plural(n int, word string) string {
 	return word + "s"
 }
 
-func formatCost(cost float64, incomplete bool) string {
+// FormatCost renders an estimated cost, saying when it is incomplete
+func FormatCost(cost float64, incomplete bool) string {
 	switch {
 	case incomplete && cost == 0:
 		return "unknown, the model has no known price"

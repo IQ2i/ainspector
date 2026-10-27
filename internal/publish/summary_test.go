@@ -291,3 +291,17 @@ func TestSummaryBody_KeepsReportedFindingsOfTheSameVersion(t *testing.T) {
 		t.Errorf("findings of another version must be dropped: %+v", block)
 	}
 }
+
+func TestSummaryBody_Feedback(t *testing.T) {
+	run := Run{Mode: "quality", Scope: "function", Version: "quality/3", Feedback: []Feedback{
+		{Up: 2}, {Up: 1, Down: 1}, {Down: 3}, {}, {Up: 1},
+	}}
+
+	body := SummaryBody(run, nil)
+	if want := "Reactions to earlier comments: 2 useful, 1 not useful, 2 without a verdict."; !strings.Contains(body, want) {
+		t.Errorf("expected %q in:\n%s", want, body)
+	}
+	if strings.Contains(SummaryBody(Run{Mode: "quality"}, nil), "Reactions") {
+		t.Error("no line without feedback")
+	}
+}

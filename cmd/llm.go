@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/llm"
@@ -46,4 +47,29 @@ func newLLMClient(cfg config.LLMConfig) (llm.Client, error) {
 	}
 
 	return openai.New(apiURL, apiKey, model), nil
+}
+
+// tokenCapFromEnv reads AINSPECTOR_MAX_TOKENS_PER_RUN, a cap that ainspector.yaml can only lower:
+// the file comes from the change under review. Zero means no cap.
+func tokenCapFromEnv() (int, error) {
+	raw := os.Getenv("AINSPECTOR_MAX_TOKENS_PER_RUN")
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("AINSPECTOR_MAX_TOKENS_PER_RUN must be a positive integer, got %q", raw)
+	}
+	return n, nil
+}
+
+// credentials lists the secrets of the environment, to keep them out of the logs
+func credentials() []string {
+	var secrets []string
+	for _, name := range []string{"ANTHROPIC_API_KEY", "LLM_API_KEY", "GITLAB_TOKEN", "GITHUB_TOKEN"} {
+		if v := os.Getenv(name); v != "" {
+			secrets = append(secrets, v)
+		}
+	}
+	return secrets
 }

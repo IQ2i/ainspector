@@ -57,6 +57,11 @@ type ExistingComment struct {
 	Positioned bool // true for inline comments attached to a line
 }
 
+// ReactionCount tallies the thumbs up and thumbs down given to a comment
+type ReactionCount struct {
+	Up, Down int
+}
+
 // Provider is the interface for git hosting providers (GitHub, GitLab)
 type Provider interface {
 	// GetChangeInfo returns the metadata of the PR/MR
@@ -80,6 +85,10 @@ type Provider interface {
 
 	// CurrentUser returns the login the token acts as
 	CurrentUser(ctx context.Context) (string, error)
+
+	// ListReactions returns the thumbs up and down of the inline comments with these IDs. The
+	// result holds every comment that could be read, the error the ones that could not.
+	ListReactions(ctx context.Context, number int, ids []string) (map[string]ReactionCount, error)
 
 	// ListComments returns inline and general comments of the PR/MR
 	ListComments(ctx context.Context, number int) ([]ExistingComment, error)

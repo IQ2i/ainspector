@@ -33,6 +33,16 @@ type UnitStatus struct {
 	Status string
 }
 
+// Feedback is what reviewers thought of a comment of an earlier run, from its thumbs
+type Feedback struct {
+	File        string `json:"file"`
+	Line        int    `json:"line"`
+	Unit        string `json:"unit,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	Up          int    `json:"up"`
+	Down        int    `json:"down"`
+}
+
 // Run is what a mode produced during one execution
 type Run struct {
 	Mode    string
@@ -71,6 +81,8 @@ type Run struct {
 	// CostIncomplete is set when some calls used a model without a known price
 	CostIncomplete bool
 	Notes          []string
+	// Feedback holds the reactions to the comments of earlier runs
+	Feedback []Feedback
 }
 
 type Publisher interface {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -42,11 +43,13 @@ LLM backend, one of:
     LLM_MODEL       - model name (default: gpt-4o)
 The Anthropic backend is used when ANTHROPIC_API_KEY is set, unless llm.provider says otherwise.
 
+  AINSPECTOR_MAX_TOKENS_PER_RUN - token cap of a run, which ainspector.yaml can only lower
+
 For GitHub Actions:
   GITHUB_TOKEN    - GitHub API token (usually provided automatically)
 
 For GitLab CI:
-  GITLAB_TOKEN    - GitLab API token (or CI_JOB_TOKEN)`,
+  GITLAB_TOKEN    - project access token with the api scope and the Reporter role (CI_JOB_TOKEN is not supported)`,
 	Args: cobra.NoArgs,
 	RunE: runReview,
 }
@@ -91,7 +94,12 @@ func runReview(cmd *cobra.Command, args []string) error {
 	if env.Provider == "github" {
 		p = provider.NewGitHubProvider(env.Owner, env.Repo, env.Token)
 	} else {
-		p = provider.NewGitLabProvider(env.ServerHost, env.Owner, env.Repo, env.Token)
+		p = provider.NewGitLabProvider(env.APIURL, env.Owner, env.Repo, env.Token)
+	}
+
+	maxTokens, err := tokenCapFromEnv()
+	if err != nil {
+		return err
 	}
 
 	projectRoot, err := os.Getwd()
@@ -103,11 +111,14 @@ func runReview(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	return pipeline.Run(ctx, pipeline.Deps{
+	secrets := credentials()
+	err = pipeline.Run(ctx, pipeline.Deps{
 		Provider:    p,
 		NewLLM:      func() (llm.Client, error) { return newLLMClient(cfg.LLM) },
 		Config:      cfg,
 		ProjectRoot: projectRoot,
+		MaxTokens:   maxTokens,
+		Secrets:     secrets,
 		ReportDir:   projectRoot,
 	}, pipeline.Options{
 		Number:      env.PRNumber,
@@ -116,4 +127,8 @@ func runReview(cmd *cobra.Command, args []string) error {
 		Force:       forceReview,
 		DryRun:      dryRun,
 	})
+	if err != nil {
+		return errors.New(llm.Redact(err.Error(), secrets...))
+	}
+	return nil
 }

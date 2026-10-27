@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -15,9 +16,9 @@ type GitLabProvider struct {
 	headSHA   string
 }
 
-// NewGitLabProvider creates a new GitLab provider
-func NewGitLabProvider(host, owner, repo, token string) *GitLabProvider {
-	return newGitLabProvider(fmt.Sprintf("https://%s/api/v4", host), fmt.Sprintf("%s/%s", owner, repo), token)
+// NewGitLabProvider creates a new GitLab provider talking to the REST API at apiURL
+func NewGitLabProvider(apiURL, owner, repo, token string) *GitLabProvider {
+	return newGitLabProvider(apiURL, fmt.Sprintf("%s/%s", owner, repo), token)
 }
 
 func newGitLabProvider(baseURL, projectID, token string) *GitLabProvider {
@@ -280,4 +281,45 @@ func (p *GitLabProvider) ListComments(ctx context.Context, number int) ([]Existi
 	}
 
 	return result, nil
+}
+
+// ListReactions tallies the thumbsup and thumbsdown emoji of merge request notes
+func (p *GitLabProvider) ListReactions(ctx context.Context, number int, ids []string) (map[string]ReactionCount, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("GitLab client not initialized")
+	}
+
+	result := make(map[string]ReactionCount, len(ids))
+	var errs []error
+	for _, id := range ids {
+		noteID, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid note ID %q", id))
+			continue
+		}
+
+		var count ReactionCount
+		opts := &gitlab.ListAwardEmojiOptions{ListOptions: gitlab.ListOptions{PerPage: 100, Page: 1}}
+		for {
+			emojis, resp, err := p.client.AwardEmoji.ListMergeRequestAwardEmojiOnNote(p.projectID, int64(number), noteID, opts, gitlab.WithContext(ctx))
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to list the reactions of note %s: %w", id, err))
+				break
+			}
+			for _, e := range emojis {
+				switch e.Name {
+				case "thumbsup":
+					count.Up++
+				case "thumbsdown":
+					count.Down++
+				}
+			}
+			if resp.NextPage == 0 {
+				result[id] = count
+				break
+			}
+			opts.Page = resp.NextPage
+		}
+	}
+	return result, errors.Join(errs...)
 }

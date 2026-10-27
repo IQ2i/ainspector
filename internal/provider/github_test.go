@@ -263,3 +263,24 @@ func TestGitHub_CurrentUser_OtherErrorIsReported(t *testing.T) {
 		t.Error("expected an error")
 	}
 }
+
+func TestGitHub_ListReactions(t *testing.T) {
+	p := newTestGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/pulls/comments/10/reactions":
+			_, _ = w.Write([]byte(`[{"content":"+1"},{"content":"+1"},{"content":"-1"},{"content":"heart"}]`))
+		case "/repos/owner/repo/pulls/comments/11/reactions":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	got, err := p.ListReactions(context.Background(), 1, []string{"10", "11", "oops"})
+	if err == nil || !strings.Contains(err.Error(), "comment 11") || !strings.Contains(err.Error(), "oops") {
+		t.Errorf("the unreadable comments should be reported, got %v", err)
+	}
+	if len(got) != 1 || got["10"] != (ReactionCount{Up: 2, Down: 1}) {
+		t.Errorf("unexpected counts: %+v", got)
+	}
+}

@@ -48,3 +48,38 @@ func TestNewLLMClient(t *testing.T) {
 		})
 	}
 }
+
+func TestTokenCapFromEnv(t *testing.T) {
+	tests := []struct {
+		value   string
+		want    int
+		wantErr bool
+	}{
+		{"", 0, false},
+		{"150000", 150000, false},
+		{"0", 0, true},
+		{"-5", 0, true},
+		{"lots", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			t.Setenv("AINSPECTOR_MAX_TOKENS_PER_RUN", tt.value)
+			got, err := tokenCapFromEnv()
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Errorf("got %d, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestCredentials(t *testing.T) {
+	for _, k := range []string{"ANTHROPIC_API_KEY", "LLM_API_KEY", "GITLAB_TOKEN", "GITHUB_TOKEN"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("GITLAB_TOKEN", "glpat-abcdefgh")
+	t.Setenv("LLM_API_KEY", "sk-abcdefgh")
+	got := credentials()
+	if len(got) != 2 || got[0] != "sk-abcdefgh" || got[1] != "glpat-abcdefgh" {
+		t.Errorf("got %v", got)
+	}
+}

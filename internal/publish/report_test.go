@@ -389,3 +389,29 @@ func TestSummary_OpenStateRemembersTheStartOfTheUnit(t *testing.T) {
 		t.Error("the summary still lists the findings that were not judged")
 	}
 }
+
+func TestArtifact_RecordsFeedbackOnlyWhenThereIsSome(t *testing.T) {
+	dir := t.TempDir()
+	a := NewArtifact(dir, "report.json", Change{Number: 1})
+	_ = a.Publish(context.Background(), Run{Mode: "quality"})
+	_ = a.Publish(context.Background(), Run{Mode: "security", Feedback: []Feedback{{File: "a.php", Line: 4, Fingerprint: "cccccccccccc", Up: 2, Down: 1}}})
+	if err := a.Write(); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+	var doc struct {
+		Modes []struct {
+			Feedback []Feedback
+		}
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Modes[0].Feedback) != 0 || len(doc.Modes[1].Feedback) != 1 || doc.Modes[1].Feedback[0].Up != 2 {
+		t.Errorf("unexpected document %s", data)
+	}
+	if strings.Count(string(data), `"feedback"`) != 1 {
+		t.Errorf("the key must be left out when there is no feedback, got %s", data)
+	}
+}

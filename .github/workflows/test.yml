@@ -57,6 +57,11 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12
+
       - name: Check formatting
         run: |
           if [ -n "$(gofmt -l .)" ]; then

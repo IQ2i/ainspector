@@ -172,6 +172,11 @@ func (c ContextConfig) Limit() int {
 // configFileNames lists the supported configuration file names in order of priority
 var configFileNames = []string{"ainspector.yaml", "ainspector.yml"}
 
+// IsConfigFile tells whether a path is the configuration file of ainspector
+func IsConfigFile(path string) bool {
+	return slices.Contains(configFileNames, filepath.ToSlash(path))
+}
+
 // Load reads the configuration from ainspector.yaml or ainspector.yml
 // Returns an empty config (not an error) if no config file exists
 func Load() (*Config, error) {
