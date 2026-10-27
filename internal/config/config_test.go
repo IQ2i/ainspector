@@ -399,3 +399,49 @@ func TestShouldIgnoreChange(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_LLMAndContextLimits(t *testing.T) {
+	cfg, err := parse("ainspector.yaml", []byte(`context:
+  max_bytes: 1000
+llm:
+  provider: openai
+  max_tokens_per_run: 5000
+  prices:
+    my-model: {input: 1.5, output: 6}
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Context.Limit() != 1000 || cfg.LLM.TokenBudget() != 5000 || cfg.LLM.Provider != "openai" {
+		t.Errorf("unexpected values: %+v / %+v", cfg.Context, cfg.LLM)
+	}
+	if p := cfg.LLM.Prices["my-model"]; p.Input != 1.5 || p.Output != 6 {
+		t.Errorf("unexpected price %+v", p)
+	}
+}
+
+func TestParse_LLMDefaults(t *testing.T) {
+	cfg, err := parse("ainspector.yaml", []byte(""))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Context.Limit() != DefaultContextMaxBytes || cfg.LLM.TokenBudget() != DefaultMaxTokensPerRun {
+		t.Errorf("unexpected defaults: %d / %d", cfg.Context.Limit(), cfg.LLM.TokenBudget())
+	}
+}
+
+func TestParse_InvalidLLMSettings(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"provider":        "llm:\n  provider: gemini\n",
+		"negative tokens": "llm:\n  max_tokens_per_run: -1\n",
+		"negative bytes":  "context:\n  max_bytes: -1\n",
+		"negative price":  "llm:\n  prices:\n    m: {input: -1}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parse("ainspector.yaml", []byte(yaml)); err == nil {
+				t.Errorf("expected an error for %q", yaml)
+			}
+		})
+	}
+}

@@ -10,7 +10,6 @@ import (
 	"github.com/iq2i/ainspector/internal/ci"
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/llm"
-	"github.com/iq2i/ainspector/internal/llm/openai"
 	"github.com/iq2i/ainspector/internal/pipeline"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/spf13/cobra"
@@ -36,12 +35,12 @@ var reviewCmd = &cobra.Command{
 
 This command automatically detects the CI environment (GitHub Actions or GitLab CI) and posts the review as a comment on the PR/MR.
 
-Required environment variables:
-  LLM_API_KEY     - API key for the LLM service
-
-Optional environment variables:
-  LLM_BASE_URL    - LLM API base URL (default: https://api.openai.com)
-  LLM_MODEL       - LLM model name (default: gpt-4o)
+LLM backend, one of:
+  ANTHROPIC_API_KEY - API key for the Anthropic API (default model: claude-sonnet-5-5)
+  LLM_API_KEY       - API key for an OpenAI-compatible service
+    LLM_BASE_URL    - API base URL (default: https://api.openai.com)
+    LLM_MODEL       - model name (default: gpt-4o)
+The Anthropic backend is used when ANTHROPIC_API_KEY is set, unless llm.provider says otherwise.
 
 For GitHub Actions:
   GITHUB_TOKEN    - GitHub API token (usually provided automatically)
@@ -106,7 +105,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	return pipeline.Run(ctx, pipeline.Deps{
 		Provider:    p,
-		NewLLM:      newLLMClient,
+		NewLLM:      func() (llm.Client, error) { return newLLMClient(cfg.LLM) },
 		Config:      cfg,
 		ProjectRoot: projectRoot,
 	}, pipeline.Options{
@@ -115,23 +114,4 @@ func runReview(cmd *cobra.Command, args []string) error {
 		Force:  forceReview,
 		DryRun: dryRun,
 	})
-}
-
-func newLLMClient() (llm.Client, error) {
-	apiURL := os.Getenv("LLM_BASE_URL")
-	if apiURL == "" {
-		apiURL = "https://api.openai.com"
-	}
-
-	apiKey := os.Getenv("LLM_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("LLM_API_KEY environment variable is required")
-	}
-
-	model := os.Getenv("LLM_MODEL")
-	if model == "" {
-		model = "gpt-4o"
-	}
-
-	return openai.New(apiURL, apiKey, model), nil
 }

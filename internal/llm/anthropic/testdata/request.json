@@ -1,0 +1,53 @@
+{
+  "fallbacks": "default",
+  "max_tokens": 16000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "review this",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "claude-sonnet-5-5",
+  "output_config": {
+    "effort": "medium",
+    "format": {
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "issues"
+        ],
+        "type": "object"
+      },
+      "type": "json_schema"
+    }
+  },
+  "system": [
+    {
+      "cache_control": {
+        "type": "ephemeral"
+      },
+      "text": "stable prefix",
+      "type": "text"
+    },
+    {
+      "text": "language rules",
+      "type": "text"
+    }
+  ],
+  "thinking": {
+    "type": "adaptive"
+  }
+}
