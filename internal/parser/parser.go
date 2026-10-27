@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -30,6 +32,17 @@ type Function struct {
 	StartLine int
 	EndLine   int
 	Content   string
+	Enclosing *ClassRef // nil when not in a class or the language has no enclosing types configured
+}
+
+// ClassRef identifies the class-like declaration (class, enum, trait) enclosing a function
+type ClassRef struct {
+	Name      string
+	Kind      string
+	StartLine int
+	EndLine   int
+	StartByte uint
+	EndByte   uint
 }
 
 // LanguageConfig holds configuration for a specific language
@@ -37,6 +50,16 @@ type LanguageConfig struct {
 	Name          string
 	Language      unsafe.Pointer
 	FunctionQuery string // Tree-sitter query to find functions
+	// EnclosingTypes lists the node types treated as enclosing classes. Empty for
+	// languages without class header support (Go, Rust, C, Bash, and for now the others).
+	EnclosingTypes []string
+	// EnclosingBarriers lists node types that end the search for an enclosing type:
+	// a function nested in one of them (anonymous class, method body) does not belong
+	// to the class declared further up.
+	EnclosingBarriers []string
+	// DocComments makes a function start at its preceding /** ... */ block, where
+	// annotation-style metadata (@Route, @IsGranted) lives.
+	DocComments bool
 }
 
 // languageConfigs maps file extensions to language configurations
@@ -177,6 +200,9 @@ func init() {
 				(function_definition name: (name) @name) @function
 				(method_declaration name: (name) @name) @function
 			`,
+			EnclosingTypes:    []string{"class_declaration", "enum_declaration", "trait_declaration", "interface_declaration"},
+			EnclosingBarriers: []string{"anonymous_class", "compound_statement"},
+			DocComments:       true,
 		},
 		// Ruby
 		".rb": {
@@ -321,7 +347,11 @@ func (p *Parser) Parse(path string, content []byte) ([]Function, string, error) 
 		}
 
 		if fnNode != nil {
-			startLine := int(fnNode.StartPosition().Row) + 1
+			start := fnNode.StartByte()
+			if config.DocComments {
+				start = docStart(fnNode, content)
+			}
+			startLine := bytes.Count(content[:start], []byte("\n")) + 1
 			endLine := int(fnNode.EndPosition().Row) + 1
 			key := fmt.Sprintf("%d:%d", startLine, endLine)
 
@@ -336,11 +366,167 @@ func (p *Parser) Parse(path string, content []byte) ([]Function, string, error) 
 					Name:      nameStr,
 					StartLine: startLine,
 					EndLine:   endLine,
-					Content:   strings.TrimSpace(fnNode.Utf8Text(content)),
+					Content:   strings.TrimSpace(string(content[start:fnNode.EndByte()])),
+					Enclosing: findEnclosing(fnNode, config, content),
 				})
 			}
 		}
 	}
 
 	return functions, config.Name, nil
+}
+
+func findEnclosing(node *tree_sitter.Node, config *LanguageConfig, content []byte) *ClassRef {
+	if len(config.EnclosingTypes) == 0 {
+		return nil
+	}
+	for n := node.Parent(); n != nil; n = n.Parent() {
+		if slices.Contains(config.EnclosingBarriers, n.Kind()) {
+			return nil
+		}
+		if !slices.Contains(config.EnclosingTypes, n.Kind()) {
+			continue
+		}
+		ref := &ClassRef{
+			Kind:      strings.TrimSuffix(n.Kind(), "_declaration"),
+			StartLine: int(n.StartPosition().Row) + 1,
+			EndLine:   int(n.EndPosition().Row) + 1,
+			StartByte: n.StartByte(),
+			EndByte:   n.EndByte(),
+		}
+		if name := n.ChildByFieldName("name"); name != nil {
+			ref.Name = name.Utf8Text(content)
+		}
+		return ref
+	}
+	return nil
+}
+
+// RenderClassHeader renders the context a reviewer needs to judge a method of the
+// given class: namespace and imports, the class declaration with its attributes,
+// properties, constants, traits, enum cases and the constructor. Other methods are
+// replaced by a count.
+func (p *Parser) RenderClassHeader(path string, content []byte, ref *ClassRef) (string, error) {
+	config := GetConfig(path)
+	if config == nil || len(config.EnclosingTypes) == 0 {
+		return "", fmt.Errorf("class header not supported for file: %s", path)
+	}
+	if ref == nil {
+		return "", fmt.Errorf("nil class reference")
+	}
+
+	lang := tree_sitter.NewLanguage(config.Language)
+	if err := p.parser.SetLanguage(lang); err != nil {
+		return "", fmt.Errorf("failed to set language: %w", err)
+	}
+	tree := p.parser.Parse(content, nil)
+	defer tree.Close()
+
+	isTarget := func(n *tree_sitter.Node) bool {
+		return slices.Contains(config.EnclosingTypes, n.Kind()) && n.StartByte() == ref.StartByte && n.EndByte() == ref.EndByte
+	}
+	class := tree.RootNode().NamedDescendantForByteRange(ref.StartByte, ref.EndByte)
+	for class != nil && !isTarget(class) {
+		class = class.Parent()
+	}
+	if class == nil {
+		return "", fmt.Errorf("no enclosing type found at bytes %d-%d", ref.StartByte, ref.EndByte)
+	}
+	body := class.ChildByFieldName("body")
+	if body == nil {
+		return "", fmt.Errorf("enclosing type %s has no body", ref.Name)
+	}
+
+	var members []string
+	for i := uint(0); i < body.NamedChildCount(); i++ {
+		member := body.NamedChild(i)
+		start := docStart(member, content)
+		switch member.Kind() {
+		case "property_declaration", "const_declaration", "use_declaration", "enum_case":
+			members = append(members, indentedText(start, member.EndByte(), content))
+		case "method_declaration":
+			name := member.ChildByFieldName("name")
+			methodBody := member.ChildByFieldName("body")
+			switch {
+			case name != nil && strings.EqualFold(name.Utf8Text(content), "__construct"):
+				members = append(members, indentedText(start, member.EndByte(), content))
+			case methodBody != nil:
+				members = append(members, strings.TrimRight(indentedText(start, methodBody.StartByte(), content), " \t\r\n")+" { ... }")
+			default:
+				members = append(members, indentedText(start, member.EndByte(), content))
+			}
+		}
+	}
+
+	header := string(content[docStart(class, content) : body.StartByte()+1])
+	if len(members) > 0 {
+		header += "\n" + strings.Join(members, "\n\n")
+	}
+	header += "\n}"
+	if prelude := renderPrelude(class, content); prelude != "" {
+		header = prelude + "\n\n" + header
+	}
+	return header, nil
+}
+
+// renderPrelude returns the namespace and import statements preceding the class.
+// A brace-delimited namespace gets a synthesized "namespace X;" line.
+func renderPrelude(class *tree_sitter.Node, content []byte) string {
+	container := class.Parent()
+	if container == nil {
+		return ""
+	}
+
+	var lines []string
+	switch {
+	case container.Kind() == "program":
+	case container.Kind() == "compound_statement" && container.Parent() != nil && container.Parent().Kind() == "namespace_definition":
+		if name := container.Parent().ChildByFieldName("name"); name != nil {
+			lines = append(lines, "namespace "+name.Utf8Text(content)+";")
+		}
+	default:
+		return ""
+	}
+
+	for i := uint(0); i < container.NamedChildCount(); i++ {
+		child := container.NamedChild(i)
+		if child.StartByte() >= class.StartByte() {
+			break
+		}
+		switch child.Kind() {
+		case "namespace_definition":
+			if child.ChildByFieldName("body") == nil {
+				lines = []string{child.Utf8Text(content)}
+			}
+		case "namespace_use_declaration":
+			lines = append(lines, child.Utf8Text(content))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// docStart returns where a declaration begins once its preceding /** ... */ block is
+// included, or the node start when there is none.
+func docStart(node *tree_sitter.Node, content []byte) uint {
+	prev := node.PrevNamedSibling()
+	if prev == nil || prev.Kind() != "comment" || !strings.HasPrefix(prev.Utf8Text(content), "/**") {
+		return node.StartByte()
+	}
+	if len(bytes.TrimSpace(content[prev.EndByte():node.StartByte()])) > 0 {
+		return node.StartByte()
+	}
+	return prev.StartByte()
+}
+
+// indentedText returns content[start:end] extended back to the beginning of its line
+// when only whitespace precedes it, so that the original indentation is preserved.
+func indentedText(start, end uint, content []byte) string {
+	lineStart := start
+	for lineStart > 0 && (content[lineStart-1] == ' ' || content[lineStart-1] == '\t') {
+		lineStart--
+	}
+	if lineStart > 0 && content[lineStart-1] != '\n' {
+		lineStart = start
+	}
+	return string(content[lineStart:end])
 }
