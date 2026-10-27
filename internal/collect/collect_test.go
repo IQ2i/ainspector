@@ -546,11 +546,14 @@ func TestCollect_NoClassHeaderAtFunctionScope(t *testing.T) {
 	}
 }
 
-func TestCollect_RelatedScopeIsNotSupportedYet(t *testing.T) {
-	e := New(&mockProvider{}, nil)
-	defer e.Close()
-	if _, err := e.Collect(context.Background(), Request{Scope: ScopeFunctionClassRelated}); err == nil {
-		t.Error("expected an error")
+func TestCollect_RelatedScopeCollectsLikeClassScope(t *testing.T) {
+	patch := "@@ -17,1 +17,1 @@\n-        return new Response('a');\n+        return new Response('x');"
+	units := collectPHP(t, symfonyController, patch, Request{Scope: ScopeFunctionClassRelated})
+	if len(units) != 1 || units[0].Enclosing == nil {
+		t.Errorf("expected one unit with its class header, got %+v", units)
+	}
+	if units[0].Related != nil {
+		t.Error("related files are attached by the pipeline, not by the collector")
 	}
 }
 
