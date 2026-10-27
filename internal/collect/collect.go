@@ -194,7 +194,7 @@ func (e *Collector) extractFromFile(ctx context.Context, file provider.ModifiedF
 		changeType = "added"
 	}
 
-	if isGenerated(file.Path) && (!parsed || req.Hunks.Orphans) {
+	if config.IsGeneratedPath(file.Path) && (!parsed || req.Hunks.Orphans) {
 		// Generated files never become hunks. A minified script still gets the units of its functions.
 		if !parsed {
 			return nil, nil

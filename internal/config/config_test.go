@@ -200,7 +200,19 @@ func TestShouldIgnore(t *testing.T) {
 				Paths: []string{"node_modules/"},
 			}},
 			path:     "frontend/node_modules/lodash/index.js",
-			expected: false, // node_modules/ only matches at the start
+			expected: true,
+		},
+		{
+			name:     "vendored and generated files are always ignored",
+			config:   Config{},
+			path:     "app/vendor/acme/lib/Foo.php",
+			expected: true,
+		},
+		{
+			name:     "a path merely containing the word is not vendored",
+			config:   Config{},
+			path:     "src/Vendors/Foo.php",
+			expected: false,
 		},
 
 		// Glob patterns
@@ -580,6 +592,18 @@ func TestParse_PublishPathsInvalid(t *testing.T) {
 	} {
 		if _, err := parse("ainspector.yaml", []byte(doc)); err == nil {
 			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestIsGeneratedPath(t *testing.T) {
+	for path, want := range map[string]bool{
+		"pnpm-lock.yaml": true, "front/package-lock.json": true, "composer.lock": true, "symfony.lock": true,
+		"public/build/app.min.js": true, "app.MIN.css": true, "app.js.map": true,
+		"config/services.yaml": false, "src/Lock.php": false, "docs/pnpm-lock.md": false,
+	} {
+		if got := IsGeneratedPath(path); got != want {
+			t.Errorf("IsGeneratedPath(%q) = %v, want %v", path, got, want)
 		}
 	}
 }

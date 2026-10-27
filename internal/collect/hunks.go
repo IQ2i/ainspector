@@ -27,16 +27,6 @@ func hasExtension(path string, extensions []string) bool {
 	return false
 }
 
-// isGenerated recognizes lock files and minified assets: they are produced by tools, and a
-// single dependency bump would otherwise turn them into dozens of units
-func isGenerated(path string) bool {
-	base := strings.ToLower(filepath.Base(path))
-	if base == "pnpm-lock.yaml" || base == "package-lock.json" {
-		return true
-	}
-	return strings.HasSuffix(base, ".lock") || strings.HasSuffix(base, ".min.js") || strings.HasSuffix(base, ".min.css")
-}
-
 func extensionLanguage(path string) string {
 	base := strings.ToLower(filepath.Base(path))
 	if base == ".env" || strings.HasPrefix(base, ".env.") {

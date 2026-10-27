@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/config"
@@ -91,6 +92,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		return fmt.Errorf("failed to get modified files: %w", err)
 	}
 
+	files = dropUnsafePaths(files)
 	fmt.Printf("Found %d modified files\n", len(files))
 
 	collector := collect.New(deps.Provider, cfg)
@@ -474,6 +476,20 @@ func unitsFor(m modes.Mode, units []collect.ReviewUnit) []collect.ReviewUnit {
 		result = append(result, u)
 	}
 	return result
+}
+
+// dropUnsafePaths removes the files whose name holds a control character: printed to the log of
+// the job it would forge lines or workflow commands
+func dropUnsafePaths(files []provider.ModifiedFile) []provider.ModifiedFile {
+	kept := files[:0:0]
+	for _, f := range files {
+		if strings.ContainsFunc(f.Path+f.OldPath, unicode.IsControl) {
+			fmt.Printf("Warning: skipping %q, its name holds control characters\n", f.Path)
+			continue
+		}
+		kept = append(kept, f)
+	}
+	return kept
 }
 
 func changedPaths(files []provider.ModifiedFile) []string {

@@ -718,18 +718,6 @@ func TestCollect_GeneratedFilesAreNotHunks(t *testing.T) {
 	}
 }
 
-func TestIsGenerated(t *testing.T) {
-	for path, want := range map[string]bool{
-		"pnpm-lock.yaml": true, "front/package-lock.json": true, "composer.lock": true, "symfony.lock": true,
-		"public/build/app.min.js": true, "app.MIN.css": true,
-		"config/services.yaml": false, "src/Lock.php": false, "docs/pnpm-lock.md": false,
-	} {
-		if got := isGenerated(path); got != want {
-			t.Errorf("isGenerated(%q) = %v, want %v", path, got, want)
-		}
-	}
-}
-
 func TestHasExtension(t *testing.T) {
 	tests := []struct {
 		path string

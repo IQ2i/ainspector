@@ -2,14 +2,46 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// ShouldIgnore checks if a file path should be ignored based on the configuration
+// IsGeneratedPath recognizes lock files, minified assets and source maps: they are produced by
+// tools, and a single dependency bump would otherwise turn them into dozens of units
+func IsGeneratedPath(path string) bool {
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(path, "\\", "/")))
+	switch base {
+	case "pnpm-lock.yaml", "package-lock.json":
+		return true
+	}
+	for _, suffix := range []string{".lock", ".min.js", ".min.css", ".map"} {
+		if strings.HasSuffix(base, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsVendoredPath recognizes third-party code kept in the repository, at any depth
+func IsVendoredPath(path string) bool {
+	for _, dir := range strings.Split(filepath.ToSlash(path), "/") {
+		if dir == "vendor" || dir == "node_modules" {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldIgnore checks if a file path should be ignored: vendored and generated files always are,
+// the others according to ignore.paths
 func (c *Config) ShouldIgnore(path string) bool {
+	if IsGeneratedPath(path) || IsVendoredPath(path) {
+		return true
+	}
+
 	// Normalize path separators
 	normalizedPath := strings.ReplaceAll(path, "\\", "/")
 

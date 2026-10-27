@@ -593,3 +593,34 @@ func readJSON(t *testing.T, path string, v any) {
 		t.Fatal(fmt.Errorf("%s: %w", path, err))
 	}
 }
+
+func TestRun_VendoredAndUnsafeFilesAreNotReviewed(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "mrs", "go-basic")
+	baseline := newHarness(t, dir)
+	if err := Run(context.Background(), baseline.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newHarness(t, dir)
+	main := h.fake.mr.Files[0]
+	for _, path := range []string{"vendor/acme/lib.go", "web/node_modules/x/index.go", "evil\n::error::injected.go"} {
+		extra := main
+		extra.Path = path
+		h.fake.mr.Files = append(h.fake.mr.Files, extra)
+	}
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(h.requests) != len(baseline.requests) {
+		t.Errorf("got %d requests, want %d: only the regular file is reviewed", len(h.requests), len(baseline.requests))
+	}
+}
+
+func TestDropUnsafePaths(t *testing.T) {
+	files := []provider.ModifiedFile{{Path: "a.go"}, {Path: "b\r\n.go"}, {Path: "c.go", OldPath: "d\x1b[2K.go"}}
+	got := dropUnsafePaths(files)
+	if len(got) != 1 || got[0].Path != "a.go" {
+		t.Errorf("got %+v", got)
+	}
+}
