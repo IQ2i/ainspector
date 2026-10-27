@@ -46,7 +46,7 @@ For GitHub Actions:
   GITHUB_TOKEN    - GitHub API token (usually provided automatically)
 
 For GitLab CI:
-  GITLAB_TOKEN    - GitLab API token (or CI_JOB_TOKEN)`,
+  GITLAB_TOKEN    - project access token with the api scope and the Reporter role (CI_JOB_TOKEN is not supported)`,
 	Args: cobra.NoArgs,
 	RunE: runReview,
 }
@@ -91,7 +91,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 	if env.Provider == "github" {
 		p = provider.NewGitHubProvider(env.Owner, env.Repo, env.Token)
 	} else {
-		p = provider.NewGitLabProvider(env.ServerHost, env.Owner, env.Repo, env.Token)
+		p = provider.NewGitLabProvider(env.APIURL, env.Owner, env.Repo, env.Token)
 	}
 
 	projectRoot, err := os.Getwd()

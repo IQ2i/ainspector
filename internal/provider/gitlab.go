@@ -15,9 +15,9 @@ type GitLabProvider struct {
 	headSHA   string
 }
 
-// NewGitLabProvider creates a new GitLab provider
-func NewGitLabProvider(host, owner, repo, token string) *GitLabProvider {
-	return newGitLabProvider(fmt.Sprintf("https://%s/api/v4", host), fmt.Sprintf("%s/%s", owner, repo), token)
+// NewGitLabProvider creates a new GitLab provider talking to the REST API at apiURL
+func NewGitLabProvider(apiURL, owner, repo, token string) *GitLabProvider {
+	return newGitLabProvider(apiURL, fmt.Sprintf("%s/%s", owner, repo), token)
 }
 
 func newGitLabProvider(baseURL, projectID, token string) *GitLabProvider {

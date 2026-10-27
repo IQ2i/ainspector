@@ -72,7 +72,7 @@ func TestNewGitHubProvider_NoToken(t *testing.T) {
 }
 
 func TestNewGitLabProvider(t *testing.T) {
-	p := NewGitLabProvider("gitlab.com", "owner", "repo", "token")
+	p := NewGitLabProvider("https://gitlab.com/api/v4", "owner", "repo", "token")
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")
@@ -87,7 +87,7 @@ func TestNewGitLabProvider(t *testing.T) {
 }
 
 func TestNewGitLabProvider_NoToken(t *testing.T) {
-	p := NewGitLabProvider("gitlab.com", "owner", "repo", "")
+	p := NewGitLabProvider("https://gitlab.com/api/v4", "owner", "repo", "")
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")
@@ -99,7 +99,7 @@ func TestNewGitLabProvider_NoToken(t *testing.T) {
 }
 
 func TestNewGitLabProvider_SelfHosted(t *testing.T) {
-	p := NewGitLabProvider("gitlab.example.com", "group", "project", "token")
+	p := NewGitLabProvider("https://gitlab.example.com/api/v4", "group", "project", "token")
 
 	if p == nil {
 		t.Fatal("expected non-nil provider")

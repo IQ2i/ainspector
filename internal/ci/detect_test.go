@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func clearCIEnvVars(t *testing.T) func() {
 	envVars := []string{
 		"GITHUB_ACTIONS", "GITHUB_REPOSITORY", "GITHUB_REF", "GITHUB_TOKEN", "GITHUB_EVENT_PATH",
 		"GITLAB_CI", "CI_PROJECT_PATH", "CI_MERGE_REQUEST_IID", "GITLAB_TOKEN", "CI_JOB_TOKEN", "CI_SERVER_HOST",
-		"GITHUB_SHA", "CI_COMMIT_SHA", "GITHUB_EVENT_NAME",
+		"GITHUB_SHA", "CI_COMMIT_SHA", "GITHUB_EVENT_NAME", "CI_API_V4_URL",
 	}
 
 	originalVals := make(map[string]string)
@@ -430,7 +431,7 @@ func TestDetectGitLab_MissingToken(t *testing.T) {
 	}
 }
 
-func TestDetectGitLab_FallbackToJobToken(t *testing.T) {
+func TestDetectGitLab_JobTokenIsNotEnough(t *testing.T) {
 	cleanup := clearCIEnvVars(t)
 	defer cleanup()
 
@@ -442,12 +443,47 @@ func TestDetectGitLab_FallbackToJobToken(t *testing.T) {
 	})
 	defer envCleanup()
 
-	env, err := Detect()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, err := Detect()
+	if err == nil || !strings.Contains(err.Error(), "GITLAB_TOKEN") || !strings.Contains(err.Error(), "Reporter") {
+		t.Fatalf("expected an error explaining how to create GITLAB_TOKEN, got %v", err)
 	}
-	if env.Token != "job-token" {
-		t.Errorf("expected job token fallback, got %s", env.Token)
+}
+
+func TestDetectGitLab_APIURL(t *testing.T) {
+	tests := []struct {
+		name, apiURL, host, want string
+	}{
+		{"from the environment", "http://gitlab.internal:8080/gitlab/api/v4/", "", "http://gitlab.internal:8080/gitlab/api/v4"},
+		{"from the host", "", "gitlab.example.com", "https://gitlab.example.com/api/v4"},
+		{"default", "", "", "https://gitlab.com/api/v4"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := clearCIEnvVars(t)
+			defer cleanup()
+
+			vars := map[string]string{
+				"GITLAB_CI":            "true",
+				"CI_PROJECT_PATH":      "group/project",
+				"CI_MERGE_REQUEST_IID": "123",
+				"GITLAB_TOKEN":         "token",
+			}
+			if tt.apiURL != "" {
+				vars["CI_API_V4_URL"] = tt.apiURL
+			}
+			if tt.host != "" {
+				vars["CI_SERVER_HOST"] = tt.host
+			}
+			defer setEnv(t, vars)()
+
+			env, err := Detect()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if env.APIURL != tt.want {
+				t.Errorf("got %q, want %q", env.APIURL, tt.want)
+			}
+		})
 	}
 }
 

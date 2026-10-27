@@ -17,6 +17,7 @@ type Environment struct {
 	PRNumber   int    // Pull request / Merge request number
 	Token      string // API token
 	ServerHost string // Server host (for self-hosted instances)
+	APIURL     string // Base URL of the GitLab REST API, empty for GitHub
 	CommitSHA  string // Commit checked out by the job
 }
 
@@ -145,13 +146,15 @@ func detectGitLab() (*Environment, error) {
 		serverHost = "gitlab.com"
 	}
 
-	// Get token (prefer GITLAB_TOKEN, fallback to CI_JOB_TOKEN)
+	// CI_JOB_TOKEN cannot do the job: GitLab does not let it write merge request notes
 	token := os.Getenv("GITLAB_TOKEN")
 	if token == "" {
-		token = os.Getenv("CI_JOB_TOKEN")
+		return nil, fmt.Errorf("GITLAB_TOKEN not set: create a project access token with the api scope and the Reporter role, and expose it to the job as a masked CI/CD variable named GITLAB_TOKEN (CI_JOB_TOKEN is not supported)")
 	}
-	if token == "" {
-		return nil, fmt.Errorf("GITLAB_TOKEN or CI_JOB_TOKEN not set")
+
+	apiURL := strings.TrimRight(os.Getenv("CI_API_V4_URL"), "/")
+	if apiURL == "" {
+		apiURL = fmt.Sprintf("https://%s/api/v4", serverHost)
 	}
 
 	return &Environment{
@@ -161,6 +164,7 @@ func detectGitLab() (*Environment, error) {
 		PRNumber:   mrNumber,
 		Token:      token,
 		ServerHost: serverHost,
+		APIURL:     apiURL,
 		CommitSHA:  os.Getenv("CI_COMMIT_SHA"),
 	}, nil
 }
