@@ -295,3 +295,36 @@ func TestParsePatch_InvalidPatch(t *testing.T) {
 		t.Error("expected non-nil result")
 	}
 }
+
+func TestHasDeletionInRange(t *testing.T) {
+	patch := "@@ -10,6 +10,5 @@ class A\n     #[Route('/x')]\n-    #[IsGranted('ROLE_ADMIN')]\n     public function show()\n     {\n-        $this->check();\n         return 1;\n     }\n"
+	m, err := ParsePatch(patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(m.Added) != 0 {
+		t.Errorf("Added = %v, want none", m.Added)
+	}
+	if want := []int{11, 13}; len(m.DeletedAt) != 2 || m.DeletedAt[0] != want[0] || m.DeletedAt[1] != want[1] {
+		t.Errorf("DeletedAt = %v, want %v", m.DeletedAt, want)
+	}
+
+	tests := []struct {
+		name       string
+		start, end int
+		want       bool
+	}{
+		{"method including its attributes", 10, 15, true},
+		{"deletion at the end of the body", 12, 15, true},
+		{"range after the deletions", 14, 20, false},
+		{"range before the deletions", 1, 9, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := m.HasDeletionInRange(tt.start, tt.end); got != tt.want {
+				t.Errorf("HasDeletionInRange(%d, %d) = %v, want %v", tt.start, tt.end, got, tt.want)
+			}
+		})
+	}
+}
