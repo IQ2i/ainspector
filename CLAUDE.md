@@ -22,10 +22,10 @@ make lint     # Lint code
 - `internal/diff/` - Parse unified diffs
 - `internal/parser/` - Tree-sitter function extraction
 - `internal/collect/` - Build review units from modified files, project context
-- `internal/llm/` - `Client` interface; `llm/openai/` is the OpenAI-compatible backend
+- `internal/llm/` - `Client` interface, `WithBudget` (token cap, usage, cost); `llm/anthropic/` is the Anthropic backend, `llm/openai/` the OpenAI-compatible one
 - `internal/modes/` - Review modes (`modes/quality/` holds the prompts)
 - `internal/findings/` - Findings reported by modes
-- `internal/publish/` - Publish findings (inline comments)
+- `internal/publish/` - Publish findings (inline comments) and the summary comment of each mode
 - `internal/state/` - Unit hashes and markers used to skip reviewed units
 - `internal/pipeline/` - `Run` orchestrates a whole review
 
@@ -42,6 +42,11 @@ ignore:
   authors: [renovate-bot]
   title_patterns: ["^\\[skip-review\\]"]
   labels: [no-ai-review]
+context:
+  max_bytes: 32768
+llm:
+  provider: anthropic
+  max_tokens_per_run: 400000
 modes:
   quality:
     enabled: true
@@ -51,10 +56,11 @@ modes:
 
 ## Environment Variables
 
-**Required:**
-- `LLM_API_KEY` - API key for LLM
+**Required, one of:**
+- `ANTHROPIC_API_KEY` - API key for the Anthropic API (default model `claude-sonnet-5-5`), used when set
+- `LLM_API_KEY` - API key for an OpenAI-compatible LLM
 
-**Optional:**
+**Optional (OpenAI-compatible backend):**
 - `LLM_BASE_URL` - Default: `https://api.openai.com`
 - `LLM_MODEL` - Default: `gpt-4o`
 

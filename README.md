@@ -9,8 +9,10 @@ ainspector automatically analyzes your PRs/MRs, extracts modified functions usin
 - Automatic CI environment detection (GitHub Actions, GitLab CI)
 - Function-level analysis using tree-sitter parsing
 - Reviews only the changed code, not the entire file
-- Compatible with any OpenAI-compatible API (OpenAI, Anthropic, Ollama, etc.)
-- Smart caching: skips already reviewed functions across commits
+- Native Anthropic API support (prompt caching, structured outputs) and compatibility with any OpenAI-compatible API (OpenAI, Ollama, etc.)
+- Smart caching: skips already reviewed functions across commits, even those without any issue
+- One summary comment per review mode, kept up to date, with token usage and estimated cost
+- Token budget per run, so that a large merge request cannot run up the bill
 - Project context generation from documentation files (CLAUDE.md, README.md, etc.)
 - Custom review rules enforcement
 - Configurable context files and exclusion patterns
@@ -103,7 +105,9 @@ Options:
 
 ### Smart Caching
 
-ainspector automatically tracks which functions have been reviewed by embedding a hash marker in review comments. On subsequent runs, it skips functions that haven't changed since the last review, saving API costs and review time.
+ainspector automatically tracks which functions have been reviewed by embedding a hash marker in review comments. Functions with no issue leave no inline comment, so their hashes are stored in the summary comment. On subsequent runs, it skips functions that haven't changed since the last review, saving API costs and review time.
+
+The hash also covers the version of the review prompt and the project rules: changing either one reviews the functions again.
 
 To force a complete re-review (useful after updating review rules or context):
 ```bash
@@ -112,13 +116,18 @@ To force a complete re-review (useful after updating review rules or context):
 
 ## LLM Configuration
 
-ainspector works with any OpenAI-compatible API. Configure it using environment variables:
+ainspector calls the Anthropic API directly, or any OpenAI-compatible API. The Anthropic backend is used when `ANTHROPIC_API_KEY` is set, unless `llm.provider` says otherwise.
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `LLM_API_KEY` | Yes | - | API key for the LLM service |
-| `LLM_BASE_URL` | No | `https://api.openai.com` | Base URL of the API |
-| `LLM_MODEL` | No | `gpt-4o` | Model name to use |
+| Variable | Backend | Required | Default | Description |
+|----------|---------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic | Yes | - | API key for the Anthropic API (the model defaults to `claude-sonnet-5-5`) |
+| `LLM_API_KEY` | OpenAI-compatible | Yes | - | API key for the LLM service |
+| `LLM_BASE_URL` | OpenAI-compatible | No | `https://api.openai.com` | Base URL of the API |
+| `LLM_MODEL` | OpenAI-compatible | No | `gpt-4o` | Model name to use |
+
+With the Anthropic backend, the stable part of the prompt (instructions, project context and project rules) is cached, so that the functions of a merge request after the first one read it at a fraction of the price. With an OpenAI-compatible backend, ainspector asks for a JSON reply conforming to a schema and falls back to a less strict mode when the endpoint rejects it.
+
+Each run stops sending requests once `llm.max_tokens_per_run` tokens were consumed (400000 by default; tokens read from the cache do not count). The functions left unreviewed are listed in the summary and reviewed by the next run. The summary also gives the tokens used and an estimated cost, for the models whose price is known (`claude-sonnet-5-5` and `claude-opus-5-5`, others through `llm.prices`).
 
 ## Configuration File
 
@@ -150,10 +159,20 @@ context:
     - docs/**.md
     - "*.config.js"
 
+  # Maximum size of the project context, in bytes (default: 32768)
+  max_bytes: 32768
+
   # Files to exclude (takes priority over include)
   exclude:
     - docs/archive/**
     - "**/*.draft.md"
+
+# LLM backend and limits
+llm:
+  provider: anthropic          # anthropic or openai (default: anthropic when ANTHROPIC_API_KEY is set)
+  max_tokens_per_run: 400000
+  prices:                      # USD per million tokens, for models without a built-in price
+    my-model: {input: 1.0, output: 4.0}
 
 # Settings of the quality mode
 modes:
@@ -184,6 +203,10 @@ rules:
 
 **context.exclude** - Files to exclude from project context (overrides include patterns).
 
+**context.max_bytes** - Size cap of the project context (default `32768`). Files are added in order until the cap is reached: the one that crosses it is truncated, the following ones are left out, and the summary says so.
+
+**llm** - `provider` (`anthropic` or `openai`), `max_tokens_per_run` and `prices`, see [LLM Configuration](#llm-configuration).
+
 **rules** - Custom project-specific review rules. These rules are enforced by the AI reviewer and any violations will be explicitly reported in the code review comments.
 
 ## How It Works
@@ -201,7 +224,11 @@ Before reviewing code, ainspector generates project context to help the AI under
 
 2. **Custom Context Files**: Files specified in `context.include` in your `ainspector.yaml`
 
-The AI analyzes these files to understand your project's architecture, coding conventions, and requirements before reviewing your code.
+These files are given as they are to the AI, within the `context.max_bytes` limit, so that it knows your project's architecture, coding conventions, and requirements before reviewing your code. Without `context.include`, the dependency manifests (`go.mod`, `package.json`, `composer.json`...) are given too, after the documentation files.
+
+### Review Summary
+
+After each review, ainspector posts one summary comment per mode and updates it on the next runs instead of adding another one. It tells how many functions were reviewed and how many issues were reported, the tokens used, the estimated cost, the functions that could not be reviewed (token budget reached, failed requests) and what was left out of the project context. It also carries the hidden state that lets later runs skip the functions already reviewed. Only a summary written by the account of the token is trusted.
 
 ### Language-Specific Review Guidelines
 
