@@ -44,11 +44,22 @@ type Response struct {
 	Usage     Usage
 	Model     string
 	Truncated bool
+	// Attempts details what each model consumed when more than one served the request, for
+	// example after a server-side fallback. Empty means Model consumed Usage alone.
+	Attempts []Attempt
+}
+
+// Attempt is the usage of one model during a request
+type Attempt struct {
+	Model string
+	Usage Usage
 }
 
 // Client sends completion requests to an LLM backend.
 type Client interface {
 	// Complete returns an error if the backend fails; with a Schema it returns valid JSON or an error.
+	// When the backend answered but the reply was unusable, the Response still carries the Usage
+	// and Model: the tokens were billed.
 	Complete(ctx context.Context, req Request) (Response, error)
 	Backend() string
 }

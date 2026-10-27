@@ -152,9 +152,7 @@ func TestGenerateProjectContext_WithFiles(t *testing.T) {
 	// Mock LLM server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := openai.ChatResponse{
-			Choices: []struct {
-				Message openai.ChatMessage `json:"message"`
-			}{
+			Choices: []openai.Choice{
 				{Message: openai.ChatMessage{
 					Role:    "assistant",
 					Content: "A React web application using modern JavaScript",
@@ -320,9 +318,7 @@ func TestGenerateProjectContext_BackwardCompatibility(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		llmCalled = true
 		resp := openai.ChatResponse{
-			Choices: []struct {
-				Message openai.ChatMessage `json:"message"`
-			}{
+			Choices: []openai.Choice{
 				{Message: openai.ChatMessage{
 					Role:    "assistant",
 					Content: "A test project",

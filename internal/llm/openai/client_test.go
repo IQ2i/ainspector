@@ -73,9 +73,7 @@ func TestClient_Complete_Success(t *testing.T) {
 
 		// Send response
 		resp := ChatResponse{
-			Choices: []struct {
-				Message ChatMessage `json:"message"`
-			}{
+			Choices: []Choice{
 				{Message: ChatMessage{Role: "assistant", Content: "Hello, world!"}},
 			},
 		}
@@ -107,9 +105,7 @@ func TestClient_Complete_NoApiKey(t *testing.T) {
 		}
 
 		resp := ChatResponse{
-			Choices: []struct {
-				Message ChatMessage `json:"message"`
-			}{
+			Choices: []Choice{
 				{Message: ChatMessage{Role: "assistant", Content: "response"}},
 			},
 		}
@@ -175,9 +171,7 @@ func TestClient_Complete_ErrorInResponse(t *testing.T) {
 func TestClient_Complete_NoChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := ChatResponse{
-			Choices: []struct {
-				Message ChatMessage `json:"message"`
-			}{},
+			Choices: []Choice{},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -220,9 +214,7 @@ func TestClient_Complete_ContextCanceled(t *testing.T) {
 		// Simulate slow response
 		time.Sleep(100 * time.Millisecond)
 		resp := ChatResponse{
-			Choices: []struct {
-				Message ChatMessage `json:"message"`
-			}{
+			Choices: []Choice{
 				{Message: ChatMessage{Role: "assistant", Content: "response"}},
 			},
 		}
@@ -270,9 +262,7 @@ func TestClient_Complete_MultipleMessages(t *testing.T) {
 		receivedMessages = req.Messages
 
 		resp := ChatResponse{
-			Choices: []struct {
-				Message ChatMessage `json:"message"`
-			}{
+			Choices: []Choice{
 				{Message: ChatMessage{Role: "assistant", Content: "response"}},
 			},
 		}
