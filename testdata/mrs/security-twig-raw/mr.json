@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "path": "templates/account/show.html.twig",
+      "status": "modified",
+      "patch": "@@ -5,6 +5,6 @@\n {% block body %}\n     <h1>{{ account.name }}</h1>\n     <p class=\"meta\">Opened on {{ account.createdAt|date('Y-m-d') }}</p>\n-    <div class=\"bio\">{{ account.bio }}</div>\n+    <div class=\"bio\">{{ account.bio|raw }}</div>\n     <a href=\"{{ path('account_index') }}\">Back</a>\n {% endblock %}"
+    }
+  ]
+}

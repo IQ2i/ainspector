@@ -1,0 +1,4 @@
+{
+  "show": "{\"findings\": []}",
+  "findByName": "{\"findings\": [{\"line\": 20, \"end_line\": 20, \"severity\": \"low\", \"category\": \"other\", \"title\": \"Parameter could be validated\", \"scenario\": \"Maybe an attacker sends an unusual string, but the query is bound.\", \"remediation\": \"Validate the length of the name.\", \"confidence\": 0.3, \"suggestion\": \"\"}]}"
+}

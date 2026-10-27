@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -204,5 +205,108 @@ func TestChangedPaths(t *testing.T) {
 	got := changedPaths([]provider.ModifiedFile{{Path: "a"}, {Path: "b"}})
 	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
 		t.Errorf("got %v", got)
+	}
+}
+
+func securityHarness(t *testing.T, name string) *harness {
+	t.Helper()
+	return newHarness(t, filepath.Join("..", "..", "testdata", "mrs", name))
+}
+
+func TestRun_SecurityOverflowIsListedInTheSummary(t *testing.T) {
+	h := securityHarness(t, "security-removed-isgranted")
+	h.deps.Config.Modes.Security.MaxFindings = 1
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(h.fake.posted) != 1 || !strings.Contains(h.fake.posted[0].Body, "edit() lost its #[IsGranted] check") {
+		t.Fatalf("only the most severe finding is commented, got %+v", h.fake.posted)
+	}
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 || !strings.Contains(notes[0], "Not commented, only the 1 most severe findings are published:\n- src/Controller/AccountController.php:11 [high] Class-level") {
+		t.Errorf("the summary must list the finding left out:\n%v", notes)
+	}
+}
+
+func TestRun_SecurityFilterFailureIsReportedAndKeepsFindings(t *testing.T) {
+	h := securityHarness(t, "security-idor")
+	h.responses[falsePositiveKey] = "this is not a verdict"
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatalf("a failing filter must not fail the run: %v", err)
+	}
+
+	if len(h.fake.posted) != 1 {
+		t.Errorf("the finding must be kept, got %d comments", len(h.fake.posted))
+	}
+	if notes := h.fake.noteBodies(); len(notes) != 1 || !strings.Contains(notes[0], "The false positive filter failed") {
+		t.Errorf("the summary must say the filter did not run:\n%v", notes)
+	}
+}
+
+func TestRun_SecurityDiscardsWhatTheFilterRejects(t *testing.T) {
+	h := securityHarness(t, "security-idor")
+	h.responses[falsePositiveKey] = `{"verdicts":[{"id":0,"keep":false,"reason":"the route is protected by a firewall"}]}`
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(h.fake.posted) != 0 {
+		t.Errorf("a discarded finding must not be commented, got %+v", h.fake.posted)
+	}
+	if notes := h.fake.noteBodies(); len(notes) != 1 || !strings.Contains(notes[0], "1 finding discarded as false positive") {
+		t.Errorf("the summary must count what was discarded:\n%v", notes)
+	}
+}
+
+func TestRun_SecuritySecondRunReviewsNothing(t *testing.T) {
+	h := securityHarness(t, "security-removed-isgranted")
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.fake.posted) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(h.fake.posted))
+	}
+
+	h.keepPostedComments()
+	h.fake.posted = nil
+	h.requests = nil
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 0 || len(h.fake.posted) != 0 {
+		t.Errorf("second run should do nothing, got %d requests and %d comments", len(h.requests), len(h.fake.posted))
+	}
+}
+
+func TestRun_QualityAndSecurityShareTheUnits(t *testing.T) {
+	h := securityHarness(t, "security-dql")
+	h.deps.Config.Modes.Quality.Enabled = nil
+	// one reply that both modes can read: each ignores the field of the other
+	h.responses["findByName"] = `{"issues": [], "findings": []}`
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1, Modes: []string{"quality", "security"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var quality, security int
+	for _, r := range h.requests {
+		switch {
+		case strings.Contains(string(r), "application security engineer"):
+			security++
+		case strings.Contains(string(r), "expert code reviewer"):
+			quality++
+		}
+	}
+	if len(h.requests) != 2 || quality != 1 || security != 1 {
+		t.Errorf("each mode reviews the unit once with its own prompt, got %d requests (%d quality, %d security)", len(h.requests), quality, security)
+	}
+	if notes := h.fake.noteBodies(); len(notes) != 2 || !strings.Contains(notes[0], "ainspector:summary:quality") || !strings.Contains(notes[1], "ainspector:summary:security") {
+		t.Errorf("each mode keeps its own summary:\n%v", notes)
 	}
 }

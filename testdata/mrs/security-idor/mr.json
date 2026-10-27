@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "path": "src/Controller/AccountController.php",
+      "status": "modified",
+      "patch": "@@ -22,4 +22,10 @@\n     {\n         return $this->render('account/index.html.twig', ['accounts' => $this->accounts->findBy(['owner' => $this->getUser()])]);\n     }\n+\n+    #[Route('/{id}', name: 'account_show')]\n+    public function show(#[MapEntity] Account $account): Response\n+    {\n+        return $this->render('account/show.html.twig', ['account' => $account]);\n+    }\n }"
+    }
+  ]
+}

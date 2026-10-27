@@ -1,0 +1,4 @@
+{
+  "findByName": "{\"findings\": [{\"line\": 19, \"end_line\": 19, \"severity\": \"critical\", \"category\": \"injection\", \"title\": \"DQL injection in findByName\", \"scenario\": \"An attacker submits a name such as ' OR '1'='1 to the search form: the value is concatenated into the DQL query, so they read every user and can extend the query to extract other tables.\", \"remediation\": \"Bind the value with setParameter() instead of concatenating it.\", \"confidence\": 0.95, \"suggestion\": \"            ->createQuery('SELECT u FROM App\\\\Entity\\\\User u WHERE u.name = :name')\"}]}",
+  "__false_positive__": "{\"verdicts\": [{\"id\": 0, \"keep\": true, \"reason\": \"The name is concatenated into the query.\"}]}"
+}

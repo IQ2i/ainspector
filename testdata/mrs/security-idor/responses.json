@@ -1,0 +1,5 @@
+{
+  "show": "{\"findings\": [{\"line\": 29, \"end_line\": 29, \"severity\": \"high\", \"category\": \"idor\", \"title\": \"Any user can read any account\", \"scenario\": \"An authenticated user requests /accounts/42 for an account owned by someone else: #[MapEntity] loads it from the id and nothing checks that the current user owns it, so the page discloses the account of another customer.\", \"remediation\": \"Deny access unless the current user may view the account, with a voter: #[IsGranted('ACCOUNT_VIEW', 'account')] on the action.\", \"confidence\": 0.9, \"suggestion\": \"\"}]}",
+  "index": "{\"findings\": []}",
+  "__false_positive__": "{\"verdicts\": [{\"id\": 0, \"keep\": true, \"reason\": \"The account is loaded from the route and never compared to the current user.\"}]}"
+}

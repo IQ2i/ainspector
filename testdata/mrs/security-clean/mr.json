@@ -1,0 +1,14 @@
+{
+  "files": [
+    {
+      "path": "src/Controller/ProfileController.php",
+      "status": "modified",
+      "patch": "@@ -11,4 +11,10 @@\n #[IsGranted('ROLE_USER')]\n class ProfileController extends AbstractController\n {\n+    #[Route('/{id}', name: 'profile_show')]\n+    #[IsGranted('PROFILE_VIEW', 'profile')]\n+    public function show(Profile $profile): Response\n+    {\n+        return $this->render('profile/show.html.twig', ['profile' => $profile]);\n+    }\n }"
+    },
+    {
+      "path": "src/Repository/UserRepository.php",
+      "status": "modified",
+      "patch": "@@ -16,7 +16,7 @@\n     public function findByName(string $name): array\n     {\n         return $this->getEntityManager()\n-            ->createQuery('SELECT u FROM App\\Entity\\User u WHERE u.name LIKE :name')\n+            ->createQuery('SELECT u FROM App\\Entity\\User u WHERE u.name = :name')\n             ->setParameter('name', $name)\n             ->getResult();\n     }"
+    }
+  ]
+}

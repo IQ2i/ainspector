@@ -1,0 +1,6 @@
+{
+  "edit": "{\"findings\": [{\"line\": 21, \"end_line\": 21, \"severity\": \"critical\", \"category\": \"access-control\", \"title\": \"edit() lost its #[IsGranted] check\", \"scenario\": \"The merge request removes #[IsGranted('ACCOUNT_EDIT', 'account')]: any visitor can now open /accounts/{id}/edit for any account and modify it.\", \"remediation\": \"Restore #[IsGranted('ACCOUNT_EDIT', 'account')] on the action.\", \"confidence\": 0.95, \"suggestion\": \"\"}]}",
+  "src/Controller/AccountController.php": "{\"findings\": [{\"line\": 11, \"end_line\": 11, \"severity\": \"high\", \"category\": \"access-control\", \"title\": \"Class-level #[IsGranted('ROLE_USER')] removed\", \"scenario\": \"Removing the class attribute leaves every action of the controller reachable without authentication unless it carries its own check: an anonymous visitor can call the actions that have none.\", \"remediation\": \"Restore #[IsGranted('ROLE_USER')] on the class.\", \"confidence\": 0.9, \"suggestion\": \"\"}]}",
+  "show": "{\"findings\": []}",
+  "__false_positive__": "{\"verdicts\": [{\"id\": 0, \"keep\": true, \"reason\": \"The check was removed from the action.\"}, {\"id\": 1, \"keep\": true, \"reason\": \"The class attribute was removed.\"}]}"
+}
