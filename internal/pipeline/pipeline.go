@@ -137,6 +137,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	}
 
 	var index *state.Index
+	var feedback map[string][]publish.Feedback
 	if opts.Force {
 		fmt.Println("Force flag set - reviewing all modified units")
 	} else {
@@ -149,6 +150,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 				fmt.Println("Warning: trusting every existing comment")
 			}
 			index = state.LoadIndex(existing, self)
+			feedback = collectFeedback(ctx, deps.Provider, opts.Number, existing, self)
 		}
 	}
 
@@ -173,7 +175,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 		if len(toReview) == 0 {
 			fmt.Printf("Nothing left to review for %s\n", mode.Name())
-			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(configNotes)}
+			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(configNotes), Feedback: feedback[mode.Name()]}
 			if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
 				errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 			}
@@ -202,6 +204,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		run := newRun(mode, toReview, results, outcome, budget.Totals().Sub(before), projectContext)
 		run.Carried = carried
 		run.AlreadyReviewed = alreadyReviewed
+		run.Feedback = feedback[mode.Name()]
 		run.Notes = append(slices.Clone(configNotes), run.Notes...)
 
 		fmt.Printf("Found %d issues (out of %d units reviewed)\n", len(run.Published), len(run.Reviewed))

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -286,4 +287,42 @@ func (p *GitHubProvider) ListComments(ctx context.Context, number int) ([]Existi
 	}
 
 	return result, nil
+}
+
+// ListReactions tallies the +1 and -1 reactions of review comments
+func (p *GitHubProvider) ListReactions(ctx context.Context, number int, ids []string) (map[string]ReactionCount, error) {
+	result := make(map[string]ReactionCount, len(ids))
+	var errs []error
+	for _, id := range ids {
+		commentID, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid comment ID %q", id))
+			continue
+		}
+
+		var count ReactionCount
+		opts := &github.ListOptions{PerPage: 100}
+		for {
+			reactions, resp, err := p.client.Reactions.ListPullRequestCommentReactions(ctx, p.owner, p.repo, commentID, opts)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to list the reactions of comment %s: %w", id, err))
+				count = ReactionCount{}
+				break
+			}
+			for _, r := range reactions {
+				switch r.GetContent() {
+				case "+1":
+					count.Up++
+				case "-1":
+					count.Down++
+				}
+			}
+			if resp.NextPage == 0 {
+				result[id] = count
+				break
+			}
+			opts.Page = resp.NextPage
+		}
+	}
+	return result, errors.Join(errs...)
 }

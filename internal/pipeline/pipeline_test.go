@@ -22,6 +22,7 @@ import (
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/llm/openai"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/publish"
 )
 
 var update = flag.Bool("update", false, "regenerate expected.json of reference merge requests")
@@ -71,6 +72,19 @@ type fakeProvider struct {
 	notes   []string
 	self    string
 	postErr error
+	// reactions are the thumbs of the comments by ID, reactionErr is returned with them
+	reactions   map[string]provider.ReactionCount
+	reactionErr error
+}
+
+func (f *fakeProvider) ListReactions(ctx context.Context, number int, ids []string) (map[string]provider.ReactionCount, error) {
+	got := make(map[string]provider.ReactionCount)
+	for _, id := range ids {
+		if c, ok := f.reactions[id]; ok {
+			got[id] = c
+		}
+	}
+	return got, f.reactionErr
 }
 
 func (f *fakeProvider) GetModifiedFiles(ctx context.Context, number int) ([]provider.ModifiedFile, error) {
@@ -250,8 +264,9 @@ func newHarness(t *testing.T, dir string) *harness {
 
 // keepPostedComments makes the inline comments of the run visible to the next one
 func (h *harness) keepPostedComments() {
-	for _, c := range h.fake.posted {
-		h.fake.comment = append(h.fake.comment, provider.ExistingComment{Author: h.fake.self, Path: c.Path, Line: c.Line, Body: c.Body, Positioned: true})
+	for i, c := range h.fake.posted {
+		id := fmt.Sprintf("inline-%d", i+1)
+		h.fake.comment = append(h.fake.comment, provider.ExistingComment{ID: id, Author: h.fake.self, Path: c.Path, Line: c.Line, Body: c.Body, Positioned: true})
 	}
 }
 
@@ -724,5 +739,54 @@ func TestRun_SecretsNeverReachLogsCommentsOrReports(t *testing.T) {
 				t.Errorf("a secret leaked:\n%s", text)
 			}
 		}
+	}
+}
+
+func TestRun_ReactionsToEarlierCommentsAreRecorded(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.fake.posted) == 0 {
+		t.Fatal("the first run should comment")
+	}
+	h.keepPostedComments()
+	h.fake.reactions = map[string]provider.ReactionCount{"inline-1": {Up: 2}, "inline-2": {Down: 1}}
+	h.fake.reactionErr = errors.New("one note could not be read")
+
+	out := captureStdout(t, func() {
+		if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(out, "could not read all the reactions") {
+		t.Errorf("the partial failure should be logged, got:\n%s", out)
+	}
+
+	var doc struct {
+		Modes []struct{ Feedback []publish.Feedback }
+	}
+	if err := json.Unmarshal(h.report("ainspector-report.json"), &doc); err != nil {
+		t.Fatal(err)
+	}
+	fb := doc.Modes[0].Feedback
+	if len(fb) != 2 || fb[0].Up != 2 || fb[1].Down != 1 || fb[0].File == "" || fb[0].Unit == "" {
+		t.Errorf("unexpected feedback %+v", fb)
+	}
+}
+
+func TestRun_NoReactionsAreReadUnderForce(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	h.keepPostedComments()
+	h.fake.reactions = map[string]provider.ReactionCount{"inline-1": {Up: 1}}
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1, Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(h.report("ainspector-report.json")), `"feedback"`) {
+		t.Error("--force does not read the earlier comments")
 	}
 }

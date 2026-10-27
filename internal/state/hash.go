@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/provider"
 )
 
 const (
@@ -102,4 +103,47 @@ func ExtractFingerprints(body string) []string {
 		fingerprints = append(fingerprints, m[1])
 	}
 	return fingerprints
+}
+
+// MaxFeedbackComments caps the comments whose reactions are read in one run
+const MaxFeedbackComments = 100
+
+// InlineComment is an inline comment written by ainspector, with what its markers say
+type InlineComment struct {
+	ID, Path    string
+	Line        int
+	Mode        string
+	Unit        string
+	Fingerprint string
+}
+
+// OwnInlineComments returns the inline comments that self wrote and that carry a marker, the
+// most recent MaxFeedbackComments of them. A finding marker only exists on the security mode,
+// the quality mode leaves the marker of its unit alone.
+func OwnInlineComments(comments []provider.ExistingComment, self string) []InlineComment {
+	if self == "" {
+		return nil
+	}
+	var result []InlineComment
+	for _, c := range comments {
+		if !c.Positioned || c.ID == "" || !strings.EqualFold(c.Author, self) {
+			continue
+		}
+		hashes, fingerprints := ExtractHashes(c.Body), ExtractFingerprints(c.Body)
+		if len(hashes) == 0 && len(fingerprints) == 0 {
+			continue
+		}
+		ic := InlineComment{ID: c.ID, Path: c.Path, Line: c.Line, Mode: legacyMode}
+		if len(hashes) > 0 {
+			ic.Unit = hashes[0]
+		}
+		if len(fingerprints) > 0 {
+			ic.Fingerprint, ic.Mode = fingerprints[0], "security"
+		}
+		result = append(result, ic)
+	}
+	if len(result) > MaxFeedbackComments {
+		result = result[len(result)-MaxFeedbackComments:]
+	}
+	return result
 }

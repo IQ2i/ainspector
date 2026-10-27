@@ -234,3 +234,24 @@ func TestGitLab_CurrentUser(t *testing.T) {
 		t.Errorf("got %q, %v", got, err)
 	}
 }
+
+func TestGitLab_ListReactions(t *testing.T) {
+	p := newTestGitLab(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v4/projects/owner/repo/merge_requests/1/notes/10/award_emoji":
+			_, _ = w.Write([]byte(`[{"name":"thumbsup"},{"name":"thumbsdown"},{"name":"thumbsdown"},{"name":"tada"}]`))
+		case "/api/v4/projects/owner/repo/merge_requests/1/notes/11/award_emoji":
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	got, err := p.ListReactions(context.Background(), 1, []string{"10", "11"})
+	if err == nil || !strings.Contains(err.Error(), "note 11") {
+		t.Errorf("the unreadable note should be reported, got %v", err)
+	}
+	if len(got) != 1 || got["10"] != (ReactionCount{Up: 1, Down: 2}) {
+		t.Errorf("unexpected counts: %+v", got)
+	}
+}

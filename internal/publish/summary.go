@@ -101,6 +101,9 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 		}
 		sb.WriteString(".\n")
 	}
+	if line := feedbackLine(run.Feedback); line != "" {
+		fmt.Fprintf(&sb, "\n%s\n", line)
+	}
 	u := run.Usage
 	if u.Input+u.Output+u.CacheRead+u.CacheWrite > 0 {
 		fmt.Fprintf(&sb, "\nTokens: %d in, %d out, %d read from cache, %d written to cache\n", u.Input, u.Output, u.CacheRead, u.CacheWrite)
@@ -149,6 +152,24 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 	sb.WriteString("\n" + state.FormatStateBlock(run.Mode, block) + "\n")
 
 	return sb.String()
+}
+
+// feedbackLine counts the earlier comments that reviewers found useful (more thumbs up than
+// down), not useful (more down than up), or left without a verdict
+func feedbackLine(feedback []Feedback) string {
+	if len(feedback) == 0 {
+		return ""
+	}
+	var useful, useless int
+	for _, f := range feedback {
+		switch {
+		case f.Up > f.Down:
+			useful++
+		case f.Down > f.Up:
+			useless++
+		}
+	}
+	return fmt.Sprintf("Reactions to earlier comments: %d useful, %d not useful, %d without a verdict.", useful, useless, len(feedback)-useful-useless)
 }
 
 func plural(n int, word string) string {

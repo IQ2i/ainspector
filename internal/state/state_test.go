@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -531,5 +532,41 @@ func TestIndex_OpenFindings(t *testing.T) {
 	}
 	if got := ix.OpenFindings(quality, map[string]int{"u1": 1}); got != nil {
 		t.Errorf("a comment of someone else is not trusted, got %+v", got)
+	}
+}
+
+func TestOwnInlineComments(t *testing.T) {
+	quality := FormatMarker("aaaaaaaaaaaa")
+	security := FormatMarker("bbbbbbbbbbbb") + "\n" + FormatFindingMarker("cccccccccccc")
+	comments := []provider.ExistingComment{
+		{ID: "1", Author: "bot", Positioned: true, Path: "a.go", Line: 3, Body: "text\n\n" + quality},
+		{ID: "2", Author: "bot", Positioned: true, Path: "b.php", Line: 9, Body: security},
+		{ID: "3", Author: "someone", Positioned: true, Body: quality},
+		{ID: "4", Author: "bot", Positioned: false, Body: quality},
+		{ID: "5", Author: "bot", Positioned: true, Body: "no marker"},
+		{ID: "", Author: "bot", Positioned: true, Body: quality},
+	}
+
+	got := OwnInlineComments(comments, "BOT")
+	want := []InlineComment{
+		{ID: "1", Path: "a.go", Line: 3, Mode: "quality", Unit: "aaaaaaaaaaaa"},
+		{ID: "2", Path: "b.php", Line: 9, Mode: "security", Unit: "bbbbbbbbbbbb", Fingerprint: "cccccccccccc"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if OwnInlineComments(comments, "") != nil {
+		t.Error("without the identity of the token owner nothing can be trusted")
+	}
+}
+
+func TestOwnInlineComments_KeepsTheMostRecent(t *testing.T) {
+	var comments []provider.ExistingComment
+	for i := 0; i < MaxFeedbackComments+5; i++ {
+		comments = append(comments, provider.ExistingComment{ID: fmt.Sprint(i), Author: "bot", Positioned: true, Body: FormatMarker("aaaaaaaaaaaa")})
+	}
+	got := OwnInlineComments(comments, "bot")
+	if len(got) != MaxFeedbackComments || got[0].ID != "5" {
+		t.Errorf("got %d comments starting at %s", len(got), got[0].ID)
 	}
 }

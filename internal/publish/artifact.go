@@ -44,6 +44,7 @@ type artifactMode struct {
 	Cost            float64             `json:"cost"`
 	CostIncomplete  bool                `json:"cost_incomplete"`
 	Notes           []string            `json:"notes"`
+	Feedback        []Feedback          `json:"feedback,omitempty"`
 }
 
 type artifactUsage struct {
@@ -116,6 +117,7 @@ func (a *artifact) Publish(_ context.Context, run Run) error {
 		Cost:            run.Cost,
 		CostIncomplete:  run.CostIncomplete,
 		Notes:           orEmpty(run.Notes),
+		Feedback:        run.Feedback,
 	}
 	for i, u := range run.Units {
 		au := artifactUnit{
