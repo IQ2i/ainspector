@@ -1,4 +1,4 @@
-package llm
+package quality
 
 import (
 	"crypto/sha256"
@@ -45,7 +45,7 @@ func sortedLanguages() []string {
 }
 
 func TestGolden_SystemPrompt(t *testing.T) {
-	contexts := map[string]*ProjectContext{
+	contexts := map[string]*collect.ProjectContext{
 		"nil":    nil,
 		"raw":    {Description: "=== README.md ===\n# Demo\n", IsRaw: true},
 		"legacy": {Description: "A Go CLI tool for code review."},
@@ -99,6 +99,10 @@ func sum(s string) string {
 }
 
 func TestPromptChecksums(t *testing.T) {
+	if got := New("", nil).Version(); got != checksumsVersion {
+		t.Errorf("checksums were recorded for %s but the mode is %s: update the checksums together with the version", checksumsVersion, got)
+	}
+
 	if got := sum(baseSystemPrompt); got != wantBaseChecksum {
 		t.Errorf("baseSystemPrompt changed (sha256 %s): bump the mode version and regenerate goldens", got)
 	}
@@ -111,6 +115,9 @@ func TestPromptChecksums(t *testing.T) {
 		t.Errorf("checksum table covers %d languages, prompts define %d", len(wantRuleChecksums), len(languageSpecificRules))
 	}
 }
+
+// checksumsVersion is the mode version the checksums below belong to
+const checksumsVersion = "quality/1"
 
 const wantBaseChecksum = "97c92f5d530e9458aef5898b70e54ab7f55d098ca218155f370ad00a8e8fe037"
 

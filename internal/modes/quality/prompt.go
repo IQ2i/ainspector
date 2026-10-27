@@ -1,7 +1,6 @@
-package llm
+package quality
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -169,7 +168,7 @@ LANGUAGE-SPECIFIC CHECKS FOR BASH:
 }
 
 // buildSystemPrompt creates a language-specific system prompt with optional project context and rules
-func buildSystemPrompt(language string, projectContext *ProjectContext, rules []string) string {
+func buildSystemPrompt(language string, projectContext *collect.ProjectContext, rules []string) string {
 	prompt := baseSystemPrompt
 
 	// Add project context if available
@@ -211,53 +210,6 @@ type Suggestion struct {
 // ReviewResponse is the structured response from the LLM.
 type ReviewResponse struct {
 	Issues []Suggestion `json:"issues"`
-}
-
-// ReviewResult contains the review result for a function.
-type ReviewResult struct {
-	Function    collect.ReviewUnit
-	Suggestions []Suggestion
-	RawReview   string // Original response for debugging
-	Error       error
-}
-
-// HasIssues returns true if the review contains actual issues to report.
-// Returns false if the LLM responded with LGTM or if there was an error.
-func (r *ReviewResult) HasIssues() bool {
-	if r.Error != nil {
-		return false
-	}
-	return len(r.Suggestions) > 0
-}
-
-// ReviewFunctions reviews each function using the LLM and returns the results.
-// If projectContext is provided, it will be included in the system prompt for better context.
-// If rules are provided, they will be enforced as mandatory project-specific rules.
-func ReviewFunctions(ctx context.Context, client Client, functions []collect.ReviewUnit, projectContext *ProjectContext, rules []string) []ReviewResult {
-	results := make([]ReviewResult, 0, len(functions))
-
-	for _, fn := range functions {
-		result := ReviewResult{Function: fn}
-
-		systemPrompt := buildSystemPrompt(fn.Language, projectContext, rules)
-		userPrompt := buildUserPrompt(&fn)
-		resp, err := client.Complete(ctx, Request{
-			System:   []Block{{Text: systemPrompt}},
-			Messages: []Message{{Role: "user", Content: userPrompt}},
-		})
-		if err != nil {
-			result.Error = err
-			results = append(results, result)
-			continue
-		}
-
-		review := resp.Text
-		result.RawReview = review
-		result.Suggestions = parseReviewResponse(review)
-		results = append(results, result)
-	}
-
-	return results
 }
 
 // parseReviewResponse parses the LLM response into structured suggestions.

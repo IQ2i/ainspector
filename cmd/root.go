@@ -11,6 +11,8 @@ import (
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/llm/openai"
+	"github.com/iq2i/ainspector/internal/modes"
+	"github.com/iq2i/ainspector/internal/pipeline"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -190,7 +192,7 @@ func review(ctx context.Context, p provider.Provider, newClient func() (llm.Clie
 	}
 
 	fmt.Println("Generating project context...")
-	projectContext, err := llm.GenerateProjectContext(ctx, client, projectRoot, languages, &cfg.Context)
+	projectContext, err := collect.GenerateProjectContext(ctx, client, projectRoot, languages, &cfg.Context)
 	if err != nil {
 		fmt.Printf("Warning: failed to generate project context: %v\n", err)
 		projectContext = nil
@@ -202,27 +204,24 @@ func review(ctx context.Context, p provider.Provider, newClient func() (llm.Clie
 		}
 	}
 
+	enabled, err := modes.Enabled([]string{"quality"}, cfg)
+	if err != nil {
+		return err
+	}
+	mode := enabled[0]
+
 	fmt.Printf("Reviewing %d functions with LLM...\n", len(functionsToReview))
-	results := llm.ReviewFunctions(ctx, client, functionsToReview, projectContext, cfg.Rules)
+	results := pipeline.ReviewUnits(ctx, client, mode, functionsToReview, projectContext)
 
 	var comments []provider.ReviewComment
 	for _, result := range results {
-		if !result.HasIssues() {
-			continue
-		}
-
-		fnHash := cache.FunctionHash(&result.Function)
-		hashMarker := cache.FormatHashMarker(fnHash)
-
-		for _, suggestion := range result.Suggestions {
-			body := suggestion.Description + "\n\n" + hashMarker
-			comment := provider.ReviewComment{
-				Path:       result.Function.FilePath,
-				Line:       suggestion.Line,
-				Body:       body,
-				Suggestion: suggestion.Code,
-			}
-			comments = append(comments, comment)
+		for _, f := range result.Findings {
+			comments = append(comments, provider.ReviewComment{
+				Path:       f.File,
+				Line:       f.StartLine,
+				Body:       f.Explanation + "\n\n" + cache.FormatHashMarker(f.UnitHash),
+				Suggestion: f.Suggestion,
+			})
 		}
 	}
 

@@ -1,4 +1,4 @@
-package llm
+package collect
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/config"
+	"github.com/iq2i/ainspector/internal/llm"
 )
 
 // ProjectContext holds the generated project context
@@ -60,7 +61,7 @@ var contextFiles = map[string]string{
 }
 
 // GenerateProjectContext analyzes the project and generates a concise context description
-func GenerateProjectContext(ctx context.Context, client Client, projectRoot string, languages []string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
+func GenerateProjectContext(ctx context.Context, client llm.Client, projectRoot string, languages []string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
 	// If config is provided and has include patterns, use config-based collection
 	if contextConfig != nil && len(contextConfig.Include) > 0 {
 		return generateConfigBasedContext(projectRoot, languages, contextConfig)
@@ -115,7 +116,7 @@ func generateConfigBasedContext(projectRoot string, languages []string, contextC
 }
 
 // generateLegacyContext uses hardcoded patterns and LLM summarization
-func generateLegacyContext(ctx context.Context, client Client, projectRoot string, languages []string) (*ProjectContext, error) {
+func generateLegacyContext(ctx context.Context, client llm.Client, projectRoot string, languages []string) (*ProjectContext, error) {
 	// Find relevant files
 	files, err := findContextFiles(projectRoot)
 	if err != nil {
@@ -135,9 +136,9 @@ func generateLegacyContext(ctx context.Context, client Client, projectRoot strin
 	prompt := buildContextPrompt(files, languages)
 
 	// Generate context using LLM
-	resp, err := client.Complete(ctx, Request{
-		System:   []Block{{Text: contextSystemPrompt}},
-		Messages: []Message{{Role: "user", Content: prompt}},
+	resp, err := client.Complete(ctx, llm.Request{
+		System:   []llm.Block{{Text: contextSystemPrompt}},
+		Messages: []llm.Message{{Role: "user", Content: prompt}},
 	})
 	if err != nil {
 		// If context generation fails, continue without it

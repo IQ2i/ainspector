@@ -1,4 +1,4 @@
-package llm_test
+package collect
 
 import (
 	"context"
@@ -11,9 +11,123 @@ import (
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/config"
-	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/llm/openai"
 )
+
+func TestFindContextFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create various config files
+	files := map[string]string{
+		"package.json":  `{"name": "test"}`,
+		"README.md":     "# Test",
+		"go.mod":        "module test",
+		"composer.json": `{"name": "test"}`,
+		"CLAUDE.md":     "Claude instructions",
+	}
+
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	found, err := findContextFiles(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(found) != len(files) {
+		t.Errorf("expected %d files, got %d", len(files), len(found))
+	}
+
+	for name := range files {
+		if _, ok := found[name]; !ok {
+			t.Errorf("expected to find %s", name)
+		}
+	}
+}
+
+func TestFindContextFiles_GlobPattern(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a .csproj file (matches *.csproj pattern)
+	csprojContent := `<Project Sdk="Microsoft.NET.Sdk"></Project>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "MyProject.csproj"), []byte(csprojContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := findContextFiles(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should find the .csproj file via glob pattern
+	foundCsproj := false
+	for file := range found {
+		if strings.HasSuffix(file, ".csproj") {
+			foundCsproj = true
+			break
+		}
+	}
+
+	if !foundCsproj {
+		t.Error("expected to find .csproj file via glob pattern")
+	}
+}
+
+func TestBuildContextPrompt(t *testing.T) {
+	files := map[string]string{
+		"README.md":    "# Test Project",
+		"package.json": `{"name": "test"}`,
+		"CLAUDE.md":    "AI instructions",
+	}
+
+	languages := []string{"javascript", "typescript"}
+
+	prompt := buildContextPrompt(files, languages)
+
+	// Check that prompt contains all expected elements
+	if !strings.Contains(prompt, "Analyze this project") {
+		t.Error("prompt should contain instruction")
+	}
+
+	if !strings.Contains(prompt, "javascript") {
+		t.Error("prompt should contain detected languages")
+	}
+
+	if !strings.Contains(prompt, "README.md") {
+		t.Error("prompt should contain README.md")
+	}
+
+	if !strings.Contains(prompt, "package.json") {
+		t.Error("prompt should contain package.json")
+	}
+
+	if !strings.Contains(prompt, "CLAUDE.md") {
+		t.Error("prompt should contain CLAUDE.md")
+	}
+}
+
+func TestBuildContextPrompt_TruncatesLongContent(t *testing.T) {
+	// Create a very long file content
+	longContent := strings.Repeat("x", 5000)
+
+	files := map[string]string{
+		"README.md": longContent,
+	}
+
+	prompt := buildContextPrompt(files, []string{"go"})
+
+	// Prompt should be truncated
+	if strings.Count(prompt, "x") == 5000 {
+		t.Error("expected content to be truncated")
+	}
+
+	if !strings.Contains(prompt, "truncated") {
+		t.Error("expected truncation marker")
+	}
+}
 
 func TestGenerateProjectContext_WithFiles(t *testing.T) {
 	// Create a temporary project directory
@@ -54,7 +168,7 @@ func TestGenerateProjectContext_WithFiles(t *testing.T) {
 	client := openai.New(server.URL, "test-key", "gpt-4")
 	ctx := context.Background()
 
-	projectContext, err := llm.GenerateProjectContext(ctx, client, tmpDir, []string{"javascript"}, nil)
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"javascript"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +201,7 @@ func TestGenerateProjectContext_NoFiles(t *testing.T) {
 	client := openai.New(server.URL, "test-key", "gpt-4")
 	ctx := context.Background()
 
-	projectContext, err := llm.GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +237,7 @@ func TestGenerateProjectContext_LLMFailure(t *testing.T) {
 	ctx := context.Background()
 
 	// Should not return error, just empty context
-	projectContext, err := llm.GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, nil)
 	if err != nil {
 		t.Fatalf("should not return error on LLM failure: %v", err)
 	}
@@ -166,7 +280,7 @@ func TestGenerateProjectContext_WithConfig(t *testing.T) {
 	client := openai.New(server.URL, "test-key", "gpt-4")
 	ctx := context.Background()
 
-	projectContext, err := llm.GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, contextConfig)
+	projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, contextConfig)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -254,7 +368,7 @@ func TestGenerateProjectContext_BackwardCompatibility(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			llmCalled = false
 
-			projectContext, err := llm.GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, tt.contextConfig)
+			projectContext, err := GenerateProjectContext(ctx, client, tmpDir, []string{"go"}, tt.contextConfig)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

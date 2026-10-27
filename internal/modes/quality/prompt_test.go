@@ -1,7 +1,6 @@
-package llm
+package quality
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -113,70 +112,6 @@ func TestBuildUserPrompt_SpecialCharacters(t *testing.T) {
 	// Should contain the special characters (not escape them)
 	if !strings.Contains(prompt, "<script>") {
 		t.Error("prompt should contain special characters as-is")
-	}
-}
-
-func TestReviewResult_Error(t *testing.T) {
-	result := ReviewResult{
-		Function: collect.ReviewUnit{Name: "test"},
-		Error:    errors.New("API error"),
-	}
-
-	if result.Error == nil {
-		t.Error("expected error to be set")
-	}
-	if result.RawReview != "" {
-		t.Error("expected empty raw review when there's an error")
-	}
-}
-
-func TestReviewResult_HasIssues(t *testing.T) {
-	tests := []struct {
-		name     string
-		result   ReviewResult
-		expected bool
-	}{
-		{
-			name: "has issues when suggestions present",
-			result: ReviewResult{
-				Suggestions: []Suggestion{
-					{Line: 10, Description: "Bug", Code: "fix"},
-				},
-			},
-			expected: true,
-		},
-		{
-			name: "no issues when suggestions empty",
-			result: ReviewResult{
-				Suggestions: []Suggestion{},
-			},
-			expected: false,
-		},
-		{
-			name: "no issues when suggestions nil",
-			result: ReviewResult{
-				Suggestions: nil,
-			},
-			expected: false,
-		},
-		{
-			name: "no issues when error present",
-			result: ReviewResult{
-				Suggestions: []Suggestion{
-					{Line: 10, Description: "Bug", Code: "fix"},
-				},
-				Error: errors.New("API error"),
-			},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.result.HasIssues(); got != tt.expected {
-				t.Errorf("HasIssues() = %v, want %v", got, tt.expected)
-			}
-		})
 	}
 }
 
@@ -438,5 +373,107 @@ func TestBuildSystemPrompt_RulesPlacement(t *testing.T) {
 
 	if rulesIdx >= langIdx {
 		t.Error("project rules should come before language-specific rules")
+	}
+}
+
+func TestBuildSystemPrompt_WithProjectContext(t *testing.T) {
+	projectContext := &collect.ProjectContext{
+		Description: "A web application using React and TypeScript",
+		Languages:   []string{"javascript", "typescript"},
+	}
+
+	prompt := buildSystemPrompt("javascript", projectContext, nil)
+
+	// Should contain base prompt
+	if !strings.Contains(prompt, "You are an expert code reviewer") {
+		t.Error("should contain base prompt")
+	}
+
+	// Should contain project context
+	if !strings.Contains(prompt, "PROJECT CONTEXT") {
+		t.Error("should contain PROJECT CONTEXT header")
+	}
+
+	if !strings.Contains(prompt, "React and TypeScript") {
+		t.Error("should contain project context description")
+	}
+
+	// Should contain language-specific rules
+	if !strings.Contains(prompt, "LANGUAGE-SPECIFIC CHECKS FOR JAVASCRIPT") {
+		t.Error("should contain language-specific rules")
+	}
+}
+
+func TestBuildSystemPrompt_WithoutProjectContext(t *testing.T) {
+	prompt := buildSystemPrompt("go", nil, nil)
+
+	// Should contain base prompt
+	if !strings.Contains(prompt, "You are an expert code reviewer") {
+		t.Error("should contain base prompt")
+	}
+
+	// Should NOT contain project context
+	if strings.Contains(prompt, "PROJECT CONTEXT") {
+		t.Error("should not contain PROJECT CONTEXT when context is nil")
+	}
+
+	// Should contain language-specific rules
+	if !strings.Contains(prompt, "LANGUAGE-SPECIFIC CHECKS FOR GO") {
+		t.Error("should contain language-specific rules")
+	}
+}
+
+func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
+	projectContext := &collect.ProjectContext{
+		Description: "",
+		Languages:   []string{"go"},
+	}
+
+	prompt := buildSystemPrompt("go", projectContext, nil)
+
+	// Should NOT contain project context section when description is empty
+	if strings.Contains(prompt, "PROJECT CONTEXT") {
+		t.Error("should not contain PROJECT CONTEXT when description is empty")
+	}
+}
+
+func TestBuildSystemPrompt_RawVsLegacy(t *testing.T) {
+	tests := []struct {
+		name           string
+		projectContext *collect.ProjectContext
+		expectHeader   string
+	}{
+		{
+			name: "raw context",
+			projectContext: &collect.ProjectContext{
+				Description: "=== README.md ===\nContent",
+				Languages:   []string{"go"},
+				IsRaw:       true,
+			},
+			expectHeader: "=== PROJECT CONTEXT ===",
+		},
+		{
+			name: "legacy context",
+			projectContext: &collect.ProjectContext{
+				Description: "A Go project",
+				Languages:   []string{"go"},
+				IsRaw:       false,
+			},
+			expectHeader: "PROJECT CONTEXT:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prompt := buildSystemPrompt("go", tt.projectContext, nil)
+
+			if !strings.Contains(prompt, tt.expectHeader) {
+				t.Errorf("expected prompt to contain %q", tt.expectHeader)
+			}
+
+			if !strings.Contains(prompt, tt.projectContext.Description) {
+				t.Error("expected prompt to contain description")
+			}
+		})
 	}
 }
