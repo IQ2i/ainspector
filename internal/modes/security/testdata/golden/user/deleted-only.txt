@@ -5,10 +5,6 @@ Function: show (lines 14-18)
 Change type: modified
 The changes of this unit only remove lines.
 
-Files changed by this merge request:
-- src/Controller/AccountController.php
-- templates/account/show.html.twig
-
 ## Enclosing class AccountController (for context only, its other methods are reduced to their signature):
 ```php
 #[IsGranted('ROLE_USER')]

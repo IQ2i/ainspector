@@ -59,8 +59,9 @@ func sortedLanguages() []string {
 
 func TestGolden_SystemPrompt(t *testing.T) {
 	contexts := map[string]*collect.ProjectContext{
-		"nil": nil,
-		"raw": {Description: "=== README.md ===\n# Demo\n"},
+		"nil":     nil,
+		"raw":     {Description: "=== README.md ===\n# Demo\n"},
+		"changed": {Description: "=== README.md ===\n# Demo\n", ChangedFiles: []string{"src/Controller/AccountController.php", "tests/Controller/AccountControllerTest.php", "evil\nname.php"}},
 	}
 	for _, lang := range sortedLanguages() {
 		for ctxName, pc := range contexts {
@@ -86,18 +87,13 @@ func TestGolden_UserPrompt(t *testing.T) {
 		Content: "<h1>{{ account.name }}</h1>\n<div>{{ account.bio|raw }}</div>", Diff: "+<div>{{ account.bio|raw }}</div>", ChangeType: "modified",
 	}
 
-	changed := []string{"src/Controller/AccountController.php", "templates/account/show.html.twig"}
-	for name, tc := range map[string]struct {
-		unit    collect.ReviewUnit
-		changed []string
-	}{
-		"function":     {function, changed},
-		"deleted-only": {deleted, changed},
-		"hunk":         {hunk, changed},
-		"no-files":     {function, nil},
+	for name, unit := range map[string]collect.ReviewUnit{
+		"function":     function,
+		"deleted-only": deleted,
+		"hunk":         hunk,
 	} {
 		t.Run(name, func(t *testing.T) {
-			assertGolden(t, filepath.Join("testdata", "golden", "user", name+".txt"), []byte(buildUserPrompt(tc.unit, tc.changed)))
+			assertGolden(t, filepath.Join("testdata", "golden", "user", name+".txt"), []byte(buildUserPrompt(unit)))
 		})
 	}
 }
@@ -137,7 +133,7 @@ func TestPromptChecksums(t *testing.T) {
 const checksumsVersion = "security/1"
 
 const (
-	wantBaseChecksum   = "5b27aa08fcb235527309aecb9555aa98cb8bb48fac6f49c2d0b4ae71f565838e"
+	wantBaseChecksum   = "cdab06ce9386aa6915db4eb0ae5ebcdc34d70374d308dd83180d85f4820f2ea7"
 	wantSchemaChecksum = "7bf0fcd510cb57ff5838562de0f39a572109646828fb06f1d3cb48dd80ba6dc3"
 )
 

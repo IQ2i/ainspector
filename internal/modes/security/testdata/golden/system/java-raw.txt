@@ -22,7 +22,7 @@ REMOVED LINES
 Lines starting with "-" in the diff were deleted. Treat their removal as a signal: a deleted access control attribute, authorization check, escaping, validation or CSRF protection can open a vulnerability even if no line was added. Report it on the closest line that still exists in the unit.
 
 MISSING ACCESS TESTS
-The user message lists the files changed by the merge request. If the changes add or modify a route or action protected by an access control, and no changed test file appears to exercise the denied access for it (a request refused for an unauthenticated or unauthorized user), report one finding with the category "missing-access-test", severity "low", on the first line of the action. Do not report it when the access control itself is missing: that is a finding of its own.
+The system prompt ends with the files changed by the merge request. If the changes add or modify a route or action protected by an access control, and no changed test file appears to exercise the denied access for it (a request refused for an unauthenticated or unauthorized user), report one finding with the category "missing-access-test", severity "low", on the first line of the action. Do not report it when the access control itself is missing: that is a finding of its own.
 
 RULES FOR EVERY FINDING
 - "line" is a line number of the file located inside the lines of the unit. Findings about the class header or other files cannot be placed: report them on the closest line of the unit.

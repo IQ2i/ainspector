@@ -55,14 +55,10 @@ func (m *Mode) Needs() collect.Request {
 }
 
 func (m *Mode) BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request {
-	var changed []string
-	if pc != nil {
-		changed = pc.ChangedFiles
-	}
 	return llm.Request{
 		Model:    m.cfg.Model,
 		System:   buildSystemBlocks(u.Language, pc),
-		Messages: []llm.Message{{Role: "user", Content: buildUserPrompt(u, changed)}},
+		Messages: []llm.Message{{Role: "user", Content: buildUserPrompt(u)}},
 		Schema:   &llm.Schema{Name: "security_review", JSON: reviewSchema},
 	}
 }
