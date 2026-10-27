@@ -257,7 +257,7 @@ rules:
 
 **rules** - Custom project-specific review rules. These rules are enforced by the AI reviewer and any violations will be explicitly reported in the code review comments.
 
-`ainspector.yaml` is read from the checkout of the merge request, so its author can change the settings of the review that judges their own change (disable a mode, add instructions to the false positive filter). When a merge request modifies the file, ainspector says so in the log and in the summary.
+`ainspector.yaml` is read from the checkout of the merge request, so its author can change the settings of the review that judges their own change (disable a mode, add instructions to the false positive filter). When a merge request modifies the file, ainspector says so in the log and in the summary. If the run then stops before reviewing anything (the author is ignored, no mode is enabled, `ignore.paths` leaves nothing to review), it posts a notice comment instead, so that a change cannot silence its own review without a trace.
 
 ## How It Works
 

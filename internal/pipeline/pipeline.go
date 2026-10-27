@@ -58,7 +58,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	}
 	if len(enabled) == 0 {
 		fmt.Println("No review mode enabled")
-		return nil
+		return stopped(ctx, deps, opts, nil, "no review mode is enabled")
 	}
 
 	var cached *provider.ChangeInfo
@@ -81,7 +81,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		}
 		if ignored, reason := cfg.ShouldIgnoreChange(info.Author, info.Title, info.Labels); ignored {
 			fmt.Printf("Skipping review: %s\n", reason)
-			return nil
+			return stopped(ctx, deps, opts, nil, reason)
 		}
 	}
 
@@ -99,13 +99,10 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 	files = dropUnsafePaths(files)
 	var configNotes []string
-	for _, f := range files {
-		if config.IsConfigFile(f.Path) || config.IsConfigFile(f.OldPath) {
-			note := fmt.Sprintf("This change modifies %s: the settings of its new version apply to this review", f.Path)
-			fmt.Printf("Warning: %s\n", note)
-			configNotes = append(configNotes, note)
-			break
-		}
+	if name := changedConfig(files); name != "" {
+		note := fmt.Sprintf("This change modifies %s: the settings of its new version apply to this review", name)
+		fmt.Printf("Warning: %s\n", note)
+		configNotes = append(configNotes, note)
 	}
 	fmt.Printf("Found %d modified files\n", len(files))
 
@@ -121,7 +118,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 	if len(units) == 0 {
 		fmt.Println("No code to review")
-		return out.write()
+		return errors.Join(out.write(), stopped(ctx, deps, opts, files, "no file of the change is left to review"))
 	}
 
 	if len(req.Related.Presets) > 0 {
@@ -506,6 +503,49 @@ func unitsFor(m modes.Mode, units []collect.ReviewUnit) []collect.ReviewUnit {
 		result = append(result, u)
 	}
 	return result
+}
+
+// changedConfig returns the configuration file the change modifies, empty when it leaves it alone
+func changedConfig(files []provider.ModifiedFile) string {
+	for _, f := range files {
+		for _, p := range []string{f.Path, f.OldPath} {
+			if config.IsConfigFile(p) {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+// stopped is called when a run ends before reviewing anything. If the change modifies the
+// configuration file, the author may have caused it (a pattern that ignores the change, a mode
+// turned off), and the participants must be able to see it: a notice is posted on the PR/MR.
+// Failing to post it never fails the run. The files are fetched when the caller has none.
+func stopped(ctx context.Context, deps Deps, opts Options, files []provider.ModifiedFile, reason string) error {
+	if files == nil {
+		var err error
+		if files, err = deps.Provider.GetModifiedFiles(ctx, opts.Number); err != nil {
+			fmt.Printf("Warning: could not check whether the change modifies the configuration: %v\n", err)
+			return nil
+		}
+	}
+	name := changedConfig(dropUnsafePaths(files))
+	if name == "" {
+		return nil
+	}
+
+	fmt.Printf("Warning: this change modifies %s and the review stopped: %s\n", name, reason)
+	if opts.DryRun {
+		return nil
+	}
+	self, err := deps.Provider.CurrentUser(ctx)
+	if err == nil {
+		err = publish.PostNotice(ctx, deps.Provider, opts.Number, self, name, reason)
+	}
+	if err != nil {
+		fmt.Printf("Warning: %v\n", err)
+	}
+	return nil
 }
 
 // dropUnsafePaths removes the files whose name holds a control character: printed to the log of

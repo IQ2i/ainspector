@@ -790,3 +790,80 @@ func TestRun_NoReactionsAreReadUnderForce(t *testing.T) {
 		t.Error("--force does not read the earlier comments")
 	}
 }
+
+// withConfigChange adds a modified ainspector.yaml to the change
+func (h *harness) withConfigChange() {
+	h.fake.mr.Files = append(h.fake.mr.Files, h.fake.mr.Files[0])
+	last := &h.fake.mr.Files[len(h.fake.mr.Files)-1]
+	last.Path, last.OldPath = "ainspector.yaml", ""
+	last.Patch = "@@ -1 +1 @@\n-rules: []\n+rules: [x]\n"
+}
+
+func TestRun_ConfigurationChangeIsNoticedWhenTheRunStopsEarly(t *testing.T) {
+	stops := map[string]func(h *harness){
+		"ignored author": func(h *harness) { h.fake.mr.Change.Author = "Renovate-Bot" },
+		"no mode enabled": func(h *harness) {
+			off := false
+			h.deps.Config.Modes.Quality.Enabled = &off
+		},
+		"nothing left to review": func(h *harness) { h.deps.Config.Ignore.Paths = []string{"**"} },
+	}
+
+	for name, stop := range stops {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+			h.withConfigChange()
+			stop(h)
+
+			for range 2 {
+				if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if len(h.requests) != 0 {
+				t.Error("the run must have stopped before the LLM")
+			}
+			notes := h.fake.noteBodies()
+			if len(notes) != 1 || !strings.Contains(notes[0], publish.NoticeMarker) || !strings.Contains(notes[0], "modifies `ainspector.yaml`") {
+				t.Errorf("expected one notice about the configuration, got %v", notes)
+			}
+		})
+	}
+}
+
+func TestRun_NoNoticeWhenTheConfigurationIsLeftAlone(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+	h.fake.mr.Change.Author = "Renovate-Bot"
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if h.fake.writes != 0 {
+		t.Errorf("nothing should be written, got %v", h.fake.noteBodies())
+	}
+}
+
+func TestRun_NoticeIsNotWrittenInDryRunNorWithoutTheTokenOwner(t *testing.T) {
+	for name, opts := range map[string]struct {
+		dryRun bool
+		self   string
+	}{
+		"dry run":      {dryRun: true, self: "ainspector-bot"},
+		"unknown self": {self: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+			h.withConfigChange()
+			h.fake.mr.Change.Author = "Renovate-Bot"
+			h.fake.self = opts.self
+
+			if err := Run(context.Background(), h.deps, Options{Number: 1, DryRun: opts.dryRun}); err != nil {
+				t.Fatal(err)
+			}
+			if h.fake.writes != 0 {
+				t.Errorf("nothing should be written, got %v", h.fake.noteBodies())
+			}
+		})
+	}
+}

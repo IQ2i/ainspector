@@ -42,18 +42,13 @@ func (s *summary) Publish(ctx context.Context, run Run) error {
 		return fmt.Errorf("failed to list comments: %w", err)
 	}
 
-	marker := SummaryMarker(run.Mode)
 	var id string
 	var previous *state.StateBlock
-	for _, c := range existing {
-		if c.Positioned || !strings.EqualFold(c.Author, s.self) || !strings.Contains(c.Body, marker) {
-			continue
-		}
+	if c, ok := ownNote(existing, s.self, SummaryMarker(run.Mode)); ok {
 		id = c.ID
 		if b, ok := state.ParseStateBlock(run.Mode, c.Body); ok {
 			previous = &b
 		}
-		break
 	}
 
 	body := SummaryBody(run, previous)
