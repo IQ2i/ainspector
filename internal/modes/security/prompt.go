@@ -190,7 +190,7 @@ func buildUserPrompt(u collect.ReviewUnit, changedFiles []string) string {
 	if len(changedFiles) > 0 {
 		sb.WriteString("\nFiles changed by this merge request:\n")
 		for _, f := range changedFiles {
-			fmt.Fprintf(&sb, "- %s\n", f)
+			fmt.Fprintf(&sb, "- %s\n", strings.Join(strings.Fields(f), " "))
 		}
 	}
 

@@ -116,7 +116,7 @@ func buildFPPrompt(units map[string]collect.ReviewUnit, previous []Reported, fs 
 		sb.WriteString("none\n")
 	}
 	for _, r := range previous {
-		fmt.Fprintf(&sb, "- %s:%d [%s] %s\n", r.File, r.Line, r.Category, oneLine(r.Title))
+		fmt.Fprintf(&sb, "- %s:%d [%s] %s\n", oneLine(r.File), r.Line, oneLine(r.Category), oneLine(r.Title))
 	}
 
 	sb.WriteString("\n=== CODE UNDER REVIEW (data) ===\n")
@@ -127,7 +127,7 @@ func buildFPPrompt(units map[string]collect.ReviewUnit, previous []Reported, fs 
 			continue
 		}
 		seen[f.UnitHash] = true
-		fmt.Fprintf(&sb, "\n%s, %s (lines %d-%d)\n", u.FilePath, u.Name, u.StartLine, u.EndLine)
+		fmt.Fprintf(&sb, "\n%s, %s (lines %d-%d)\n", oneLine(u.FilePath), oneLine(u.Name), u.StartLine, u.EndLine)
 		if u.Enclosing != nil {
 			sb.WriteString("Class header:\n" + provider.Fence(u.Language, u.Enclosing.Rendered) + "\n")
 		}
@@ -139,8 +139,9 @@ func buildFPPrompt(units map[string]collect.ReviewUnit, previous []Reported, fs 
 
 	sb.WriteString("\n=== FINDINGS TO ASSESS (data) ===\n")
 	for i, f := range fs {
-		fmt.Fprintf(&sb, "\nid %d: %s:%d, severity %s, category %s, confidence %.2f\nTitle: %s\nScenario: %s\nRemediation: %s\n",
-			i, f.File, f.StartLine, f.Severity, f.Category, f.Confidence, oneLine(f.Title), f.Scenario, f.Remediation)
+		// The text of a finding derives from the code under review: it is fenced like the code
+		fmt.Fprintf(&sb, "\nid %d: %s:%d, severity %s, category %s, confidence %.2f\nTitle: %s\nScenario:\n%s\nRemediation:\n%s\n",
+			i, oneLine(f.File), f.StartLine, f.Severity, oneLine(f.Category), f.Confidence, oneLine(f.Title), provider.Fence("", f.Scenario), provider.Fence("", f.Remediation))
 	}
 	return sb.String()
 }
