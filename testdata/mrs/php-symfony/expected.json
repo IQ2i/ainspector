@@ -1,0 +1,25 @@
+{
+  "llm_requests": [
+    {
+      "model": "test-model",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nIf there are NO issues, respond with exactly: LGTM\n\nIf there ARE issues, respond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\n=== PROJECT CONTEXT ===\n=== README.md ===\n# Symfony app\n\nAccount management.\n\n\n\n\n=== PROJECT RULES (MUST BE ENFORCED) ===\nThe following rules are specific to this project and MUST be enforced.\nReport any violations of these rules explicitly in your review:\n\n1. Never build SQL by concatenation\n2. Controllers must stay thin\n\n\nLANGUAGE-SPECIFIC CHECKS FOR PHP:\n- Verify SQL injection prevention (use prepared statements)\n- Check for XSS vulnerabilities (proper output escaping)\n- Ensure proper error handling (try-catch blocks)\n- Verify null coalescing and null-safe operators usage\n- Check for CSRF protection in forms\n- Ensure proper password hashing (password_hash, not md5/sha1)\n- Verify file upload security (type, size validation)"
+        },
+        {
+          "role": "user",
+          "content": "Review the changes in this php function:\n\nFile: src/Controller/AccountController.php\nFunction: show (lines 11-20)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-        $sql = \"SELECT * FROM account WHERE id = :id\";\n+        $sql = \"SELECT * FROM account WHERE id = \" . $id;\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```php\n/**\n     * Shows an account.\n     */\n    #[Route('/{id}', name: 'account_show')]\n    public function show(int $id): Response\n    {\n        $sql = \"SELECT * FROM account WHERE id = \" . $id;\n\n        return new Response($sql);\n    }\n```"
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "path": "src/Controller/AccountController.php",
+      "line": 17,
+      "body": "SQL injection: the id is concatenated into the query.\n\n\u003c!-- ainspector:fn:6c20fdfae03e --\u003e",
+      "suggestion": "        $sql = 'SELECT * FROM account WHERE id = :id';"
+    }
+  ]
+}

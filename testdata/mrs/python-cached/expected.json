@@ -1,0 +1,25 @@
+{
+  "llm_requests": [
+    {
+      "model": "test-model",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.\n\nIMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.\n\nFor the modified lines, identify ONLY actual issues:\n- Bugs or logic errors\n- Security vulnerabilities\n- Serious performance problems\n- Violations of language best practices\n- Code that could cause runtime errors\n\nRESPONSE FORMAT:\nIf there are NO issues, respond with exactly: LGTM\n\nIf there ARE issues, respond with a JSON object in this exact format:\n{\n  \"issues\": [\n    {\n      \"line\": \u003cline number in the file where the issue is\u003e,\n      \"description\": \"\u003cbrief description of the issue\u003e\",\n      \"suggestion\": \"\u003ccorrected code to replace the problematic line(s), or empty string if no fix suggested\u003e\"\n    }\n  ]\n}\n\nIMPORTANT RULES:\n- The \"line\" field must be an actual line number from the file (between the function's start and end lines)\n- The \"suggestion\" field should contain the corrected code that can replace the problematic code\n- Do NOT comment on code style, formatting, or minor improvements\n- Do NOT give positive feedback or praise\n- Only report problems that should be fixed\n- Respond in the same language as the code comments, or in English if there are no comments\n\nLANGUAGE-SPECIFIC CHECKS FOR PYTHON:\n- Verify proper exception handling (catch specific exceptions, not bare except)\n- Check for resource leaks (use context managers/with statements)\n- Ensure mutable default arguments are not used\n- Check for proper iterator usage (avoid modifying during iteration)\n- Verify None checks before attribute access\n- Check for SQL injection vulnerabilities (use parameterized queries)\n- Ensure proper use of async/await in async functions"
+        },
+        {
+          "role": "user",
+          "content": "Review the changes in this python function:\n\nFile: app.py\nFunction: sub (lines 5-6)\nChange type: modified\n\n## Changes (REVIEW THESE):\n```diff\n-    return a + b\n+    return a - b\n```\n\n## Full function (for context only, DO NOT review unchanged code):\n```python\ndef sub(a, b):\n    return a - b\n```"
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "path": "app.py",
+      "line": 6,
+      "body": "Underflow is not handled.\n\n\u003c!-- ainspector:fn:b3c0c02acc27 --\u003e",
+      "suggestion": ""
+    }
+  ]
+}

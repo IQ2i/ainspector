@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "path": "src/Controller/AccountController.php",
+      "status": "modified",
+      "patch": "@@ -14,7 +14,7 @@ class AccountController\n     #[Route('/{id}', name: 'account_show')]\n     public function show(int $id): Response\n     {\n-        $sql = \"SELECT * FROM account WHERE id = :id\";\n+        $sql = \"SELECT * FROM account WHERE id = \" . $id;\n \n         return new Response($sql);\n     }"
+    }
+  ]
+}

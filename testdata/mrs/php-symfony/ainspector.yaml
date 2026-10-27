@@ -1,0 +1,6 @@
+context:
+  include:
+    - README.md
+rules:
+  - Never build SQL by concatenation
+  - Controllers must stay thin

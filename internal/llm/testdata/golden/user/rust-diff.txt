@@ -1,0 +1,19 @@
+Review the changes in this rust function:
+
+File: src/handler
+Function: handle (lines 10-14)
+Change type: modified
+
+## Changes (REVIEW THESE):
+```diff
+@@ -11,1 +11,1 @@
+-  oldWork()
++  doWork()
+```
+
+## Full function (for context only, DO NOT review unchanged code):
+```rust
+handle() {
+  doWork()
+}
+```

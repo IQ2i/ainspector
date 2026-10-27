@@ -1,0 +1,154 @@
+package llm
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sort"
+	"testing"
+
+	"github.com/iq2i/ainspector/internal/extractor"
+)
+
+var update = flag.Bool("update", false, "regenerate golden files")
+
+func assertGolden(t *testing.T, path string, got []byte) {
+	t.Helper()
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("missing golden %s (run with -update): %v", path, err)
+	}
+	if string(want) != string(got) {
+		t.Errorf("golden mismatch for %s\n--- want ---\n%s\n--- got ---\n%s", path, want, got)
+	}
+}
+
+func sortedLanguages() []string {
+	langs := []string{"unknown"}
+	for l := range languageSpecificRules {
+		langs = append(langs, l)
+	}
+	sort.Strings(langs)
+	return langs
+}
+
+func TestGolden_SystemPrompt(t *testing.T) {
+	contexts := map[string]*ProjectContext{
+		"nil":    nil,
+		"raw":    {Description: "=== README.md ===\n# Demo\n", IsRaw: true},
+		"legacy": {Description: "A Go CLI tool for code review."},
+	}
+	ruleSets := map[int][]string{
+		0: nil,
+		2: {"Never use panic in library code", "Every exported function needs a test"},
+	}
+
+	for _, lang := range sortedLanguages() {
+		for ctxName, pc := range contexts {
+			for n, rules := range ruleSets {
+				name := fmt.Sprintf("%s-%s-r%d.txt", lang, ctxName, n)
+				t.Run(name, func(t *testing.T) {
+					got := buildSystemPrompt(lang, pc, rules)
+					assertGolden(t, filepath.Join("testdata", "golden", "system", name), []byte(got))
+				})
+			}
+		}
+	}
+}
+
+func TestGolden_UserPrompt(t *testing.T) {
+	for _, lang := range sortedLanguages() {
+		for _, withDiff := range []bool{true, false} {
+			fn := &extractor.ExtractedFunction{
+				Name:       "handle",
+				StartLine:  10,
+				EndLine:    14,
+				Content:    "handle() {\n  doWork()\n}",
+				FilePath:   "src/handler",
+				Language:   lang,
+				ChangeType: "modified",
+			}
+			suffix := "nodiff"
+			if withDiff {
+				fn.Diff = "@@ -11,1 +11,1 @@\n-  oldWork()\n+  doWork()"
+				suffix = "diff"
+			}
+			name := fmt.Sprintf("%s-%s.txt", lang, suffix)
+			t.Run(name, func(t *testing.T) {
+				assertGolden(t, filepath.Join("testdata", "golden", "user", name), []byte(buildUserPrompt(fn)))
+			})
+		}
+	}
+}
+
+func TestGolden_WireRequest(t *testing.T) {
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"LGTM"}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "key", "gpt-4o")
+	_, err := client.Complete(context.Background(), []ChatMessage{
+		{Role: "system", Content: buildSystemPrompt("go", nil, nil)},
+		{Role: "user", Content: "Review this"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertGolden(t, filepath.Join("testdata", "golden", "wire", "chat_request.json"), body)
+}
+
+func sum(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+func TestPromptChecksums(t *testing.T) {
+	if got := sum(baseSystemPrompt); got != wantBaseChecksum {
+		t.Errorf("baseSystemPrompt changed (sha256 %s): bump the mode version and regenerate goldens", got)
+	}
+	for lang, want := range wantRuleChecksums {
+		if got := sum(languageSpecificRules[lang]); got != want {
+			t.Errorf("rules for %s changed (sha256 %s): bump the mode version and regenerate goldens", lang, got)
+		}
+	}
+	if len(wantRuleChecksums) != len(languageSpecificRules) {
+		t.Errorf("checksum table covers %d languages, prompts define %d", len(wantRuleChecksums), len(languageSpecificRules))
+	}
+}
+
+const wantBaseChecksum = "97c92f5d530e9458aef5898b70e54ab7f55d098ca218155f370ad00a8e8fe037"
+
+var wantRuleChecksums = map[string]string{
+	"bash":       "a9e9d437de8091fdca22c69b77f39babd3b8ff7aa82db4af5fc92783d25e5d5a",
+	"c":          "a743e36e8ceac08b0bfcbe03ab3f046584ec51712f233dac46195b0bd19752a8",
+	"cpp":        "7bcc033978f4357f4ae1ace8079d15e241df67073cf94ffb80a9f130f12e2690",
+	"csharp":     "44503ccab5d1b02a1a419ff2195ff2ca6913b3033a5490e7f0b09fa67001ae5b",
+	"go":         "bb0c51d621ebde477fe347fd27db6402c7817d065818dd0cbe05c530e61c71f4",
+	"java":       "5ba79bf4c9bcf226961d8805ef3fa9f0d74aacf3a66ed9cb926254137078bb0d",
+	"javascript": "6c7facd7698b1ed484734989ecd68828793d78a13d1bf3f94acb0fa6640bf3ec",
+	"php":        "b2bd55da6442e1c155bdad9a84edc2add09169e5b8ea74153306bc8750e80860",
+	"python":     "86c53fc9d37e57d95b26711024ae4dcd45705e2b27f6ce9f3a69d7c5b6ca08ab",
+	"ruby":       "fbe8067921cfcc3bf481c2a658b885ca4d08678dc8ab08b1dee39324e05341a3",
+	"rust":       "517170211fb4b53fa2f8997d7372c48e589f2511846c5e85db518f14f4358a42",
+	"typescript": "93205d811b6931b9dc781b8fddd317c40553ad356ba4157dd8224b56cc206934",
+}
