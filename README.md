@@ -184,12 +184,16 @@ modes:
       - "No global mutable state"
   security:
     enabled: true
-    scope: function+class      # function or function+class
+    scope: function+class+related   # function, function+class or function+class+related (default)
     max_findings: 5            # findings commented per run, the others stay in the summary
     hunks:                     # files without functions, reviewed as the changed lines plus context
       extensions: [twig, yaml, yml, vue, env]
       before: 5
       after: 1
+    related:                   # files joined to each unit with the scope function+class+related
+      presets: [symfony, vue]
+      max_files: 6             # per unit
+      max_bytes: 40000         # per unit
     false_positive:
       model: claude-opus-5-5   # default on the Anthropic backend
       instructions: "Ignore findings under legacy/"
@@ -211,7 +215,7 @@ rules:
 
 **modes.quality** - `enabled` (default `true`), `model` (default: the model of the LLM backend) and `rules`, which are added after the top-level `rules`.
 
-**modes.security** - Disabled unless `enabled: true`. `scope` is the code given with each unit (`function`, or `function+class` by default, which adds the header of the class). `max_findings` caps the findings commented per run (default `5`). `hunks` tells which files without functions are reviewed, and how many lines of context surround each change (defaults above); lock files (`*.lock`, `package-lock.json`, `pnpm-lock.yaml`) and minified assets are never reviewed that way. `false_positive.model` is the model of the second pass (`claude-opus-5-5` on the Anthropic backend, the default model of the backend otherwise), `false_positive.instructions` is appended to the built-in instructions. `model` is the model of the review itself.
+**modes.security** - Disabled unless `enabled: true`. `scope` is the code given with each unit: `function`, `function+class` (adds the header of the class) or `function+class+related` (the default, adds the related files). `max_findings` caps the findings commented per run (default `5`). `hunks` tells which files without functions are reviewed, and how many lines of context surround each change (defaults above); lock files (`*.lock`, `package-lock.json`, `pnpm-lock.yaml`) and minified assets are never reviewed that way. `false_positive.model` is the model of the second pass (`claude-opus-5-5` on the Anthropic backend, the default model of the backend otherwise), `false_positive.instructions` is appended to the built-in instructions. `model` is the model of the review itself.
 
 **context.include** - Files to include when generating project context. The AI will read these files to better understand your project's architecture, conventions, and requirements. By default, ainspector automatically searches for common documentation files like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `README.md`, and `.github/copilot-instructions.md`.
 
@@ -253,7 +257,19 @@ What it reviews, beyond the functions with added lines:
 - Functions whose only change is a deletion: a removed `#[IsGranted]`, authorization check or escaping is a signal.
 - Changes outside any function (class attributes, imports, properties).
 - Files without functions (`twig`, `yaml`, `yml`, `vue`, `env` by default): the changed lines with a few lines of context.
-- With `function+class`, the header of the enclosing class: imports, class attributes, properties, constructor and the signature of the other methods, which a controller cannot be judged without. This is available for PHP, TypeScript, JavaScript, Python, Java, C# and Ruby. Go, Rust, C, C++ and Bash have no class header and stay at the `function` scope. A file that was deleted is not reviewed.
+- With `function+class` and above, the header of the enclosing class: imports, class attributes, properties, constructor and the signature of the other methods, which a controller cannot be judged without. This is available for PHP, TypeScript, JavaScript, Python, Java, C# and Ruby. Go, Rust, C, C++ and Bash have no class header and stay at the `function` scope. A file that was deleted is not reviewed.
+- With `function+class+related`, the files related to the unit, which tell whether an access check really protects it. They are found by naming conventions and text search in the checkout of the job, never by static analysis:
+
+  | Changed file | Files joined |
+  |---|---|
+  | Symfony controller (`src/Controller/`) | the voters named after the entities it receives or handling the attributes it checks, the `firewalls` and `access_control` of `config/packages/security.yaml`, the Twig templates it renders |
+  | Entity (`src/Entity/`) | its repository, its serializer configuration when it has no `#[Groups]` |
+  | Form (`src/Form/`) | the entity of its `data_class` |
+  | Voter (`*Voter.php`) | the controllers that use it |
+  | Twig template (`templates/`) | the code that renders it |
+  | Vue component | the files importing it, the stores and composables it imports |
+
+  A unit gets at most `related.max_files` files and `related.max_bytes` bytes: the rest is left out or truncated, and the summary says so. Nothing is joined when no rule finds anything. `vendor/`, `node_modules/`, `var/`, `.env*` files and the paths of `ignore.paths` are never read. The files come from the checkout of the job: when it is not the head of the merge request (merge result pipeline), the run logs the difference. Changing a related file reviews the units that use it again.
 
 To keep the noise low, findings of `info` severity or under 50% confidence are dropped, findings already reported by a previous run are not repeated (even if their line moved), and a second call to a stronger model discards the false positives. That filter never discards denial of service or resource exhaustion findings. If the filter fails, the findings are published unfiltered and the summary says so. Only the `max_findings` most severe findings are commented, the others are listed in the summary. When nothing is found, no inline comment is posted: only the summary.
 
