@@ -68,7 +68,7 @@ jobs:
         run: ./ainspector review --mode quality,security
 ```
 
-Pull requests from forks get neither the secret nor a token that can write: skip the job for them (`if: github.event.pull_request.head.repo.full_name == github.repository`). The `pull-requests: write` permission is what lets `GITHUB_TOKEN` post the review and the summary. The repository of ainspector reviews its own pull requests this way (`.github/workflows/ainspector.yml`).
+Pull requests from forks get neither the secret nor a token that can write: skip the job for them (`if: github.event.pull_request.head.repo.full_name == github.repository`). The `pull-requests: write` permission is what lets `GITHUB_TOKEN` post the review and the summary.
 
 ### GitLab CI
 
