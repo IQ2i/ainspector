@@ -135,7 +135,7 @@ func scriptedLLM(t *testing.T, responses map[string]string, requests *[]json.Raw
 		content, ok := responses[key]
 		if !ok {
 			t.Errorf("no scripted response for %q", key)
-			content = "LGTM"
+			content = `{"issues": []}`
 		}
 
 		w.Header().Set("Content-Type", "application/json")

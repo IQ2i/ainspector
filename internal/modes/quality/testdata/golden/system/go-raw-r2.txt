@@ -10,9 +10,7 @@ For the modified lines, identify ONLY actual issues:
 - Code that could cause runtime errors
 
 RESPONSE FORMAT:
-If there are NO issues, respond with exactly: LGTM
-
-If there ARE issues, respond with a JSON object in this exact format:
+Respond with a JSON object in this exact format:
 {
   "issues": [
     {
@@ -22,6 +20,8 @@ If there ARE issues, respond with a JSON object in this exact format:
     }
   ]
 }
+
+If there are NO issues, respond with an empty list: {"issues": []}
 
 IMPORTANT RULES:
 - The "line" field must be an actual line number from the file (between the function's start and end lines)
@@ -43,6 +43,7 @@ Report any violations of these rules explicitly in your review:
 1. Never use panic in library code
 2. Every exported function needs a test
 
+<<< cache breakpoint >>>
 
 LANGUAGE-SPECIFIC CHECKS FOR GO:
 - Verify all errors are properly handled (no ignored errors)

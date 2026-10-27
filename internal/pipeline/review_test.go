@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -23,7 +24,11 @@ func (f *fakeClient) Backend() string { return "fake" }
 func (f *fakeClient) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	f.requests = append(f.requests, req)
 	text, err := f.reply(len(f.requests), req)
-	return llm.Response{Text: text}, err
+	resp := llm.Response{Text: text}
+	if req.Schema != nil && json.Valid([]byte(text)) {
+		resp.JSON = json.RawMessage(text)
+	}
+	return resp, err
 }
 
 func lgtm(int, llm.Request) (string, error) { return "LGTM", nil }
@@ -76,8 +81,9 @@ func TestReviewUnits_FindingsCarryUnitHash(t *testing.T) {
 	if f.Explanation != "Bug here" || f.Suggestion != "fix()" {
 		t.Errorf("unexpected finding content: %+v", f)
 	}
-	if f.UnitHash != state.LegacyFunctionHash(unit) {
-		t.Errorf("expected unit hash %s, got %s", state.LegacyFunctionHash(unit), f.UnitHash)
+	want := state.UnitHash(quality.New("", nil), unit, state.RulesDigest(nil))
+	if f.UnitHash != want {
+		t.Errorf("expected unit hash %s, got %s", want, f.UnitHash)
 	}
 }
 
@@ -125,7 +131,11 @@ func TestReviewUnits_RequestFromMode(t *testing.T) {
 	if req.Model != "some-model" {
 		t.Errorf("expected mode model, got %q", req.Model)
 	}
-	system := req.System[0].Text
+	var texts []string
+	for _, b := range req.System {
+		texts = append(texts, b.Text)
+	}
+	system := strings.Join(texts, "\n")
 	for _, want := range []string{"A web app", "No globals", "LANGUAGE-SPECIFIC CHECKS FOR GO"} {
 		if !strings.Contains(system, want) {
 			t.Errorf("system prompt should contain %q", want)

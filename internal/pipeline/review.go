@@ -21,6 +21,7 @@ type UnitResult struct {
 // ReviewUnits reviews each unit sequentially. A failing unit does not stop the others.
 func ReviewUnits(ctx context.Context, client llm.Client, m modes.Mode, units []collect.ReviewUnit, pc *collect.ProjectContext) []UnitResult {
 	results := make([]UnitResult, 0, len(units))
+	rulesDigest := state.RulesDigest(m.Rules())
 
 	for _, u := range units {
 		result := UnitResult{Unit: u}
@@ -36,7 +37,7 @@ func ReviewUnits(ctx context.Context, client llm.Client, m modes.Mode, units []c
 			continue
 		}
 
-		hash := state.LegacyFunctionHash(u)
+		hash := state.UnitHash(m, u, rulesDigest)
 		for i := range result.Findings {
 			result.Findings[i].UnitHash = hash
 		}

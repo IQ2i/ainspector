@@ -1,6 +1,9 @@
 package quality
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
@@ -24,21 +27,33 @@ func (m *Mode) Scope() collect.Scope { return collect.ScopeFunction }
 
 func (m *Mode) Model() string { return m.model }
 
-func (m *Mode) Version() string { return "quality/1" }
+func (m *Mode) Version() string { return "quality/2" }
 
 func (m *Mode) Rules() []string { return m.rules }
 
 func (m *Mode) BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request {
 	return llm.Request{
 		Model:    m.model,
-		System:   []llm.Block{{Text: buildSystemPrompt(u.Language, pc, m.rules)}},
+		System:   buildSystemBlocks(u.Language, pc, m.rules),
 		Messages: []llm.Message{{Role: "user", Content: buildUserPrompt(&u)}},
+		Schema:   &llm.Schema{Name: "code_review", JSON: reviewSchema},
 	}
 }
 
 func (m *Mode) Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Finding, error) {
+	var issues []Suggestion
+	if resp.JSON == nil {
+		issues = parseReviewResponse(resp.Text)
+	} else {
+		var doc ReviewResponse
+		if err := json.Unmarshal(resp.JSON, &doc); err != nil {
+			return nil, fmt.Errorf("invalid review document: %w", err)
+		}
+		issues = doc.Issues
+	}
+
 	var result []findings.Finding
-	for _, s := range parseReviewResponse(resp.Text) {
+	for _, s := range issues {
 		result = append(result, findings.Finding{
 			Mode:        m.Name(),
 			File:        u.FilePath,
