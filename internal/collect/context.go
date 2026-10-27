@@ -1,8 +1,8 @@
 package collect
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -75,9 +75,13 @@ func GenerateProjectContext(projectRoot string, languages []string, contextConfi
 			files = append(files, contextFile{path, configured[path]})
 		}
 	} else {
+		var warnings []string
 		var err error
-		if files, err = findContextFiles(projectRoot); err != nil {
+		if files, warnings, err = findContextFiles(projectRoot, limit); err != nil {
 			return nil, fmt.Errorf("failed to find context files: %w", err)
+		}
+		for _, warning := range warnings {
+			fmt.Printf("Warning: %s\n", warning)
 		}
 	}
 
@@ -85,12 +89,18 @@ func GenerateProjectContext(projectRoot string, languages []string, contextConfi
 	return &ProjectContext{Description: description, Languages: languages, Notes: notes}, nil
 }
 
-// findContextFiles returns the well-known project files that exist, in priority order
-func findContextFiles(projectRoot string) ([]contextFile, error) {
+// findContextFiles returns the well-known project files that exist, in priority order. A file
+// that resolves outside the project is skipped with a warning, the others that cannot be read
+// are skipped silently.
+func findContextFiles(projectRoot string, limit int) ([]contextFile, []string, error) {
 	var files []contextFile
+	var warnings []string
 	add := func(relPath string) {
-		content, err := os.ReadFile(filepath.Join(projectRoot, relPath))
+		content, err := config.ReadProjectFile(projectRoot, relPath, limit)
 		if err != nil {
+			if errors.Is(err, config.ErrOutsideRoot) {
+				warnings = append(warnings, fmt.Sprintf("context file ignored: %v", err))
+			}
 			return
 		}
 		files = append(files, contextFile{filepath.ToSlash(relPath), string(content)})
@@ -105,7 +115,7 @@ func findContextFiles(projectRoot string) ([]contextFile, error) {
 	for _, pattern := range manifestPatterns {
 		matches, err := filepath.Glob(filepath.Join(projectRoot, pattern))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, match := range matches {
 			if rel, err := filepath.Rel(projectRoot, match); err == nil {
@@ -118,7 +128,7 @@ func findContextFiles(projectRoot string) ([]contextFile, error) {
 		add(rel)
 	}
 
-	return files, nil
+	return files, warnings, nil
 }
 
 // renderContext concatenates the files up to limit bytes. The file that crosses the limit is

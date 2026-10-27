@@ -43,7 +43,7 @@ func TestFindContextFiles_OrderAndSelection(t *testing.T) {
 		"unrelated.txt":                   "ignored",
 	})
 
-	found, err := findContextFiles(dir)
+	found, _, err := findContextFiles(dir, config.DefaultContextMaxBytes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestFindContextFiles_GlobPattern(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{"MyProject.csproj": `<Project Sdk="Microsoft.NET.Sdk"></Project>`})
 
-	found, err := findContextFiles(dir)
+	found, _, err := findContextFiles(dir, config.DefaultContextMaxBytes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,5 +181,45 @@ func TestCutAtRune(t *testing.T) {
 				t.Errorf("cutAtRune(%d) split a character: %q", n, got)
 			}
 		}
+	}
+}
+
+func TestFindContextFiles_SymlinkOutsideTheProjectIsIgnored(t *testing.T) {
+	outside := t.TempDir()
+	writeFiles(t, outside, map[string]string{"secret": "GITLAB_TOKEN=glpat-secret"})
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"CLAUDE.md": "rules", "real.md": "inside"})
+	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(dir, "README.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink("real.md", filepath.Join(dir, "AGENTS.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	found, warnings, err := findContextFiles(dir, config.DefaultContextMaxBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := strings.Join(paths(found), ","); got != "CLAUDE.md,AGENTS.md" {
+		t.Errorf("expected the link inside the project to be kept and the other ignored, got %s", got)
+	}
+	for _, f := range found {
+		if strings.Contains(f.content, "glpat") {
+			t.Errorf("content of a file outside the project leaked: %q", f.content)
+		}
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "README.md") {
+		t.Errorf("expected one warning naming the link, got %v", warnings)
+	}
+}
+
+func TestFindContextFiles_ReadsAtMostTheLimit(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"README.md": strings.Repeat("x", 5000)})
+
+	found, _, err := findContextFiles(dir, 100)
+	if err != nil || len(found) != 1 || len(found[0].content) != 100 {
+		t.Errorf("expected 100 bytes read, got %v / %v", found, err)
 	}
 }

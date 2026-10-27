@@ -57,8 +57,7 @@ func (c *ContextConfig) CollectContextFiles(projectRoot string) (map[string]stri
 			continue
 		}
 
-		fullPath := filepath.Join(projectRoot, relPath)
-		content, err := os.ReadFile(fullPath)
+		content, err := ReadProjectFile(projectRoot, relPath, c.Limit())
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("failed to read %s: %v", relPath, err))
 			continue
