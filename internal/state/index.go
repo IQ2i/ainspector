@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/collect"
@@ -19,6 +20,8 @@ const (
 	MaxHashes = 500
 	// MaxReportedBytes caps the size of the findings remembered in a state block
 	MaxReportedBytes = 8000
+	// MaxOpenBytes caps the size of the open findings remembered in a state block
+	MaxOpenBytes = 16000
 )
 
 var stateRegex = regexp.MustCompile(`(?s)<!-- ainspector:state:([a-z0-9_-]+) (\{.*?\}) -->`)
@@ -32,6 +35,9 @@ type StateBlock struct {
 	Findings []string `json:"findings"`
 	// Reported tells what the findings were, to hand them to the false positive filter
 	Reported []findings.Reported `json:"reported,omitempty"`
+	// Open holds the findings still true after the last run, so that the Code Quality report
+	// of a run that skips their units can repeat them
+	Open []findings.Reported `json:"open,omitempty"`
 }
 
 // FormatStateBlock renders the state block of a mode as an HTML comment
@@ -40,6 +46,7 @@ func FormatStateBlock(mode string, b StateBlock) string {
 	b.Units = capHashes(b.Units)
 	b.Findings = capHashes(b.Findings)
 	b.Reported = capReported(b.Reported)
+	b.Open = capOpen(b.Open)
 	if b.Units == nil {
 		b.Units = []string{}
 	}
@@ -90,6 +97,64 @@ func MergeReported(previous, current []findings.Reported) []findings.Reported {
 		}
 	}
 	return capReported(merged)
+}
+
+// MergeOpen returns carried then current, a finding of current replacing the one of carried
+// that has the same fingerprint
+func MergeOpen(carried, current []findings.Reported) []findings.Reported {
+	index := make(map[string]int, len(carried)+len(current))
+	var merged []findings.Reported
+	for _, r := range append(append([]findings.Reported{}, carried...), current...) {
+		if i, ok := index[r.Fingerprint]; ok {
+			merged[i] = r
+			continue
+		}
+		index[r.Fingerprint] = len(merged)
+		merged = append(merged, r)
+	}
+	return capOpen(merged)
+}
+
+// capOpen drops the least severe findings, the oldest first among equals, until the rest fits
+// in MaxOpenBytes. The order of the survivors is kept.
+func capOpen(rs []findings.Reported) []findings.Reported {
+	sizes := make([]int, len(rs))
+	total := 0
+	for i, r := range rs {
+		data, _ := json.Marshal(r)
+		sizes[i] = len(data) + 1
+		total += sizes[i]
+	}
+	if total <= MaxOpenBytes {
+		return rs
+	}
+
+	order := make([]int, len(rs))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		ra, rb := rs[order[a]].Severity.Rank(), rs[order[b]].Severity.Rank()
+		if ra != rb {
+			return ra > rb
+		}
+		return order[a] > order[b]
+	})
+	keep := make(map[int]bool)
+	size := 0
+	for _, i := range order {
+		if size += sizes[i]; size > MaxOpenBytes {
+			break
+		}
+		keep[i] = true
+	}
+	var kept []findings.Reported
+	for i, r := range rs {
+		if keep[i] {
+			kept = append(kept, r)
+		}
+	}
+	return kept
 }
 
 func capReported(rs []findings.Reported) []findings.Reported {
@@ -162,6 +227,35 @@ func (ix *Index) ReportedFindings(mode string) (map[string]bool, []findings.Repo
 		seen[fp] = true
 	}
 	return seen, b.Reported
+}
+
+// OpenFindings returns what the last run of a mode left open, as far as the units that were
+// skipped this time are concerned: the findings of units that are reviewed again are replaced
+// by the ones of the new review. skipped maps the hash of each of those units to the line where
+// it starts now, as a unit that did not change may have moved: the lines follow it. A block of
+// another version or scope is not trusted, as its unit hashes could not match anymore.
+func (ix *Index) OpenFindings(m ModeKey, skipped map[string]int) []findings.Reported {
+	b, ok := ix.blocks[m.Name()]
+	if !ok || b.Ver != m.Version() || b.Scope != m.Scope().String() {
+		return nil
+	}
+	var open []findings.Reported
+	for _, r := range b.Open {
+		start, ok := skipped[r.Unit]
+		if !ok {
+			continue
+		}
+		if r.UnitLine > 0 && start > 0 {
+			delta := start - r.UnitLine
+			r.Line += delta
+			if r.EndLine > 0 {
+				r.EndLine += delta
+			}
+			r.UnitLine = start
+		}
+		open = append(open, r)
+	}
+	return open
 }
 
 // Len returns the number of distinct inline markers found

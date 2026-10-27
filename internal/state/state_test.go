@@ -435,3 +435,101 @@ func TestIndex_ReportedFindings(t *testing.T) {
 		t.Errorf("the block of another mode must not count: %v %v", seen, previous)
 	}
 }
+
+func TestStateBlock_OpenRoundTrip(t *testing.T) {
+	in := StateBlock{Scope: "function", Ver: "security/1", Open: []findings.Reported{{Fingerprint: "aaaaaaaaaaaa", File: "a.php", Line: 3, EndLine: 5, Severity: findings.SeverityHigh, Title: "t", Unit: "u1"}}}
+	out, ok := ParseStateBlock("security", FormatStateBlock("security", in))
+	if !ok || len(out.Open) != 1 || out.Open[0] != in.Open[0] {
+		t.Errorf("unexpected block %+v", out)
+	}
+	if strings.Contains(FormatStateBlock("quality", StateBlock{}), "open") {
+		t.Error("a block without open findings must keep the format of v1 blocks")
+	}
+}
+
+func TestMergeOpen(t *testing.T) {
+	old := findings.Reported{Fingerprint: "a", Title: "old", Unit: "u1"}
+	b := findings.Reported{Fingerprint: "b", Unit: "u1"}
+	fresh := findings.Reported{Fingerprint: "a", Title: "new", Unit: "u2"}
+
+	got := MergeOpen([]findings.Reported{old, b}, []findings.Reported{fresh})
+	if len(got) != 2 || got[0] != fresh || got[1] != b {
+		t.Errorf("a current finding replaces the carried one in place, got %+v", got)
+	}
+}
+
+func TestMergeOpen_CapKeepsTheMostSevere(t *testing.T) {
+	var all []findings.Reported
+	for i := 0; i < 300; i++ {
+		sev := findings.SeverityLow
+		if i == 0 || i == 150 {
+			sev = findings.SeverityCritical
+		}
+		all = append(all, findings.Reported{Fingerprint: fmt.Sprintf("%012d", i), File: "src/Controller/AccountController.php", Category: "access-control", Title: "Missing access control on the action", Severity: sev, Unit: "u"})
+	}
+	got := MergeOpen(nil, all)
+	data, _ := json.Marshal(got)
+	if len(got) >= len(all) || len(data) > MaxOpenBytes+len(got) {
+		t.Fatalf("expected the findings within the cap, got %d findings, %d bytes", len(got), len(data))
+	}
+	if got[0] != all[0] {
+		t.Error("the oldest critical finding must survive the cap, in its place")
+	}
+	if got[len(got)-1] != all[len(all)-1] {
+		t.Error("among equals the most recent ones are kept")
+	}
+	survivors := 0
+	for _, r := range got {
+		if r.Severity == findings.SeverityCritical {
+			survivors++
+		}
+	}
+	if survivors != 2 {
+		t.Errorf("both critical findings must survive, got %d", survivors)
+	}
+}
+
+func TestIndex_OpenFindingsFollowTheirUnit(t *testing.T) {
+	sec := fakeMode{"security", collect.ScopeFunctionClass, "security/1"}
+	block := FormatStateBlock("security", StateBlock{
+		Scope: sec.scope.String(), Ver: sec.version,
+		Open: []findings.Reported{
+			{Fingerprint: "a", Unit: "u1", Line: 12, EndLine: 14, UnitLine: 10},
+			{Fingerprint: "old", Unit: "u1", Line: 12},
+		},
+	})
+	ix := LoadIndex([]provider.ExistingComment{{Author: "bot", Body: block}}, "bot")
+
+	got := ix.OpenFindings(sec, map[string]int{"u1": 40})
+	if len(got) != 2 || got[0].Line != 42 || got[0].EndLine != 44 || got[0].UnitLine != 40 {
+		t.Errorf("the lines must follow the unit, got %+v", got[0])
+	}
+	if got[1].Line != 12 {
+		t.Errorf("a finding without the start of its unit is left as it is, got %+v", got[1])
+	}
+}
+
+func TestIndex_OpenFindings(t *testing.T) {
+	sec := fakeMode{"security", collect.ScopeFunctionClass, "security/1"}
+	block := FormatStateBlock("security", StateBlock{
+		Scope: sec.scope.String(), Ver: sec.version,
+		Open: []findings.Reported{{Fingerprint: "a", Unit: "u1"}, {Fingerprint: "b", Unit: "u2"}},
+	})
+	ix := LoadIndex([]provider.ExistingComment{
+		{Author: "bot", Body: "summary\n" + block},
+		{Author: "intruder", Body: FormatStateBlock("quality", StateBlock{Scope: "function", Ver: "quality/2", Open: []findings.Reported{{Fingerprint: "z", Unit: "u1"}}})},
+	}, "bot")
+
+	if got := ix.OpenFindings(sec, map[string]int{"u1": 1, "u3": 1}); len(got) != 1 || got[0].Fingerprint != "a" {
+		t.Errorf("only the findings of skipped units are carried, got %+v", got)
+	}
+	if got := ix.OpenFindings(fakeMode{"security", collect.ScopeFunctionClass, "security/2"}, map[string]int{"u1": 1}); got != nil {
+		t.Errorf("a block of another version is not trusted, got %+v", got)
+	}
+	if got := ix.OpenFindings(fakeMode{"security", collect.ScopeFunction, "security/1"}, map[string]int{"u1": 1}); got != nil {
+		t.Errorf("a block of another scope is not trusted, got %+v", got)
+	}
+	if got := ix.OpenFindings(quality, map[string]int{"u1": 1}); got != nil {
+		t.Errorf("a comment of someone else is not trusted, got %+v", got)
+	}
+}

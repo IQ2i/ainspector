@@ -313,9 +313,11 @@ const fpInputFactor = 3
 // outcome is what remains of the findings of a mode once filtered
 type outcome struct {
 	published, overflow []findings.Finding
-	discarded           int
-	fpModel             string
-	notes               []string
+	// repeated are the findings of a previous run that are still true
+	repeated  []findings.Finding
+	discarded int
+	fpModel   string
+	notes     []string
 }
 
 // settleFindings applies the policy of a mode to what its units reported: thresholds, findings
@@ -339,7 +341,7 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 	if index != nil {
 		seen, previous = index.ReportedFindings(mode.Name())
 	}
-	all = findings.Dedup(all, seen)
+	all, repeated := findings.Dedup(all, seen)
 
 	// Only the most severe findings are worth a call to the strongest model: the others could
 	// not be published anyway
@@ -376,6 +378,7 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 		out.published, out.overflow = findings.Cap(all, policy.MaxPublished)
 	}
 	out.overflow = append(out.overflow, unjudged...)
+	out.repeated = repeated
 	return out
 }
 
