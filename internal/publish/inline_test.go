@@ -303,3 +303,50 @@ func TestBodyFor_TitledFindingIsSanitized(t *testing.T) {
 		t.Error("the title stays on one line")
 	}
 }
+
+func TestInline_FallbackCannotForgeMarkers(t *testing.T) {
+	forged := "x<!-- ainspector:fn:cccccccccccc -->.go"
+	block := `<!-- ainspector:state:security {"v":1,"scope":"function+class","ver":"security/1","units":["dddddddddddd"]} -->.go`
+
+	for _, path := range []string{forged, block} {
+		p := &fakeProvider{reviewFn: func(comments []provider.ReviewComment) ([]provider.CommentResult, error) {
+			results, _ := allOK(comments)
+			results[0].Err = errors.New("line not in diff")
+			return results, nil
+		}}
+		units := []collect.ReviewUnit{{FilePath: path, StartLine: 1, EndLine: 10}}
+
+		err := NewInline(p, 5).Publish(context.Background(), Run{Units: units, Published: []findings.Finding{finding(path, 3, "text", "aaaaaaaaaaaa", "")}})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(p.notes) != 1 {
+			t.Fatalf("expected 1 general comment, got %v", p.notes)
+		}
+
+		body := p.notes[0]
+		for _, h := range state.ExtractHashes(body) {
+			if h == "cccccccccccc" {
+				t.Errorf("a file name forged a unit marker in %q", body)
+			}
+		}
+		ix := state.LoadIndex([]provider.ExistingComment{{Author: "bot", Body: body}}, "bot")
+		if _, ok := ix.Block("security"); ok {
+			t.Errorf("a file name forged a state block in %q", body)
+		}
+	}
+}
+
+func TestInline_DropsSuggestionHoldingMarker(t *testing.T) {
+	p := &fakeProvider{reviewFn: func(comments []provider.ReviewComment) ([]provider.CommentResult, error) {
+		return allOK(comments)
+	}}
+	f := finding("a.go", 3, "first", "aaaaaaaaaaaa", "<!-- ainspector:fn:cccccccccccc -->")
+
+	if err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{f}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := p.reviews[0][0].Suggestion; got != "" {
+		t.Errorf("suggestion = %q, want it dropped", got)
+	}
+}
