@@ -20,6 +20,16 @@ const (
 	ScopeFunctionClassRelated
 )
 
+// ParseScope reads a scope name as written in the configuration
+func ParseScope(name string) (Scope, error) {
+	for _, s := range []Scope{ScopeFunction, ScopeFunctionClass, ScopeFunctionClassRelated} {
+		if s.String() == name {
+			return s, nil
+		}
+	}
+	return 0, fmt.Errorf("unknown scope %q", name)
+}
+
 func (s Scope) String() string {
 	switch s {
 	case ScopeFunction:

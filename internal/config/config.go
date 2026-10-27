@@ -66,7 +66,48 @@ type IgnoreConfig struct {
 
 // ModesConfig holds the settings of each review mode
 type ModesConfig struct {
-	Quality QualityConfig `yaml:"quality"`
+	Quality  QualityConfig  `yaml:"quality"`
+	Security SecurityConfig `yaml:"security"`
+}
+
+const (
+	// DefaultSecurityScope is the context given to the security mode: the function and its class
+	DefaultSecurityScope       = "function+class"
+	DefaultSecurityMaxFindings = 5
+	DefaultHunkBefore          = 5
+	DefaultHunkAfter           = 1
+)
+
+// DefaultHunkExtensions are the files without functions that the security mode reviews as hunks
+var DefaultHunkExtensions = []string{"twig", "yaml", "yml", "vue", "env"}
+
+// SecurityConfig holds the settings of the security mode
+type SecurityConfig struct {
+	// Enabled defaults to false
+	Enabled *bool `yaml:"enabled"`
+	// Scope is "function", "function+class" (the default) or "function+class+related"
+	Scope string `yaml:"scope"`
+	Model string `yaml:"model"`
+	// MaxFindings caps the findings published per run, defaults to DefaultSecurityMaxFindings
+	MaxFindings   int                 `yaml:"max_findings"`
+	Hunks         HunksConfig         `yaml:"hunks"`
+	FalsePositive FalsePositiveConfig `yaml:"false_positive"`
+}
+
+// HunksConfig tells how files without functions are reviewed: the changed lines with a few
+// lines of context around them. Zero values select the defaults.
+type HunksConfig struct {
+	Extensions []string `yaml:"extensions"`
+	Before     int      `yaml:"before"`
+	After      int      `yaml:"after"`
+}
+
+// FalsePositiveConfig configures the pass that discards the false positives of a mode
+type FalsePositiveConfig struct {
+	// Model defaults to claude-opus-5-5 on the Anthropic backend, and to the default model otherwise
+	Model string `yaml:"model"`
+	// Instructions are appended to the built-in ones
+	Instructions string `yaml:"instructions"`
 }
 
 // QualityConfig holds the settings of the quality mode
@@ -147,6 +188,14 @@ func parse(source string, data []byte) (*Config, error) {
 	default:
 		return nil, fmt.Errorf("%s: invalid llm.provider %q (expected anthropic or openai)", source, cfg.LLM.Provider)
 	}
+	switch cfg.Modes.Security.Scope {
+	case "", "function", "function+class", "function+class+related":
+	default:
+		return nil, fmt.Errorf("%s: invalid modes.security.scope %q (expected function, function+class or function+class+related)", source, cfg.Modes.Security.Scope)
+	}
+	if sec := cfg.Modes.Security; sec.MaxFindings < 0 || sec.Hunks.Before < 0 || sec.Hunks.After < 0 {
+		return nil, fmt.Errorf("%s: modes.security.max_findings and modes.security.hunks must not be negative", source)
+	}
 	if cfg.LLM.MaxTokensPerRun < 0 || cfg.Context.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: llm.max_tokens_per_run and context.max_bytes must not be negative", source)
 	}
@@ -171,11 +220,49 @@ func (c *Config) QualityRules() []string {
 	return append(rules, c.Modes.Quality.Rules...)
 }
 
+// SecurityEnabled tells whether the security mode runs by default
+func (c *Config) SecurityEnabled() bool {
+	return c.Modes.Security.Enabled != nil && *c.Modes.Security.Enabled
+}
+
+// ScopeName returns the scope of the security mode
+func (c SecurityConfig) ScopeName() string {
+	if c.Scope == "" {
+		return DefaultSecurityScope
+	}
+	return c.Scope
+}
+
+// Findings returns the cap of published findings
+func (c SecurityConfig) Findings() int {
+	if c.MaxFindings > 0 {
+		return c.MaxFindings
+	}
+	return DefaultSecurityMaxFindings
+}
+
+// Resolved returns the hunk settings with their defaults applied
+func (h HunksConfig) Resolved() HunksConfig {
+	if len(h.Extensions) == 0 {
+		h.Extensions = DefaultHunkExtensions
+	}
+	if h.Before == 0 {
+		h.Before = DefaultHunkBefore
+	}
+	if h.After == 0 {
+		h.After = DefaultHunkAfter
+	}
+	return h
+}
+
 // EnabledModes returns the modes that run when none is requested explicitly
 func (c *Config) EnabledModes() []string {
 	var names []string
 	if c.QualityEnabled() {
 		names = append(names, "quality")
+	}
+	if c.SecurityEnabled() {
+		names = append(names, "security")
 	}
 	return names
 }

@@ -18,6 +18,9 @@ type ProjectContext struct {
 	Languages   []string
 	// Notes tell what the size limit cut, to report in the review summary
 	Notes []string
+	// ChangedFiles lists the files of the PR/MR, for the modes that reason about what changed
+	// alongside the code (tests next to a controller)
+	ChangedFiles []string
 }
 
 // minPartialBytes is the room a file needs to be worth including truncated

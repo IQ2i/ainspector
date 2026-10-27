@@ -8,6 +8,7 @@ import (
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/modes/quality"
+	"github.com/iq2i/ainspector/internal/modes/security"
 	"github.com/iq2i/ainspector/internal/publish"
 )
 
@@ -20,6 +21,10 @@ type Mode interface {
 	Version() string
 	// Rules are the project rules given to the mode, they enter the unit hash
 	Rules() []string
+	// Accepts tells whether a collected unit is reviewed by this mode
+	Accepts(u collect.ReviewUnit) bool
+	// Needs holds what the mode asks of the collection beyond its scope (MatchDeleted, Hunks)
+	Needs() collect.Request
 	BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request
 	Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Finding, error)
 	FilterPolicy() findings.Policy
@@ -39,9 +44,40 @@ func Enabled(names []string, cfg *config.Config) ([]Mode, error) {
 		switch name {
 		case "quality":
 			result = append(result, quality.New(cfg.Modes.Quality.Model, cfg.QualityRules()))
+		case "security":
+			mode, err := newSecurity(cfg)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, mode)
 		default:
 			return nil, fmt.Errorf("unknown mode %q", name)
 		}
 	}
 	return result, nil
+}
+
+func newSecurity(cfg *config.Config) (*security.Mode, error) {
+	sec := cfg.Modes.Security
+
+	scope, err := collect.ParseScope(sec.ScopeName())
+	if err != nil {
+		return nil, err
+	}
+	if scope == collect.ScopeFunctionClassRelated {
+		fmt.Println("Warning: related files are not supported yet, the security mode uses the scope function+class")
+		scope = collect.ScopeFunctionClass
+	}
+
+	hunks := sec.Hunks.Resolved()
+	return security.New(security.Config{
+		Model:       sec.Model,
+		Scope:       scope,
+		MaxFindings: sec.Findings(),
+		Hunks:       collect.HunkPolicy{Extensions: hunks.Extensions, Before: hunks.Before, After: hunks.After},
+		FalsePositive: findings.FPConfig{
+			Model:        sec.FalsePositive.Model,
+			Instructions: sec.FalsePositive.Instructions,
+		},
+	}), nil
 }

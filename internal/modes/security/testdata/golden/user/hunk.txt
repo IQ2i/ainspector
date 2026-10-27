@@ -1,0 +1,20 @@
+Review the changes in this twig code:
+
+File: templates/account/show.html.twig
+Changed lines: 3-9
+Change type: modified
+
+Files changed by this merge request:
+- src/Controller/AccountController.php
+- templates/account/show.html.twig
+
+## Changes (REVIEW THESE):
+```diff
++<div>{{ account.bio|raw }}</div>
+```
+
+## Full code (for context, review only the changes):
+```twig
+<h1>{{ account.name }}</h1>
+<div>{{ account.bio|raw }}</div>
+```

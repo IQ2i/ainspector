@@ -31,6 +31,13 @@ func (m *Mode) Version() string { return "quality/2" }
 
 func (m *Mode) Rules() []string { return m.rules }
 
+// Accepts takes the functions that have added or modified lines: it never reviewed anything else
+func (m *Mode) Accepts(u collect.ReviewUnit) bool {
+	return u.Kind == collect.KindFunction && !u.DeletedOnly
+}
+
+func (m *Mode) Needs() collect.Request { return collect.Request{} }
+
 func (m *Mode) BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request {
 	return llm.Request{
 		Model:    m.model,
