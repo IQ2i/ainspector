@@ -12,7 +12,7 @@ import (
 func TestMode_Identity(t *testing.T) {
 	m := New("some-model", []string{"r1"})
 
-	if m.Name() != "quality" || m.Model() != "some-model" || m.Version() != "quality/2" {
+	if m.Name() != "quality" || m.Model() != "some-model" || m.Version() != "quality/3" {
 		t.Errorf("unexpected identity: %s %s %s", m.Name(), m.Model(), m.Version())
 	}
 	if len(m.Rules()) != 1 || m.Rules()[0] != "r1" {
