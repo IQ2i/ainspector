@@ -12,17 +12,24 @@ make lint     # Lint code
 
 ## Architecture
 
-**Pipeline:** CI Detection → Provider API → Function Extraction → LLM Review → Post Comment
+**Pipeline:** CI Detection → Provider API → Collect Review Units → LLM Review (per mode) → Publish
 
 **Key Packages:**
-- `cmd/` - CLI entry point
+- `cmd/` - CLI flags (`--mode`, `--force`, `--dry-run`)
 - `internal/ci/` - Detect GitHub/GitLab CI environment
 - `internal/provider/` - GitHub/GitLab API abstraction
 - `internal/config/` - Load `ainspector.yaml` config
 - `internal/diff/` - Parse unified diffs
 - `internal/parser/` - Tree-sitter function extraction
-- `internal/extractor/` - Orchestrate parsing and filtering
-- `internal/llm/` - OpenAI-compatible API client
+- `internal/collect/` - Build review units from modified files, project context
+- `internal/llm/` - `Client` interface; `llm/openai/` is the OpenAI-compatible backend
+- `internal/modes/` - Review modes (`modes/quality/` holds the prompts)
+- `internal/findings/` - Findings reported by modes
+- `internal/publish/` - Publish findings (inline comments)
+- `internal/state/` - Unit hashes and markers used to skip reviewed units
+- `internal/pipeline/` - `Run` orchestrates a whole review
+
+Changing a mode prompt requires bumping its `Version()` and regenerating the goldens (`go test ./internal/modes/quality -update`). Reference merge requests live in `testdata/mrs/`; regenerate their expected output with `go test ./internal/pipeline -update` only when a change of behavior is intended.
 
 ## Configuration
 
@@ -32,6 +39,14 @@ ignore:
   paths:
     - vendor/
     - "**/*_test.go"
+  authors: [renovate-bot]
+  title_patterns: ["^\\[skip-review\\]"]
+  labels: [no-ai-review]
+modes:
+  quality:
+    enabled: true
+    rules:
+      - "Database queries must use prepared statements"
 ```
 
 ## Environment Variables
