@@ -71,3 +71,15 @@ func TestTokenCapFromEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestCredentials(t *testing.T) {
+	for _, k := range []string{"ANTHROPIC_API_KEY", "LLM_API_KEY", "GITLAB_TOKEN", "GITHUB_TOKEN"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("GITLAB_TOKEN", "glpat-abcdefgh")
+	t.Setenv("LLM_API_KEY", "sk-abcdefgh")
+	got := credentials()
+	if len(got) != 2 || got[0] != "sk-abcdefgh" || got[1] != "glpat-abcdefgh" {
+		t.Errorf("got %v", got)
+	}
+}

@@ -27,6 +27,8 @@ type Deps struct {
 	// MaxTokens caps the tokens of a run whatever the configuration says, zero means no cap.
 	// The configuration comes from the checkout of the change and its author could raise its own.
 	MaxTokens int
+	// Secrets are the credentials of the run, hidden from the errors of the LLM backend
+	Secrets []string
 	// ReportDir is where the Code Quality report and the artifact are written, defaults to ProjectRoot
 	ReportDir string
 }
@@ -187,6 +189,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			if deps.MaxTokens > 0 {
 				limit = min(limit, deps.MaxTokens)
 			}
+			client = llm.WithRedaction(client, deps.Secrets...)
 			budget = llm.WithBudget(client, limit, newPricing(cfg), logLine)
 			projectContext = loadProjectContext(deps.ProjectRoot, cfg, units)
 			projectContext.ChangedFiles = changedPaths(files)

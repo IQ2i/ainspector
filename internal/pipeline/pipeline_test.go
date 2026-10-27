@@ -662,3 +662,67 @@ func TestRun_ConfigurationChangeIsFlagged(t *testing.T) {
 		t.Errorf("the summary should flag the configuration change, got %v", notes)
 	}
 }
+
+// captureStdout returns what fn printed on the standard output
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	done := make(chan string)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- string(data)
+	}()
+	defer func() { os.Stdout = old }()
+
+	fn()
+	_ = w.Close()
+	os.Stdout = old
+	return <-done
+}
+
+func TestRun_SecretsNeverReachLogsCommentsOrReports(t *testing.T) {
+	const apiKey = "sk-ant-sentinel-0123456789"
+	const token = "glpat-sentinel-0123456789"
+
+	// An endpoint that rejects the key and echoes it, as some do
+	rejecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, "Incorrect API key provided: "+apiKey+" (token "+token+")")
+	}))
+	defer rejecting.Close()
+
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.deps.Secrets = []string{apiKey, token}
+	h.deps.NewLLM = func() (llm.Client, error) { return openai.New(rejecting.URL, apiKey, "test-model"), nil }
+
+	var runErr error
+	out := captureStdout(t, func() { runErr = Run(context.Background(), h.deps, Options{Number: 1}) })
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	if !strings.Contains(out, "failed") {
+		t.Fatalf("the failed review should be logged, got:\n%s", out)
+	}
+
+	var published []string
+	published = append(published, out)
+	for _, c := range h.fake.posted {
+		published = append(published, c.Body, c.Suggestion)
+	}
+	published = append(published, h.fake.noteBodies()...)
+	for _, name := range []string{"gl-code-quality-report.json", "ainspector-report.json"} {
+		published = append(published, string(h.report(name)))
+	}
+	for _, text := range published {
+		for _, secret := range []string{apiKey, token} {
+			if strings.Contains(text, secret) {
+				t.Errorf("a secret leaked:\n%s", text)
+			}
+		}
+	}
+}

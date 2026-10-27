@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -110,12 +111,14 @@ func runReview(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	return pipeline.Run(ctx, pipeline.Deps{
+	secrets := credentials()
+	err = pipeline.Run(ctx, pipeline.Deps{
 		Provider:    p,
 		NewLLM:      func() (llm.Client, error) { return newLLMClient(cfg.LLM) },
 		Config:      cfg,
 		ProjectRoot: projectRoot,
 		MaxTokens:   maxTokens,
+		Secrets:     secrets,
 		ReportDir:   projectRoot,
 	}, pipeline.Options{
 		Number:      env.PRNumber,
@@ -124,4 +127,8 @@ func runReview(cmd *cobra.Command, args []string) error {
 		Force:       forceReview,
 		DryRun:      dryRun,
 	})
+	if err != nil {
+		return errors.New(llm.Redact(err.Error(), secrets...))
+	}
+	return nil
 }

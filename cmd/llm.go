@@ -62,3 +62,14 @@ func tokenCapFromEnv() (int, error) {
 	}
 	return n, nil
 }
+
+// credentials lists the secrets of the environment, to keep them out of the logs
+func credentials() []string {
+	var secrets []string
+	for _, name := range []string{"ANTHROPIC_API_KEY", "LLM_API_KEY", "GITLAB_TOKEN", "GITHUB_TOKEN"} {
+		if v := os.Getenv(name); v != "" {
+			secrets = append(secrets, v)
+		}
+	}
+	return secrets
+}
