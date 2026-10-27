@@ -26,8 +26,8 @@ make lint     # Lint code
 - `internal/llm/` - `Client` interface, `WithBudget` (token cap, usage, cost); `llm/anthropic/` is the Anthropic backend, `llm/openai/` the OpenAI-compatible one
 - `internal/modes/` - Review modes (`modes/quality/` and `modes/security/` hold the prompts)
 - `internal/findings/` - Findings reported by modes: fingerprint, threshold, dedup, cap, false positive filter
-- `internal/publish/` - Publish findings (inline comments) and the summary comment of each mode
-- `internal/state/` - Unit hashes and markers used to skip reviewed units
+- `internal/publish/` - Publish findings (inline comments), the summary comment of each mode, the GitLab Code Quality report and the JSON artifact (`codequality.go`, `artifact.go`, written once per run)
+- `internal/state/` - Unit hashes and markers used to skip reviewed units, and the findings still open (carried over in the Code Quality report)
 - `internal/pipeline/` - `Run` orchestrates a whole review
 
 Changing a mode prompt requires bumping its `Version()` and regenerating the goldens (`go test ./internal/modes/quality -update`, `go test ./internal/modes/security -update`). Reference merge requests live in `testdata/mrs/`; regenerate their expected output with `go test ./internal/pipeline -update` only when a change of behavior is intended. `ANTHROPIC_API_KEY=... go test ./internal/pipeline -run Live -v` replays the security ones against the real API.
@@ -48,6 +48,9 @@ context:
 llm:
   provider: anthropic
   max_tokens_per_run: 400000
+publish:
+  code_quality: gl-code-quality-report.json
+  artifact: ainspector-report.json
 modes:
   quality:
     enabled: true
