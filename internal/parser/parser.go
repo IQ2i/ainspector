@@ -57,6 +57,9 @@ type LanguageConfig struct {
 	// a function nested in one of them (anonymous class, method body) does not belong
 	// to the class declared further up.
 	EnclosingBarriers []string
+	// DocComments makes a function start at its preceding /** ... */ block, where
+	// annotation-style metadata (@Route, @IsGranted) lives.
+	DocComments bool
 }
 
 // languageConfigs maps file extensions to language configurations
@@ -199,6 +202,7 @@ func init() {
 			`,
 			EnclosingTypes:    []string{"class_declaration", "enum_declaration", "trait_declaration", "interface_declaration"},
 			EnclosingBarriers: []string{"anonymous_class", "compound_statement"},
+			DocComments:       true,
 		},
 		// Ruby
 		".rb": {
@@ -344,6 +348,9 @@ func (p *Parser) Parse(path string, content []byte) ([]Function, string, error) 
 
 		if fnNode != nil {
 			start := fnNode.StartByte()
+			if config.DocComments {
+				start = docStart(fnNode, content)
+			}
 			startLine := bytes.Count(content[:start], []byte("\n")) + 1
 			endLine := int(fnNode.EndPosition().Row) + 1
 			key := fmt.Sprintf("%d:%d", startLine, endLine)

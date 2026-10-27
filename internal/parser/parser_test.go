@@ -1162,3 +1162,49 @@ class Outer
 		}
 	}
 }
+
+func TestParser_ParsePHPDocblocks(t *testing.T) {
+	source := `<?php
+class AdminController
+{
+    /**
+     * @Route("/{id}")
+     * @IsGranted("ROLE_SUPER")
+     */
+    public function show($id) { return $id; }
+
+    /** @Route("/detached") */
+    private $prop;
+
+    public function list() { return 1; }
+
+    // @IsGranted("ROLE_X")
+    public function line() { return 1; }
+
+    /** orphan */
+    public $a = 1; public function glued() { return 1; }
+}
+`
+	p := NewParser()
+	defer p.Close()
+
+	functions, _, err := p.Parse("AdminController.php", []byte(source))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	show := findFunction(t, functions, "show")
+	if show.StartLine != 4 {
+		t.Errorf("expected StartLine 4 (docblock), got %d", show.StartLine)
+	}
+	if !strings.HasPrefix(show.Content, "/**\n     * @Route(\"/{id}\")") || !strings.Contains(show.Content, `@IsGranted("ROLE_SUPER")`) {
+		t.Errorf("content should start with the docblock, got:\n%s", show.Content)
+	}
+
+	for _, name := range []string{"list", "line", "glued"} {
+		fn := findFunction(t, functions, name)
+		if strings.Contains(fn.Content, "@") || strings.Contains(fn.Content, "/**") {
+			t.Errorf("%s must not absorb a comment that is not its docblock, got:\n%s", name, fn.Content)
+		}
+	}
+}
