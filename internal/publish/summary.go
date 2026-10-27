@@ -104,7 +104,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 	u := run.Usage
 	if u.Input+u.Output+u.CacheRead+u.CacheWrite > 0 {
 		fmt.Fprintf(&sb, "\nTokens: %d in, %d out, %d read from cache, %d written to cache\n", u.Input, u.Output, u.CacheRead, u.CacheWrite)
-		fmt.Fprintf(&sb, "Estimated cost: %s\n", formatCost(run.Cost, run.CostIncomplete))
+		fmt.Fprintf(&sb, "Estimated cost: %s\n", FormatCost(run.Cost, run.CostIncomplete))
 	}
 
 	writeList := func(title string, items []string) {
@@ -158,7 +158,8 @@ func plural(n int, word string) string {
 	return word + "s"
 }
 
-func formatCost(cost float64, incomplete bool) string {
+// FormatCost renders an estimated cost, saying when it is incomplete
+func FormatCost(cost float64, incomplete bool) string {
 	switch {
 	case incomplete && cost == 0:
 		return "unknown, the model has no known price"

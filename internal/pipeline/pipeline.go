@@ -24,6 +24,9 @@ type Deps struct {
 	NewLLM      func() (llm.Client, error)
 	Config      *config.Config
 	ProjectRoot string
+	// MaxTokens caps the tokens of a run whatever the configuration says, zero means no cap.
+	// The configuration comes from the checkout of the change and its author could raise its own.
+	MaxTokens int
 	// ReportDir is where the Code Quality report and the artifact are written, defaults to ProjectRoot
 	ReportDir string
 }
@@ -93,6 +96,15 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	}
 
 	files = dropUnsafePaths(files)
+	var configNotes []string
+	for _, f := range files {
+		if config.IsConfigFile(f.Path) || config.IsConfigFile(f.OldPath) {
+			note := fmt.Sprintf("This change modifies %s: the settings of its new version apply to this review", f.Path)
+			fmt.Printf("Warning: %s\n", note)
+			configNotes = append(configNotes, note)
+			break
+		}
+	}
 	fmt.Printf("Found %d modified files\n", len(files))
 
 	collector := collect.New(deps.Provider, cfg)
@@ -159,7 +171,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 		if len(toReview) == 0 {
 			fmt.Printf("Nothing left to review for %s\n", mode.Name())
-			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed}
+			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(configNotes)}
 			if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
 				errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 			}
@@ -171,7 +183,11 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			if err != nil {
 				return err
 			}
-			budget = llm.WithBudget(client, cfg.LLM.TokenBudget(), newPricing(cfg), logLine)
+			limit := cfg.LLM.TokenBudget()
+			if deps.MaxTokens > 0 {
+				limit = min(limit, deps.MaxTokens)
+			}
+			budget = llm.WithBudget(client, limit, newPricing(cfg), logLine)
 			projectContext = loadProjectContext(deps.ProjectRoot, cfg, units)
 			projectContext.ChangedFiles = changedPaths(files)
 		}
@@ -183,6 +199,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		run := newRun(mode, toReview, results, outcome, budget.Totals().Sub(before), projectContext)
 		run.Carried = carried
 		run.AlreadyReviewed = alreadyReviewed
+		run.Notes = append(slices.Clone(configNotes), run.Notes...)
 
 		fmt.Printf("Found %d issues (out of %d units reviewed)\n", len(run.Published), len(run.Reviewed))
 		if n := len(run.Skipped); n > 0 {
@@ -198,6 +215,13 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
 			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 		}
+	}
+
+	if budget != nil {
+		total := budget.Totals()
+		fmt.Printf("Total for the run: %d tokens in, %d out, %d read from cache, %d written to cache, estimated cost %s\n",
+			total.Usage.Input, total.Usage.Output, total.Usage.CacheRead, total.Usage.CacheWrite,
+			publish.FormatCost(total.Cost, total.UnpricedCalls > 0))
 	}
 
 	if err := out.write(); err != nil {

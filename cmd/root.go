@@ -42,6 +42,8 @@ LLM backend, one of:
     LLM_MODEL       - model name (default: gpt-4o)
 The Anthropic backend is used when ANTHROPIC_API_KEY is set, unless llm.provider says otherwise.
 
+  AINSPECTOR_MAX_TOKENS_PER_RUN - token cap of a run, which ainspector.yaml can only lower
+
 For GitHub Actions:
   GITHUB_TOKEN    - GitHub API token (usually provided automatically)
 
@@ -94,6 +96,11 @@ func runReview(cmd *cobra.Command, args []string) error {
 		p = provider.NewGitLabProvider(env.APIURL, env.Owner, env.Repo, env.Token)
 	}
 
+	maxTokens, err := tokenCapFromEnv()
+	if err != nil {
+		return err
+	}
+
 	projectRoot, err := os.Getwd()
 	if err != nil {
 		fmt.Printf("Warning: could not get working directory: %v\n", err)
@@ -108,6 +115,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 		NewLLM:      func() (llm.Client, error) { return newLLMClient(cfg.LLM) },
 		Config:      cfg,
 		ProjectRoot: projectRoot,
+		MaxTokens:   maxTokens,
 		ReportDir:   projectRoot,
 	}, pipeline.Options{
 		Number:      env.PRNumber,

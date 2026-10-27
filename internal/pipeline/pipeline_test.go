@@ -624,3 +624,41 @@ func TestDropUnsafePaths(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+func TestRun_EnvironmentCapBeatsTheConfiguration(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.deps.Config.LLM.MaxTokensPerRun = 1000000
+	h.deps.MaxTokens = 1
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 1 {
+		t.Errorf("the cap of the environment leaves room for one unit only, got %d requests", len(h.requests))
+	}
+
+	h = newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.deps.Config.LLM.MaxTokensPerRun = 1
+	h.deps.MaxTokens = 1000000
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 1 {
+		t.Errorf("a high cap in the environment must not raise the configuration, got %d requests", len(h.requests))
+	}
+}
+
+func TestRun_ConfigurationChangeIsFlagged(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	h.fake.mr.Files = append(h.fake.mr.Files, h.fake.mr.Files[0])
+	h.fake.mr.Files[len(h.fake.mr.Files)-1].Path = "ainspector.yaml"
+	h.fake.mr.Files[len(h.fake.mr.Files)-1].Patch = "@@ -1 +1 @@\n-rules: []\n+rules: [x]\n"
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 || !strings.Contains(notes[0], "This change modifies ainspector.yaml") {
+		t.Errorf("the summary should flag the configuration change, got %v", notes)
+	}
+}

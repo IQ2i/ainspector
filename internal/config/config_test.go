@@ -607,3 +607,13 @@ func TestIsGeneratedPath(t *testing.T) {
 		}
 	}
 }
+
+func TestIsConfigFile(t *testing.T) {
+	for path, want := range map[string]bool{
+		"ainspector.yaml": true, "ainspector.yml": true, "sub/ainspector.yaml": false, "config.yaml": false, "": false,
+	} {
+		if got := IsConfigFile(path); got != want {
+			t.Errorf("IsConfigFile(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
