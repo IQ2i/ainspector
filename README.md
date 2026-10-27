@@ -96,6 +96,8 @@ ai-review:
 
 Options:
 - `--force`, `-f` - Force re-review of all functions, ignoring the cache. By default, ainspector skips functions that have already been reviewed in previous runs.
+- `--mode` - Review modes to run, comma separated. Defaults to the modes enabled in the configuration (`quality`).
+- `--dry-run` - Run the review but print the comments instead of posting them.
 
 **ainspector version** - Print the version number
 
@@ -131,6 +133,13 @@ ignore:
     - "**/*_test.go"
     - "*.generated.go"
     - dist/
+  # Skip whole merge requests
+  authors:
+    - renovate-bot
+  title_patterns:
+    - "^\\[skip-review\\]"
+  labels:
+    - no-ai-review
 
 # Configure project context for better AI understanding
 context:
@@ -146,7 +155,15 @@ context:
     - docs/archive/**
     - "**/*.draft.md"
 
-# Custom review rules enforced by the AI
+# Settings of the quality mode
+modes:
+  quality:
+    enabled: true
+    model: gpt-4o
+    rules:
+      - "No global mutable state"
+
+# Custom review rules enforced by the AI (same as modes.quality.rules)
 rules:
   - "All exceptions must be logged before rethrowing"
   - "Database queries must use prepared statements"
@@ -158,6 +175,10 @@ rules:
 ### Configuration Options
 
 **ignore.paths** - Glob patterns for files to skip during review. Useful for excluding vendor code, generated files, and test files.
+
+**ignore.authors**, **ignore.title_patterns**, **ignore.labels** - Skip the whole merge request when its author or one of its labels matches (case-insensitive), or when its title matches one of the regular expressions. Handy for dependency bots.
+
+**modes.quality** - `enabled` (default `true`), `model` (default: the model of the LLM backend) and `rules`, which are added after the top-level `rules`.
 
 **context.include** - Files to include when generating project context. The AI will read these files to better understand your project's architecture, conventions, and requirements. By default, ainspector automatically searches for common documentation files like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `README.md`, and `.github/copilot-instructions.md`.
 

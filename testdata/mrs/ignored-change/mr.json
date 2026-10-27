@@ -1,0 +1,13 @@
+{
+  "files": [
+    {
+      "path": "main.go",
+      "status": "modified",
+      "patch": "@@ -3,3 +3,3 @@\n func add(a, b int) int {\n-\treturn a - b\n+\treturn a + b\n }"
+    }
+  ],
+  "change": {
+    "author": "Renovate-Bot",
+    "title": "Update dependencies"
+  }
+}

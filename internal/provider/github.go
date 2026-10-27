@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"strconv"
 
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
@@ -36,6 +38,28 @@ func NewGitHubProvider(owner, repo, token string) *GitHubProvider {
 		owner:  owner,
 		repo:   repo,
 	}
+}
+
+// GetChangeInfo returns the metadata of the pull request
+func (p *GitHubProvider) GetChangeInfo(ctx context.Context, number int) (ChangeInfo, error) {
+	pr, _, err := p.client.PullRequests.Get(ctx, p.owner, p.repo, number)
+	if err != nil {
+		return ChangeInfo{}, fmt.Errorf("failed to get PR: %w", err)
+	}
+
+	labels := make([]string, 0, len(pr.Labels))
+	for _, l := range pr.Labels {
+		labels = append(labels, l.GetName())
+	}
+
+	return ChangeInfo{
+		Number:  number,
+		Author:  pr.GetUser().GetLogin(),
+		Title:   pr.GetTitle(),
+		Labels:  labels,
+		BaseSHA: pr.GetBase().GetSHA(),
+		HeadSHA: pr.GetHead().GetSHA(),
+	}, nil
 }
 
 // GetModifiedFiles returns all files modified in a pull request
@@ -103,41 +127,79 @@ func (p *GitHubProvider) GetFileContent(ctx context.Context, path string) (strin
 	return string(decoded), nil
 }
 
-// PostComment posts a comment on the pull request
-func (p *GitHubProvider) PostComment(ctx context.Context, number int, body string) error {
+// PostComment posts a comment on the pull request and returns its ID
+func (p *GitHubProvider) PostComment(ctx context.Context, number int, body string) (string, error) {
 	comment := &github.IssueComment{
 		Body: github.String(body),
 	}
 
-	_, _, err := p.client.Issues.CreateComment(ctx, p.owner, p.repo, number, comment)
+	created, _, err := p.client.Issues.CreateComment(ctx, p.owner, p.repo, number, comment)
 	if err != nil {
-		return fmt.Errorf("failed to post comment: %w", err)
+		return "", fmt.Errorf("failed to post comment: %w", err)
+	}
+
+	return strconv.FormatInt(created.GetID(), 10), nil
+}
+
+// UpdateComment replaces the body of a general pull request comment
+func (p *GitHubProvider) UpdateComment(ctx context.Context, number int, id, body string) error {
+	commentID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid comment ID %q: %w", id, err)
+	}
+
+	_, _, err = p.client.Issues.EditComment(ctx, p.owner, p.repo, commentID, &github.IssueComment{Body: github.String(body)})
+	if err != nil {
+		return fmt.Errorf("failed to update comment: %w", err)
 	}
 
 	return nil
 }
 
-// CreateReview creates a review with inline comments on specific lines
-func (p *GitHubProvider) CreateReview(ctx context.Context, number int, comments []ReviewComment) error {
+// CreateReview creates a review with inline comments on specific lines.
+// GitHub accepts or rejects a whole review: when it is rejected, each comment is retried
+// in a review of its own so that one invalid line does not hide the others.
+func (p *GitHubProvider) CreateReview(ctx context.Context, number int, comments []ReviewComment) ([]CommentResult, error) {
 	if len(comments) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	// Convert ReviewComment to GitHub DraftReviewComment
+	err := p.createReview(ctx, number, comments)
+	if err == nil {
+		return resultsFor(comments, nil), nil
+	}
+	if len(comments) == 1 {
+		return resultsFor(comments, err), nil
+	}
+
+	results := make([]CommentResult, 0, len(comments))
+	for _, c := range comments {
+		results = append(results, CommentResult{Comment: c, Err: p.createReview(ctx, number, []ReviewComment{c})})
+	}
+	return results, nil
+}
+
+func resultsFor(comments []ReviewComment, err error) []CommentResult {
+	results := make([]CommentResult, len(comments))
+	for i, c := range comments {
+		results[i] = CommentResult{Comment: c, Err: err}
+	}
+	return results
+}
+
+func (p *GitHubProvider) createReview(ctx context.Context, number int, comments []ReviewComment) error {
 	ghComments := make([]*github.DraftReviewComment, 0, len(comments))
 	for _, c := range comments {
 		body := c.Body
-		// Add suggestion block if there's a suggested code change
 		if c.Suggestion != "" {
-			body = fmt.Sprintf("%s\n\n```suggestion\n%s\n```", c.Body, c.Suggestion)
+			body = c.Body + "\n\n" + Fence("suggestion", c.Suggestion)
 		}
 
-		ghComment := &github.DraftReviewComment{
+		ghComments = append(ghComments, &github.DraftReviewComment{
 			Path: github.String(c.Path),
 			Line: github.Int(c.Line),
 			Body: github.String(body),
-		}
-		ghComments = append(ghComments, ghComment)
+		})
 	}
 
 	review := &github.PullRequestReviewRequest{
@@ -146,41 +208,76 @@ func (p *GitHubProvider) CreateReview(ctx context.Context, number int, comments 
 		Comments: ghComments,
 	}
 
-	_, _, err := p.client.PullRequests.CreateReview(ctx, p.owner, p.repo, number, review)
-	if err != nil {
+	if _, _, err := p.client.PullRequests.CreateReview(ctx, p.owner, p.repo, number, review); err != nil {
 		return fmt.Errorf("failed to create review: %w", err)
 	}
-
 	return nil
 }
 
-// GetReviewComments returns all review comments on the pull request
-func (p *GitHubProvider) GetReviewComments(ctx context.Context, number int) ([]ExistingComment, error) {
-	var allComments []*github.PullRequestComment
-	opts := &github.PullRequestListCommentsOptions{
+// actionsBot is the identity of GITHUB_TOKEN, which cannot call the /user endpoint
+const actionsBot = "github-actions[bot]"
+
+// CurrentUser returns the login the token acts as
+func (p *GitHubProvider) CurrentUser(ctx context.Context) (string, error) {
+	user, resp, err := p.client.Users.Get(ctx, "")
+	if err != nil {
+		if resp != nil && (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound) {
+			return actionsBot, nil
+		}
+		return "", fmt.Errorf("failed to get current user: %w", err)
+	}
+	return user.GetLogin(), nil
+}
+
+// ListComments returns the review comments and the general comments of the pull request
+func (p *GitHubProvider) ListComments(ctx context.Context, number int) ([]ExistingComment, error) {
+	var result []ExistingComment
+
+	reviewOpts := &github.PullRequestListCommentsOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
 	}
-
 	for {
-		comments, resp, err := p.client.PullRequests.ListComments(ctx, p.owner, p.repo, number, opts)
+		comments, resp, err := p.client.PullRequests.ListComments(ctx, p.owner, p.repo, number, reviewOpts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list PR comments: %w", err)
 		}
-		allComments = append(allComments, comments...)
+		for _, c := range comments {
+			result = append(result, ExistingComment{
+				ID:         strconv.FormatInt(c.GetID(), 10),
+				Author:     c.GetUser().GetLogin(),
+				Path:       c.GetPath(),
+				Line:       c.GetLine(),
+				Body:       c.GetBody(),
+				Positioned: true,
+			})
+		}
 
 		if resp.NextPage == 0 {
 			break
 		}
-		opts.Page = resp.NextPage
+		reviewOpts.Page = resp.NextPage
 	}
 
-	result := make([]ExistingComment, 0, len(allComments))
-	for _, c := range allComments {
-		result = append(result, ExistingComment{
-			Path: c.GetPath(),
-			Line: c.GetLine(),
-			Body: c.GetBody(),
-		})
+	issueOpts := &github.IssueListCommentsOptions{
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+	for {
+		comments, resp, err := p.client.Issues.ListComments(ctx, p.owner, p.repo, number, issueOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list issue comments: %w", err)
+		}
+		for _, c := range comments {
+			result = append(result, ExistingComment{
+				ID:     strconv.FormatInt(c.GetID(), 10),
+				Author: c.GetUser().GetLogin(),
+				Body:   c.GetBody(),
+			})
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		issueOpts.Page = resp.NextPage
 	}
 
 	return result, nil

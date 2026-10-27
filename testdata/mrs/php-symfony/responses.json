@@ -1,0 +1,3 @@
+{
+  "show": "{\"issues\": [{\"line\": 17, \"description\": \"SQL injection: the id is concatenated into the query.\", \"suggestion\": \"        $sql = 'SELECT * FROM account WHERE id = :id';\"}]}"
+}

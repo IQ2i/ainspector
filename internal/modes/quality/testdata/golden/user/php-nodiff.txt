@@ -1,0 +1,12 @@
+Review the changes in this php function:
+
+File: src/handler
+Function: handle (lines 10-14)
+Change type: modified
+
+## Full function (for context only, DO NOT review unchanged code):
+```php
+handle() {
+  doWork()
+}
+```

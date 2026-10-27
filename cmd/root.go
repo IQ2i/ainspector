@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/iq2i/ainspector/internal/cache"
 	"github.com/iq2i/ainspector/internal/ci"
 	"github.com/iq2i/ainspector/internal/config"
-	"github.com/iq2i/ainspector/internal/extractor"
 	"github.com/iq2i/ainspector/internal/llm"
+	"github.com/iq2i/ainspector/internal/llm/openai"
+	"github.com/iq2i/ainspector/internal/pipeline"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -17,6 +19,8 @@ import (
 var (
 	version     = "0.1.0"
 	forceReview bool
+	dryRun      bool
+	reviewModes []string
 )
 
 var rootCmd = &cobra.Command{
@@ -58,6 +62,8 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	reviewCmd.Flags().BoolVarP(&forceReview, "force", "f", false, "Force re-review of all functions, ignoring cache")
+	reviewCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Run the review but print the comments instead of posting them")
+	reviewCmd.Flags().StringSliceVar(&reviewModes, "mode", nil, "Review modes to run, comma separated (default: the modes enabled in the configuration)")
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(versionCmd)
 }
@@ -69,13 +75,11 @@ func Execute() {
 }
 
 func runReview(cmd *cobra.Command, args []string) error {
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Detect CI environment
 	env, err := ci.Detect()
 	if err != nil {
 		return fmt.Errorf("CI detection failed: %w", err)
@@ -84,7 +88,6 @@ func runReview(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Detected %s CI environment\n", env.Provider)
 	fmt.Printf("Repository: %s/%s, PR/MR: #%d\n", env.Owner, env.Repo, env.PRNumber)
 
-	// Create provider based on detected environment
 	var p provider.Provider
 	if env.Provider == "github" {
 		p = provider.NewGitHubProvider(env.Owner, env.Repo, env.Token)
@@ -92,81 +95,29 @@ func runReview(cmd *cobra.Command, args []string) error {
 		p = provider.NewGitLabProvider(env.ServerHost, env.Owner, env.Repo, env.Token)
 	}
 
-	ctx := context.Background()
-
-	// Get modified files
-	fmt.Printf("Fetching modified files...\n")
-	files, err := p.GetModifiedFiles(ctx, env.PRNumber)
+	projectRoot, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("failed to get modified files: %w", err)
+		fmt.Printf("Warning: could not get working directory: %v\n", err)
+		projectRoot = "."
 	}
 
-	fmt.Printf("Found %d modified files\n", len(files))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// Extract functions
-	ext := extractor.New(p, cfg)
-	defer ext.Close()
-	functions, err := ext.ExtractModifiedFunctions(ctx, files)
-	if err != nil {
-		return fmt.Errorf("failed to extract functions: %w", err)
-	}
+	return pipeline.Run(ctx, pipeline.Deps{
+		Provider:    p,
+		NewLLM:      newLLMClient,
+		Config:      cfg,
+		ProjectRoot: projectRoot,
+	}, pipeline.Options{
+		Number: env.PRNumber,
+		Modes:  reviewModes,
+		Force:  forceReview,
+		DryRun: dryRun,
+	})
+}
 
-	fmt.Printf("Extracted %d modified functions\n", len(functions))
-
-	if len(functions) == 0 {
-		fmt.Println("No functions to review")
-		return nil
-	}
-
-	// Detect languages used in the modified functions
-	languagesMap := make(map[string]bool)
-	for _, fn := range functions {
-		languagesMap[fn.Language] = true
-	}
-	var languages []string
-	for lang := range languagesMap {
-		languages = append(languages, lang)
-	}
-
-	// Filter out already reviewed functions (unless --force is set)
-	functionsToReview := functions
-	if !forceReview {
-		fmt.Println("Checking for previously reviewed functions...")
-		existingComments, err := p.GetReviewComments(ctx, env.PRNumber)
-		if err != nil {
-			// Log warning but continue - this is not fatal
-			fmt.Printf("Warning: could not fetch existing comments: %v\n", err)
-		} else {
-			// Build tracker from existing comments
-			tracker := cache.NewTracker()
-			var reviewedComments []cache.ReviewedComment
-			for _, c := range existingComments {
-				reviewedComments = append(reviewedComments, cache.ReviewedComment{
-					Path: c.Path,
-					Line: c.Line,
-					Hash: cache.ExtractHash(c.Body),
-					Body: c.Body,
-				})
-			}
-			tracker.LoadFromComments(reviewedComments)
-
-			// Filter out already reviewed functions
-			functionsToReview = tracker.FilterUnreviewed(functions)
-			skipped := len(functions) - len(functionsToReview)
-			if skipped > 0 {
-				fmt.Printf("Skipped %d already reviewed functions\n", skipped)
-			}
-		}
-	} else {
-		fmt.Println("Force flag set - reviewing all modified functions")
-	}
-
-	if len(functionsToReview) == 0 {
-		fmt.Println("All modified functions have already been reviewed")
-		return nil
-	}
-
-	// Get LLM config from environment variables
+func newLLMClient() (llm.Client, error) {
 	apiURL := os.Getenv("LLM_BASE_URL")
 	if apiURL == "" {
 		apiURL = "https://api.openai.com"
@@ -174,7 +125,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	apiKey := os.Getenv("LLM_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("LLM_API_KEY environment variable is required")
+		return nil, fmt.Errorf("LLM_API_KEY environment variable is required")
 	}
 
 	model := os.Getenv("LLM_MODEL")
@@ -182,71 +133,5 @@ func runReview(cmd *cobra.Command, args []string) error {
 		model = "gpt-4o"
 	}
 
-	// Create LLM client
-	client := llm.NewClient(apiURL, apiKey, model)
-
-	// Generate project context
-	fmt.Println("Generating project context...")
-	projectRoot, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("Warning: could not get working directory: %v\n", err)
-		projectRoot = "."
-	}
-
-	projectContext, err := llm.GenerateProjectContext(ctx, client, projectRoot, languages, &cfg.Context)
-	if err != nil {
-		fmt.Printf("Warning: failed to generate project context: %v\n", err)
-		projectContext = nil
-	} else if projectContext.Description != "" {
-		if projectContext.IsRaw {
-			fmt.Printf("Project context loaded from %d configured file(s)\n", len(cfg.Context.Include))
-		} else {
-			fmt.Printf("Project context: %s\n", projectContext.Description)
-		}
-	}
-
-	// Review with LLM
-	fmt.Printf("Reviewing %d functions with LLM (%s)...\n", len(functionsToReview), model)
-	results := llm.ReviewFunctions(ctx, client, functionsToReview, projectContext, cfg.Rules)
-
-	// Convert results to review comments with hash markers for caching
-	var comments []provider.ReviewComment
-	for _, result := range results {
-		if !result.HasIssues() {
-			continue
-		}
-
-		// Generate hash for this function to enable caching
-		fnHash := cache.FunctionHash(&result.Function)
-		hashMarker := cache.FormatHashMarker(fnHash)
-
-		for _, suggestion := range result.Suggestions {
-			// Append hash marker to comment body for future cache detection
-			body := suggestion.Description + "\n\n" + hashMarker
-			comment := provider.ReviewComment{
-				Path:       result.Function.FilePath,
-				Line:       suggestion.Line,
-				Body:       body,
-				Suggestion: suggestion.Code,
-			}
-			comments = append(comments, comment)
-		}
-	}
-
-	fmt.Printf("Found %d issues (out of %d functions reviewed)\n", len(comments), len(results))
-
-	// Skip posting if no issues found
-	if len(comments) == 0 {
-		fmt.Println("No issues found, skipping review")
-		return nil
-	}
-
-	// Post inline review comments
-	fmt.Println("Posting review with inline suggestions...")
-	if err := p.CreateReview(ctx, env.PRNumber, comments); err != nil {
-		return fmt.Errorf("failed to create review: %w", err)
-	}
-
-	fmt.Println("Review posted successfully!")
-	return nil
+	return openai.New(apiURL, apiKey, model), nil
 }
