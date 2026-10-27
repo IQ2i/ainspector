@@ -1,5 +1,4 @@
 {
-  "__context__": "A small Go command line tool.",
   "greet": "LGTM",
   "divide": "{\"issues\": [{\"line\": 10, \"description\": \"Division by zero is not checked.\", \"suggestion\": \"\\tif b == 0 {\\n\\t\\treturn 0\\n\\t}\\n\\treturn a / b\"}]}",
   "printAll": "Here is my review:\n{\"issues\": [{\"line\": 14, \"description\": \"Off-by-one: the loop reads past the end of the slice.\", \"suggestion\": \"\"}]}\nHope this helps."

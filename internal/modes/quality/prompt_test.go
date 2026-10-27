@@ -437,43 +437,12 @@ func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 	}
 }
 
-func TestBuildSystemPrompt_RawVsLegacy(t *testing.T) {
-	tests := []struct {
-		name           string
-		projectContext *collect.ProjectContext
-		expectHeader   string
-	}{
-		{
-			name: "raw context",
-			projectContext: &collect.ProjectContext{
-				Description: "=== README.md ===\nContent",
-				Languages:   []string{"go"},
-				IsRaw:       true,
-			},
-			expectHeader: "=== PROJECT CONTEXT ===",
-		},
-		{
-			name: "legacy context",
-			projectContext: &collect.ProjectContext{
-				Description: "A Go project",
-				Languages:   []string{"go"},
-				IsRaw:       false,
-			},
-			expectHeader: "PROJECT CONTEXT:",
-		},
-	}
+func TestBuildSystemPrompt_ContextHeader(t *testing.T) {
+	pc := &collect.ProjectContext{Description: "=== README.md ===\nContent", Languages: []string{"go"}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			prompt := buildSystemPrompt("go", tt.projectContext, nil)
+	prompt := buildSystemPrompt("go", pc, nil)
 
-			if !strings.Contains(prompt, tt.expectHeader) {
-				t.Errorf("expected prompt to contain %q", tt.expectHeader)
-			}
-
-			if !strings.Contains(prompt, tt.projectContext.Description) {
-				t.Error("expected prompt to contain description")
-			}
-		})
+	if !strings.Contains(prompt, "=== PROJECT CONTEXT ===\n=== README.md ===\nContent") {
+		t.Errorf("expected the context under its header, got %q", prompt)
 	}
 }

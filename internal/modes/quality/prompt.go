@@ -171,15 +171,8 @@ LANGUAGE-SPECIFIC CHECKS FOR BASH:
 func buildSystemPrompt(language string, projectContext *collect.ProjectContext, rules []string) string {
 	prompt := baseSystemPrompt
 
-	// Add project context if available
 	if projectContext != nil && projectContext.Description != "" {
-		if projectContext.IsRaw {
-			// Raw file contents from config
-			prompt += "\n\n=== PROJECT CONTEXT ===\n" + projectContext.Description
-		} else {
-			// LLM-generated summary (legacy)
-			prompt += "\n\nPROJECT CONTEXT:\n" + projectContext.Description
-		}
+		prompt += "\n\n=== PROJECT CONTEXT ===\n" + projectContext.Description
 	}
 
 	// Add project-specific rules

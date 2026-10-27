@@ -46,9 +46,8 @@ func sortedLanguages() []string {
 
 func TestGolden_SystemPrompt(t *testing.T) {
 	contexts := map[string]*collect.ProjectContext{
-		"nil":    nil,
-		"raw":    {Description: "=== README.md ===\n# Demo\n", IsRaw: true},
-		"legacy": {Description: "A Go CLI tool for code review."},
+		"nil": nil,
+		"raw": {Description: "=== README.md ===\n# Demo\n"},
 	}
 	ruleSets := map[int][]string{
 		0: nil,

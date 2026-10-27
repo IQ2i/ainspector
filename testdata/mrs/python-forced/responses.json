@@ -1,5 +1,4 @@
 {
-  "__context__": "A tiny Python module.",
   "add": "{\"issues\": [{\"line\": 2, \"description\": \"Overflow is not handled.\", \"suggestion\": \"\"}]}",
   "sub": "{\"issues\": [{\"line\": 6, \"description\": \"Underflow is not handled.\", \"suggestion\": \"\"}]}"
 }

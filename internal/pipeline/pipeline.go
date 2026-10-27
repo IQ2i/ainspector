@@ -122,7 +122,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			if client, err = deps.NewLLM(); err != nil {
 				return err
 			}
-			projectContext = loadProjectContext(ctx, client, deps.ProjectRoot, cfg, units)
+			projectContext = loadProjectContext(deps.ProjectRoot, cfg, units)
 		}
 
 		fmt.Printf("Reviewing %d functions with LLM...\n", len(toReview))
@@ -171,7 +171,7 @@ func publishRun(ctx context.Context, p provider.Provider, opts Options, mode mod
 	return nil
 }
 
-func loadProjectContext(ctx context.Context, client llm.Client, root string, cfg *config.Config, units []collect.ReviewUnit) *collect.ProjectContext {
+func loadProjectContext(root string, cfg *config.Config, units []collect.ReviewUnit) *collect.ProjectContext {
 	languages := make(map[string]bool)
 	var ordered []string
 	for _, u := range units {
@@ -181,19 +181,17 @@ func loadProjectContext(ctx context.Context, client llm.Client, root string, cfg
 		}
 	}
 
-	fmt.Println("Generating project context...")
-	pc, err := collect.GenerateProjectContext(ctx, client, root, ordered, &cfg.Context)
+	pc, err := collect.GenerateProjectContext(root, ordered, &cfg.Context)
 	if err != nil {
-		fmt.Printf("Warning: failed to generate project context: %v\n", err)
+		fmt.Printf("Warning: failed to load project context: %v\n", err)
 		return nil
 	}
 
 	if pc.Description != "" {
-		if pc.IsRaw {
-			fmt.Printf("Project context loaded from %d configured file(s)\n", len(cfg.Context.Include))
-		} else {
-			fmt.Printf("Project context: %s\n", pc.Description)
-		}
+		fmt.Printf("Project context loaded (%d bytes)\n", len(pc.Description))
+	}
+	for _, note := range pc.Notes {
+		fmt.Printf("Warning: %s\n", note)
 	}
 	return pc
 }

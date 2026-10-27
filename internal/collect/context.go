@@ -1,271 +1,173 @@
 package collect
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/iq2i/ainspector/internal/config"
-	"github.com/iq2i/ainspector/internal/llm"
 )
 
-// ProjectContext holds the generated project context
+// ProjectContext holds the project files given to the LLM with every request
 type ProjectContext struct {
-	Description string // Raw file contents (US.1) OR LLM summary (legacy)
+	// Description is the content of the files, each one under a "=== path ===" header
+	Description string
 	Languages   []string
-	IsRaw       bool // true if Description contains raw files, false if LLM summary
+	// Notes tell what the size limit cut, to report in the review summary
+	Notes []string
 }
 
-// contextFiles maps file patterns to their descriptions
-var contextFiles = map[string]string{
-	// Go
-	"go.mod": "Go module dependencies",
-	"go.sum": "Go dependency checksums",
+// minPartialBytes is the room a file needs to be worth including truncated
+const minPartialBytes = 200
 
-	// JavaScript/TypeScript
-	"package.json":  "Node.js dependencies and scripts",
-	"tsconfig.json": "TypeScript configuration",
+const truncationMarker = "\n... (truncated)\n"
 
-	// Python
-	"requirements.txt": "Python dependencies",
-	"pyproject.toml":   "Python project configuration",
-	"setup.py":         "Python package setup",
-	"Pipfile":          "Pipenv dependencies",
+// Files looked for when the project does not choose its own. Instructions come first as they
+// carry the project rules, then the README, then the dependency manifests: when the size limit
+// cuts the context, the least useful files go first. Lock and checksum files are left out.
+var (
+	instructionFiles = []string{"CLAUDE.md", "AGENTS.md", ".cursorrules", ".github/copilot-instructions.md"}
+	readmeFile       = "README.md"
+	manifestPatterns = []string{
+		"go.mod",
+		"package.json", "tsconfig.json",
+		"requirements.txt", "pyproject.toml", "setup.py", "Pipfile",
+		"composer.json",
+		"Cargo.toml",
+		"Gemfile",
+		"pom.xml", "build.gradle",
+		"*.csproj", "packages.config",
+	}
+)
 
-	// PHP
-	"composer.json": "PHP dependencies",
-
-	// Rust
-	"Cargo.toml": "Rust dependencies and project config",
-
-	// Ruby
-	"Gemfile": "Ruby dependencies",
-
-	// Java
-	"pom.xml":      "Maven dependencies",
-	"build.gradle": "Gradle build configuration",
-
-	// .NET
-	"*.csproj":        "C# project file",
-	"packages.config": ".NET package references",
-
-	// Documentation and AI helpers
-	"README.md":                       "Project documentation",
-	"CLAUDE.md":                       "Claude AI instructions",
-	"AGENTS.md":                       "AI agents instructions",
-	".cursorrules":                    "Cursor IDE AI rules",
-	".github/copilot-instructions.md": "GitHub Copilot instructions",
+type contextFile struct {
+	path, content string
 }
 
-// GenerateProjectContext analyzes the project and generates a concise context description
-func GenerateProjectContext(ctx context.Context, client llm.Client, projectRoot string, languages []string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
-	// If config is provided and has include patterns, use config-based collection
+// GenerateProjectContext reads the project files that describe the project: the ones listed
+// in context.include, or else the well-known instruction, README and manifest files.
+// The result never exceeds context.max_bytes.
+func GenerateProjectContext(projectRoot string, languages []string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
+	limit := config.DefaultContextMaxBytes
+	if contextConfig != nil {
+		limit = contextConfig.Limit()
+	}
+
+	var files []contextFile
 	if contextConfig != nil && len(contextConfig.Include) > 0 {
-		return generateConfigBasedContext(projectRoot, languages, contextConfig)
+		configured, warnings, err := contextConfig.CollectContextFiles(projectRoot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to collect context files: %w", err)
+		}
+		for _, warning := range warnings {
+			fmt.Printf("Warning: %s\n", warning)
+		}
+
+		paths := make([]string, 0, len(configured))
+		for path := range configured {
+			paths = append(paths, path)
+		}
+		sort.Strings(paths)
+		for _, path := range paths {
+			files = append(files, contextFile{path, configured[path]})
+		}
+	} else {
+		var err error
+		if files, err = findContextFiles(projectRoot); err != nil {
+			return nil, fmt.Errorf("failed to find context files: %w", err)
+		}
 	}
 
-	// Legacy behavior: use hardcoded patterns and LLM summarization
-	return generateLegacyContext(ctx, client, projectRoot, languages)
+	description, notes := renderContext(files, limit)
+	return &ProjectContext{Description: description, Languages: languages, Notes: notes}, nil
 }
 
-// generateConfigBasedContext builds context from user-configured files
-func generateConfigBasedContext(projectRoot string, languages []string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
-	files, warnings, err := contextConfig.CollectContextFiles(projectRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to collect context files: %w", err)
+// findContextFiles returns the well-known project files that exist, in priority order
+func findContextFiles(projectRoot string) ([]contextFile, error) {
+	var files []contextFile
+	add := func(relPath string) {
+		content, err := os.ReadFile(filepath.Join(projectRoot, relPath))
+		if err != nil {
+			return
+		}
+		files = append(files, contextFile{filepath.ToSlash(relPath), string(content)})
 	}
 
-	// Log warnings
-	for _, warning := range warnings {
-		fmt.Printf("Warning: %s\n", warning)
+	for _, name := range instructionFiles {
+		add(name)
+	}
+	add(readmeFile)
+
+	var manifests []string
+	for _, pattern := range manifestPatterns {
+		matches, err := filepath.Glob(filepath.Join(projectRoot, pattern))
+		if err != nil {
+			return nil, err
+		}
+		for _, match := range matches {
+			if rel, err := filepath.Rel(projectRoot, match); err == nil {
+				manifests = append(manifests, rel)
+			}
+		}
+	}
+	sort.Strings(manifests)
+	for _, rel := range manifests {
+		add(rel)
 	}
 
-	if len(files) == 0 {
-		return &ProjectContext{
-			Description: "",
-			Languages:   languages,
-			IsRaw:       true,
-		}, nil
-	}
+	return files, nil
+}
 
-	// Build raw context string with file contents
+// renderContext concatenates the files up to limit bytes. The file that crosses the limit is
+// cut when enough room remains to be useful, the following ones are left out.
+func renderContext(files []contextFile, limit int) (string, []string) {
 	var sb strings.Builder
 
-	// Sort file paths for deterministic output
-	var paths []string
-	for path := range files {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-
-	for _, path := range paths {
-		content := files[path]
-		fmt.Fprintf(&sb, "=== %s ===\n", path)
-		sb.WriteString(content)
-		sb.WriteString("\n\n")
-	}
-
-	return &ProjectContext{
-		Description: sb.String(),
-		Languages:   languages,
-		IsRaw:       true,
-	}, nil
-}
-
-// generateLegacyContext uses hardcoded patterns and LLM summarization
-func generateLegacyContext(ctx context.Context, client llm.Client, projectRoot string, languages []string) (*ProjectContext, error) {
-	// Find relevant files
-	files, err := findContextFiles(projectRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find context files: %w", err)
-	}
-
-	if len(files) == 0 {
-		// No context files found, return minimal context
-		return &ProjectContext{
-			Description: "",
-			Languages:   languages,
-			IsRaw:       false,
-		}, nil
-	}
-
-	// Build prompt with file contents
-	prompt := buildContextPrompt(files, languages)
-
-	// Generate context using LLM
-	resp, err := client.Complete(ctx, llm.Request{
-		System:   []llm.Block{{Text: contextSystemPrompt}},
-		Messages: []llm.Message{{Role: "user", Content: prompt}},
-	})
-	if err != nil {
-		// If context generation fails, continue without it
-		fmt.Printf("Warning: failed to generate project context: %v\n", err)
-		return &ProjectContext{
-			Description: "",
-			Languages:   languages,
-			IsRaw:       false,
-		}, nil
-	}
-
-	return &ProjectContext{
-		Description: strings.TrimSpace(resp.Text),
-		Languages:   languages,
-		IsRaw:       false,
-	}, nil
-}
-
-const contextSystemPrompt = `You are a technical analyst. You will receive project configuration files and documentation.
-
-Your task is to generate a CONCISE project context (2-4 sentences) that includes:
-- Primary language(s) and framework(s)
-- Key dependencies or libraries
-- Project type (web app, CLI tool, library, etc.)
-- Any critical architectural patterns mentioned
-
-Keep it brief and focused on what's most relevant for code review.
-Do NOT include version numbers, build configurations, or minor details.
-Respond with ONLY the context description, no preamble or explanation.`
-
-// findContextFiles searches for relevant context files in the project
-func findContextFiles(projectRoot string) (map[string]string, error) {
-	found := make(map[string]string)
-
-	for pattern := range contextFiles {
-		// Handle glob patterns
-		if strings.Contains(pattern, "*") {
-			matches, err := filepath.Glob(filepath.Join(projectRoot, pattern))
-			if err != nil {
-				continue
-			}
-			for _, match := range matches {
-				content, err := os.ReadFile(match)
-				if err != nil {
-					continue
-				}
-				relPath, _ := filepath.Rel(projectRoot, match)
-				found[relPath] = string(content)
-			}
-		} else {
-			// Direct file path
-			fullPath := filepath.Join(projectRoot, pattern)
-			content, err := os.ReadFile(fullPath)
-			if err != nil {
-				continue // File doesn't exist, skip it
-			}
-			found[pattern] = string(content)
-		}
-	}
-
-	return found, nil
-}
-
-// buildContextPrompt builds the prompt for context generation
-func buildContextPrompt(files map[string]string, languages []string) string {
-	var sb strings.Builder
-
-	sb.WriteString("Analyze this project and provide a concise context description.\n\n")
-
-	if len(languages) > 0 {
-		fmt.Fprintf(&sb, "Detected languages: %s\n\n", strings.Join(languages, ", "))
-	}
-
-	sb.WriteString("Project files:\n\n")
-
-	// Order: AI instructions first, then README, then config files
-	aiFiles := []string{"CLAUDE.md", "AGENTS.md", ".cursorrules", ".github/copilot-instructions.md"}
-	readme := "README.md"
-
-	// Process AI instruction files first
-	for _, file := range aiFiles {
-		if content, ok := files[file]; ok {
-			fmt.Fprintf(&sb, "=== %s ===\n", file)
-			// Limit content to avoid overwhelming the LLM
-			if len(content) > 3000 {
-				sb.WriteString(content[:3000] + "\n... (truncated)\n")
-			} else {
-				sb.WriteString(content + "\n")
-			}
-			sb.WriteString("\n")
-		}
-	}
-
-	// Process README
-	if content, ok := files[readme]; ok {
-		fmt.Fprintf(&sb, "=== %s ===\n", readme)
-		if len(content) > 2000 {
-			sb.WriteString(content[:2000] + "\n... (truncated)\n")
-		} else {
-			sb.WriteString(content + "\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	// Process other config files
-	for file, content := range files {
-		// Skip already processed files
-		isProcessed := false
-		for _, f := range append(aiFiles, readme) {
-			if file == f {
-				isProcessed = true
-				break
-			}
-		}
-		if isProcessed {
+	for i, f := range files {
+		header := "=== " + f.path + " ===\n"
+		entry := header + f.content + "\n\n"
+		if sb.Len()+len(entry) <= limit {
+			sb.WriteString(entry)
 			continue
 		}
 
-		fmt.Fprintf(&sb, "=== %s ===\n", file)
-		// Limit content for config files
-		if len(content) > 1500 {
-			sb.WriteString(content[:1500] + "\n... (truncated)\n")
-		} else {
-			sb.WriteString(content + "\n")
+		cut := ""
+		omitted := files[i:]
+		if room := limit - sb.Len() - len(header) - len(truncationMarker); room >= minPartialBytes {
+			sb.WriteString(header)
+			sb.WriteString(cutAtRune(f.content, room))
+			sb.WriteString(truncationMarker)
+			cut = f.path + " truncated"
+			omitted = files[i+1:]
 		}
-		sb.WriteString("\n")
+
+		note := fmt.Sprintf("Project context limited to %d bytes", limit)
+		if cut != "" {
+			note += ": " + cut
+		}
+		if len(omitted) > 0 {
+			names := make([]string, len(omitted))
+			for n, o := range omitted {
+				names[n] = o.path
+			}
+			note += "; left out: " + strings.Join(names, ", ")
+		}
+		return sb.String(), []string{note}
 	}
 
-	return sb.String()
+	return sb.String(), nil
+}
+
+// cutAtRune truncates s to at most n bytes without splitting a multi-byte character
+func cutAtRune(s string, n int) string {
+	if n >= len(s) {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }

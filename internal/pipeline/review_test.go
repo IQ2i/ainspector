@@ -116,7 +116,7 @@ func TestReviewUnits_EmptyList(t *testing.T) {
 
 func TestReviewUnits_RequestFromMode(t *testing.T) {
 	client := &fakeClient{reply: lgtm}
-	pc := &collect.ProjectContext{Description: "A web app", IsRaw: true}
+	pc := &collect.ProjectContext{Description: "A web app"}
 	mode := quality.New("some-model", []string{"No globals"})
 
 	ReviewUnits(context.Background(), client, mode, []collect.ReviewUnit{goUnit("hello")}, pc)

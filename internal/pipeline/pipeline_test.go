@@ -124,14 +124,12 @@ func scriptedLLM(t *testing.T, responses map[string]string, requests *[]json.Raw
 			t.Errorf("invalid request body: %v", err)
 		}
 
-		key := "__context__"
-		if !strings.Contains(req.Messages[0].Content, "technical analyst") {
-			m := functionRe.FindStringSubmatch(req.Messages[len(req.Messages)-1].Content)
-			if m == nil {
-				t.Errorf("cannot find function name in prompt")
-			} else {
-				key = m[1]
-			}
+		m := functionRe.FindStringSubmatch(req.Messages[len(req.Messages)-1].Content)
+		key := ""
+		if m == nil {
+			t.Errorf("cannot find function name in prompt")
+		} else {
+			key = m[1]
 		}
 
 		content, ok := responses[key]
