@@ -75,9 +75,72 @@ func TestDedup(t *testing.T) {
 		{Title: "no fingerprint"},
 		{Title: "no fingerprint either"},
 	}
-	got := Dedup(fs, map[string]bool{"bbb": true})
+	got, repeated := Dedup(fs, map[string]bool{"bbb": true})
 	if len(got) != 3 || got[0].Title != "a" || got[1].Title != "no fingerprint" || got[2].Title != "no fingerprint either" {
 		t.Errorf("unexpected findings %+v", got)
+	}
+	if len(repeated) != 1 || repeated[0].Title != "b" {
+		t.Errorf("only the finding of a previous run is repeated, got %+v", repeated)
+	}
+}
+
+func TestOpen(t *testing.T) {
+	f := Finding{Mode: "security", Fingerprint: "abc", File: "a.php", StartLine: 7, EndLine: 9, Severity: SeverityHigh, Category: "idor", Title: "  Missing\n check ", UnitHash: "u1"}
+	want := Reported{Fingerprint: "abc", File: "a.php", Line: 7, EndLine: 9, Category: "idor", Title: "Missing check", Severity: SeverityHigh, Unit: "u1", UnitLine: 5}
+	if got := f.Open(5, "show"); got != want {
+		t.Errorf("unexpected open finding %+v", got)
+	}
+}
+
+func TestOpen_WithoutTitleKeepsTheExplanation(t *testing.T) {
+	f := Finding{Mode: "quality", File: "a.go", StartLine: 3, Explanation: strings.Repeat("é ", 400)}
+	got := f.Open(1, "load")
+	if got.Fingerprint != CodeFingerprint(f, 1, "load") || got.Fingerprint == "" {
+		t.Errorf("expected a computed fingerprint, got %q", got.Fingerprint)
+	}
+	if n := len([]rune(got.Title)); n != maxOpenTitle {
+		t.Errorf("expected the explanation cut to %d runes, got %d", maxOpenTitle, n)
+	}
+}
+
+func TestCodeFingerprint(t *testing.T) {
+	a := Finding{Mode: "quality", File: "a.go", StartLine: 3, Explanation: "Nil  pointer!"}
+	if got := CodeFingerprint(Finding{Fingerprint: "given"}, 0, ""); got != "given" {
+		t.Errorf("a fingerprint is kept, got %q", got)
+	}
+	same := a
+	same.Explanation = "nil pointer"
+	if CodeFingerprint(a, 0, "") != CodeFingerprint(same, 0, "") {
+		t.Error("the fingerprint ignores case and punctuation of the explanation")
+	}
+	for name, mutate := range map[string]func(*Finding){
+		"line": func(f *Finding) { f.StartLine = 4 },
+		"file": func(f *Finding) { f.File = "b.go" },
+		"mode": func(f *Finding) { f.Mode = "other" },
+		"text": func(f *Finding) { f.Explanation = "leak" },
+	} {
+		other := a
+		mutate(&other)
+		if CodeFingerprint(a, 0, "") == CodeFingerprint(other, 0, "") {
+			t.Errorf("the fingerprint must depend on the %s", name)
+		}
+	}
+}
+
+func TestCodeFingerprint_FollowsTheUnit(t *testing.T) {
+	a := Finding{Mode: "quality", File: "a.go", StartLine: 13, Explanation: "nil pointer"}
+	moved := a
+	moved.StartLine = 33
+	if CodeFingerprint(a, 10, "load") != CodeFingerprint(moved, 30, "load") {
+		t.Error("the fingerprint must survive the unit moving down the file")
+	}
+	lower := a
+	lower.StartLine = 14
+	if CodeFingerprint(a, 10, "load") == CodeFingerprint(lower, 10, "load") {
+		t.Error("the fingerprint must depend on the line inside the unit")
+	}
+	if CodeFingerprint(a, 10, "load") == CodeFingerprint(a, 10, "save") {
+		t.Error("the fingerprint must depend on the unit")
 	}
 }
 

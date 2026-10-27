@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -61,11 +62,45 @@ type Reported struct {
 	Line        int    `json:"line,omitempty"`
 	Category    string `json:"category,omitempty"`
 	Title       string `json:"title,omitempty"`
+	// EndLine, Severity, Unit and UnitLine are only set on the findings a mode keeps open: they
+	// are what the Code Quality report needs, the hash of the unit tells when they stop being
+	// true, and the line where the unit started lets the lines follow it when it moves
+	EndLine  int      `json:"end,omitempty"`
+	Severity Severity `json:"sev,omitempty"`
+	Unit     string   `json:"unit,omitempty"`
+	UnitLine int      `json:"ul,omitempty"`
 }
+
+// maxOpenTitle bounds the text kept for a finding without title, as a state block is small
+const maxOpenTitle = 300
 
 // Report summarizes a finding for later runs
 func (f Finding) Report() Reported {
 	return Reported{Fingerprint: f.Fingerprint, File: f.File, Line: f.StartLine, Category: f.Category, Title: f.Title}
+}
+
+// Open summarizes a finding that is still true, for the Code Quality report of later runs.
+// A finding without title (quality mode) keeps the start of its explanation instead.
+// unitStart and unitName tell where and what the unit that produced it is.
+func (f Finding) Open(unitStart int, unitName string) Reported {
+	title := oneLine(f.Title)
+	if title == "" {
+		title = oneLine(f.Explanation)
+		if r := []rune(title); len(r) > maxOpenTitle {
+			title = string(r[:maxOpenTitle])
+		}
+	}
+	return Reported{
+		Fingerprint: CodeFingerprint(f, unitStart, unitName),
+		File:        f.File,
+		Line:        f.StartLine,
+		EndLine:     f.EndLine,
+		Category:    f.Category,
+		Title:       title,
+		Severity:    f.Severity,
+		Unit:        f.UnitHash,
+		UnitLine:    unitStart,
+	}
 }
 
 // Policy tells how the findings of a mode are filtered before publication
@@ -85,6 +120,22 @@ type Policy struct {
 // and a new vulnerable action would be taken for one already reported.
 func Fingerprint(f Finding, anchor string) string {
 	sum := sha256.Sum256([]byte(f.Mode + ":" + f.File + ":" + anchor + ":" + f.Category + ":" + normalize(f.Title)))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+// CodeFingerprint identifies a finding in the Code Quality report, where every finding needs
+// one: a finding without fingerprint (quality mode) gets one from its place in its unit and its
+// text, so that it survives the unit being moved down the file.
+// Unlike Fingerprint it is not stored on the finding, so that deduplication is left as it was.
+func CodeFingerprint(f Finding, unitStart int, unitName string) string {
+	if f.Fingerprint != "" {
+		return f.Fingerprint
+	}
+	line := f.StartLine
+	if unitStart > 0 {
+		line -= unitStart
+	}
+	sum := sha256.Sum256([]byte(f.Mode + ":" + f.File + ":" + unitName + ":" + strconv.Itoa(line) + ":" + normalize(f.Explanation)))
 	return hex.EncodeToString(sum[:])[:12]
 }
 
@@ -110,24 +161,29 @@ func Threshold(fs []Finding, p Policy) []Finding {
 }
 
 // Dedup drops the findings already reported by a previous run, and repeats within fs.
-// A finding without fingerprint is always kept.
-func Dedup(fs []Finding, seen map[string]bool) []Finding {
+// A finding without fingerprint is always kept. The findings of a previous run that are still
+// true are returned as repeated: they are not published again, but remain open.
+func Dedup(fs []Finding, seen map[string]bool) (kept, repeated []Finding) {
 	known := make(map[string]bool, len(seen))
 	for fp := range seen {
 		known[fp] = true
 	}
 
-	var kept []Finding
+	inRun := make(map[string]bool)
 	for _, f := range fs {
 		if f.Fingerprint != "" {
-			if known[f.Fingerprint] {
+			if inRun[f.Fingerprint] {
 				continue
 			}
-			known[f.Fingerprint] = true
+			inRun[f.Fingerprint] = true
+			if known[f.Fingerprint] {
+				repeated = append(repeated, f)
+				continue
+			}
 		}
 		kept = append(kept, f)
 	}
-	return kept
+	return kept, repeated
 }
 
 // Cap keeps the n most severe findings, then the most confident, and returns the others

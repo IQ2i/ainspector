@@ -104,8 +104,8 @@ func TestSettleFindings_FilterOnlyJudgesTheMostSevere(t *testing.T) {
 	if len(got.published) != 2 || got.discarded != 1 {
 		t.Errorf("published %d, discarded %d", len(got.published), got.discarded)
 	}
-	if len(got.overflow) != 5 {
-		t.Errorf("3 judged findings left over and 2 never judged, got %d in overflow", len(got.overflow))
+	if len(got.overflow) != 3 || len(got.unjudged) != 2 {
+		t.Errorf("3 judged findings left over and 2 never judged, got %d in overflow and %d unjudged", len(got.overflow), len(got.unjudged))
 	}
 }
 

@@ -117,7 +117,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 		}
 	}
 	var overflow []string
-	for _, f := range run.Overflow {
+	for _, f := range append(append([]findings.Finding{}, run.Overflow...), run.Unjudged...) {
 		overflow = append(overflow, fmt.Sprintf("%s:%d [%s] %s", f.File, f.StartLine, f.Severity, oneLine(f.Title)))
 	}
 	writeList(fmt.Sprintf("Not commented, only the %d most severe findings are published:", len(run.Published)), overflow)
@@ -144,6 +144,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 		Units:    state.MergeHashes(units, run.Reviewed),
 		Findings: state.MergeHashes(fingerprints, found),
 		Reported: state.MergeReported(reported, foundReports),
+		Open:     state.MergeOpen(run.Carried, run.openFindings()),
 	}
 	sb.WriteString("\n" + state.FormatStateBlock(run.Mode, block) + "\n")
 

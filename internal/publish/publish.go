@@ -13,8 +13,24 @@ import (
 
 // Policy tells which outputs a mode produces
 type Policy struct {
-	Inline  bool
-	Summary bool
+	Inline      bool
+	Summary     bool
+	CodeQuality bool
+	Artifact    bool
+}
+
+// Review status of a unit
+const (
+	StatusReviewed = "reviewed"
+	// StatusSkipped is a unit left unreviewed because the token budget ran out
+	StatusSkipped = "skipped"
+	StatusFailed  = "failed"
+)
+
+// UnitStatus tells what became of a unit of Run.Units, at the same index
+type UnitStatus struct {
+	Hash   string
+	Status string
 }
 
 // Run is what a mode produced during one execution
@@ -23,11 +39,25 @@ type Run struct {
 	Scope   string
 	Version string
 	// Model is the model that served the reviews, empty when unknown
-	Model     string
-	Units     []collect.ReviewUnit
-	Published []findings.Finding
+	Model    string
+	Units    []collect.ReviewUnit
+	Statuses []UnitStatus
+	// AlreadyReviewed counts the units that were not reviewed again, a previous run did
+	AlreadyReviewed int
+	Published       []findings.Finding
 	// Overflow holds the findings left out because the mode caps what it publishes
 	Overflow []findings.Finding
+	// Unjudged holds the findings cut before the false positive filter, which never saw them:
+	// they stay out of what is kept open
+	Unjudged []findings.Finding
+	// Repeated holds the findings of an earlier run that this one found again: they are not
+	// published twice but remain open
+	Repeated []findings.Finding
+	// Carried holds the findings of an earlier run whose units were not reviewed again, which
+	// still hold
+	Carried []findings.Reported
+	// Verdicts are the decisions of the false positive filter
+	Verdicts []findings.Verdict
 	// Discarded counts the findings the false positive filter removed, by FPModel
 	Discarded int
 	FPModel   string
@@ -79,4 +109,25 @@ func BodyFor(f findings.Finding) string {
 
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// openFindings summarizes the findings of the run that are still true, each with the unit that
+// produced it: published, left out by the cap, and repeated. The ones the false positive filter
+// never judged are not among them.
+func (r Run) openFindings() []findings.Reported {
+	starts := make(map[string]collect.ReviewUnit, len(r.Statuses))
+	for i, s := range r.Statuses {
+		if i < len(r.Units) {
+			starts[s.Hash] = r.Units[i]
+		}
+	}
+
+	var open []findings.Reported
+	for _, group := range [][]findings.Finding{r.Published, r.Overflow, r.Repeated} {
+		for _, f := range group {
+			u := starts[f.UnitHash]
+			open = append(open, f.Open(u.StartLine, u.Name))
+		}
+	}
+	return open
 }

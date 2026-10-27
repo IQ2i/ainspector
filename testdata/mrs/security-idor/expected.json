@@ -161,6 +161,92 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"b2a7c025930f\"],\"findings\":[\"0b6a7cc79c2b\"],\"reported\":[{\"fp\":\"0b6a7cc79c2b\",\"file\":\"src/Controller/AccountController.php\",\"line\":29,\"category\":\"idor\",\"title\":\"Any user can read any account\"}]} --\u003e\n"
-  ]
+    "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"b2a7c025930f\"],\"findings\":[\"0b6a7cc79c2b\"],\"reported\":[{\"fp\":\"0b6a7cc79c2b\",\"file\":\"src/Controller/AccountController.php\",\"line\":29,\"category\":\"idor\",\"title\":\"Any user can read any account\"}],\"open\":[{\"fp\":\"0b6a7cc79c2b\",\"file\":\"src/Controller/AccountController.php\",\"line\":29,\"category\":\"idor\",\"title\":\"Any user can read any account\",\"end\":29,\"sev\":\"high\",\"unit\":\"b2a7c025930f\",\"ul\":26}]} --\u003e\n"
+  ],
+  "code_quality": [
+    {
+      "description": "Any user can read any account",
+      "check_name": "ainspector/security/idor",
+      "fingerprint": "0b6a7cc79c2b",
+      "severity": "critical",
+      "categories": [
+        "Security"
+      ],
+      "location": {
+        "path": "src/Controller/AccountController.php",
+        "lines": {
+          "begin": 29
+        }
+      }
+    }
+  ],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "security",
+        "scope": "function+class+related",
+        "version": "security/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "function",
+            "file": "src/Controller/AccountController.php",
+            "name": "show",
+            "start_line": 26,
+            "end_line": 30,
+            "change_type": "modified",
+            "hash": "b2a7c025930f",
+            "status": "reviewed",
+            "enclosing": "AccountController"
+          }
+        ],
+        "already_reviewed": 0,
+        "published": [
+          {
+            "mode": "security",
+            "file": "src/Controller/AccountController.php",
+            "start_line": 29,
+            "end_line": 29,
+            "severity": "high",
+            "category": "idor",
+            "title": "Any user can read any account",
+            "explanation": "",
+            "remediation": "Deny access unless the current user may view the account, with a voter: #[IsGranted('ACCOUNT_VIEW', 'account')] on the action.",
+            "scenario": "An authenticated user requests /accounts/42 for an account owned by someone else: #[MapEntity] loads it from the id and nothing checks that the current user owns it, so the page discloses the account of another customer.",
+            "confidence": 0.9,
+            "unit_hash": "b2a7c025930f",
+            "fingerprint": "0b6a7cc79c2b"
+          }
+        ],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [
+          {
+            "id": 0,
+            "fingerprint": "0b6a7cc79c2b",
+            "keep": true,
+            "reason": "The account is loaded from the route and never compared to the current user."
+          }
+        ],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 200,
+          "output": 20,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }

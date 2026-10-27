@@ -23,6 +23,8 @@ type Deps struct {
 	NewLLM      func() (llm.Client, error)
 	Config      *config.Config
 	ProjectRoot string
+	// ReportDir is where the Code Quality report and the artifact are written, defaults to ProjectRoot
+	ReportDir string
 }
 
 // Options tune a run
@@ -77,6 +79,12 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		}
 	}
 
+	reportDir := deps.ReportDir
+	if reportDir == "" {
+		reportDir = deps.ProjectRoot
+	}
+	out := newReports(reportDir, cfg, publish.Change{Number: opts.Number, CheckoutSHA: opts.CheckoutSHA})
+
 	fmt.Printf("Fetching modified files...\n")
 	files, err := deps.Provider.GetModifiedFiles(ctx, opts.Number)
 	if err != nil {
@@ -97,7 +105,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 	if len(units) == 0 {
 		fmt.Println("No code to review")
-		return nil
+		return out.write()
 	}
 
 	if len(req.Related.Presets) > 0 {
@@ -136,15 +144,23 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	for _, mode := range enabled {
 		candidates := unitsFor(mode, units)
 		toReview := candidates
+		var carried []findings.Reported
 		if index != nil {
-			toReview = index.FilterUnreviewed(mode, state.RulesDigest(mode.Rules()), candidates)
+			digest := state.RulesDigest(mode.Rules())
+			toReview = index.FilterUnreviewed(mode, digest, candidates)
 			if skipped := len(candidates) - len(toReview); skipped > 0 {
 				fmt.Printf("Skipped %d already reviewed units\n", skipped)
 			}
+			carried = index.OpenFindings(mode, skippedHashes(mode, digest, candidates, toReview))
 		}
+		alreadyReviewed := len(candidates) - len(toReview)
 
 		if len(toReview) == 0 {
 			fmt.Printf("Nothing left to review for %s\n", mode.Name())
+			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed}
+			if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
+				errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
+			}
 			continue
 		}
 
@@ -163,6 +179,8 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		results := ReviewUnits(ctx, budget, mode, toReview, projectContext)
 		outcome := settleFindings(ctx, budget, mode, results, index)
 		run := newRun(mode, toReview, results, outcome, budget.Totals().Sub(before), projectContext)
+		run.Carried = carried
+		run.AlreadyReviewed = alreadyReviewed
 
 		fmt.Printf("Found %d issues (out of %d units reviewed)\n", len(run.Published), len(run.Reviewed))
 		if n := len(run.Skipped); n > 0 {
@@ -175,9 +193,32 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			fmt.Printf("Warning: mode %s: %v\n", mode.Name(), err)
 			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 		}
+		if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
+			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
+		}
 	}
 
+	if err := out.write(); err != nil {
+		fmt.Printf("Warning: %v\n", err)
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
+}
+
+// skippedHashes returns the candidates that a previous run already reviewed, by hash, with the
+// line where each starts now
+func skippedHashes(mode modes.Mode, digest string, candidates, toReview []collect.ReviewUnit) map[string]int {
+	pending := make(map[string]bool, len(toReview))
+	for _, u := range toReview {
+		pending[state.UnitHash(mode, u, digest)] = true
+	}
+	hashes := make(map[string]int)
+	for _, u := range candidates {
+		if h := state.UnitHash(mode, u, digest); !pending[h] {
+			hashes[h] = u.StartLine
+		}
+	}
+	return hashes
 }
 
 // newRun gathers what a mode produced and consumed, to publish it
@@ -189,6 +230,9 @@ func newRun(mode modes.Mode, units []collect.ReviewUnit, results []UnitResult, o
 		Units:          units,
 		Published:      outcome.published,
 		Overflow:       outcome.overflow,
+		Unjudged:       outcome.unjudged,
+		Repeated:       outcome.repeated,
+		Verdicts:       outcome.verdicts,
 		Discarded:      outcome.discarded,
 		FPModel:        outcome.fpModel,
 		Usage:          used.Usage,
@@ -213,14 +257,18 @@ func newRun(mode modes.Mode, units []collect.ReviewUnit, results []UnitResult, o
 		}
 
 		label := fmt.Sprintf("%s (%s)", r.Unit.Name, r.Unit.FilePath)
+		status := publish.StatusReviewed
 		switch {
 		case r.Skipped:
+			status = publish.StatusSkipped
 			run.Skipped = append(run.Skipped, label)
 		case r.Err != nil:
+			status = publish.StatusFailed
 			run.Failed = append(run.Failed, label)
 		default:
 			run.Reviewed = append(run.Reviewed, r.Hash)
 		}
+		run.Statuses = append(run.Statuses, publish.UnitStatus{Hash: r.Hash, Status: status})
 	}
 	return run
 }
@@ -313,9 +361,14 @@ const fpInputFactor = 3
 // outcome is what remains of the findings of a mode once filtered
 type outcome struct {
 	published, overflow []findings.Finding
-	discarded           int
-	fpModel             string
-	notes               []string
+	// unjudged were cut before the false positive filter
+	unjudged []findings.Finding
+	// repeated are the findings of a previous run that are still true
+	repeated  []findings.Finding
+	verdicts  []findings.Verdict
+	discarded int
+	fpModel   string
+	notes     []string
 }
 
 // settleFindings applies the policy of a mode to what its units reported: thresholds, findings
@@ -339,7 +392,7 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 	if index != nil {
 		seen, previous = index.ReportedFindings(mode.Name())
 	}
-	all = findings.Dedup(all, seen)
+	all, repeated := findings.Dedup(all, seen)
 
 	// Only the most severe findings are worth a call to the strongest model: the others could
 	// not be published anyway
@@ -365,6 +418,7 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 					fmt.Printf("Discarded as a false positive: %s (%s)\n", oneLine(all[v.ID].Title), oneLine(v.Reason))
 				}
 			}
+			out.verdicts = verdicts
 			out.discarded = len(all) - len(kept)
 			out.fpModel = cfg.Model
 			all = kept
@@ -375,7 +429,8 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 	if policy.MaxPublished > 0 {
 		out.published, out.overflow = findings.Cap(all, policy.MaxPublished)
 	}
-	out.overflow = append(out.overflow, unjudged...)
+	out.unjudged = unjudged
+	out.repeated = repeated
 	return out
 }
 

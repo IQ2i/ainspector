@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,9 +16,10 @@ type Config struct {
 	Ignore  IgnoreConfig  `yaml:"ignore"`
 	Context ContextConfig `yaml:"context"`
 	// Rules applies to the quality mode, before modes.quality.rules
-	Rules []string    `yaml:"rules"`
-	LLM   LLMConfig   `yaml:"llm"`
-	Modes ModesConfig `yaml:"modes"`
+	Rules   []string      `yaml:"rules"`
+	LLM     LLMConfig     `yaml:"llm"`
+	Modes   ModesConfig   `yaml:"modes"`
+	Publish PublishConfig `yaml:"publish"`
 }
 
 const (
@@ -52,6 +54,18 @@ func (c LLMConfig) TokenBudget() int {
 		return c.MaxTokensPerRun
 	}
 	return DefaultMaxTokensPerRun
+}
+
+const (
+	DefaultCodeQualityPath = "gl-code-quality-report.json"
+	DefaultArtifactPath    = "ainspector-report.json"
+)
+
+// PublishConfig tells where the reports of a run are written, relative to the directory of the
+// job. A path left out selects the default, an empty one disables the report.
+type PublishConfig struct {
+	CodeQuality *string `yaml:"code_quality"`
+	Artifact    *string `yaml:"artifact"`
 }
 
 // IgnoreConfig holds what to ignore during review
@@ -224,6 +238,17 @@ func parse(source string, data []byte) (*Config, error) {
 			return nil, fmt.Errorf("%s: unknown modes.security.related.presets entry %q (expected one of %s)", source, preset, strings.Join(KnownRelatedPresets, ", "))
 		}
 	}
+	for name, path := range map[string]*string{"code_quality": cfg.Publish.CodeQuality, "artifact": cfg.Publish.Artifact} {
+		if path == nil || *path == "" {
+			continue
+		}
+		if err := CheckOutputPath(*path); err != nil {
+			return nil, fmt.Errorf("%s: invalid publish.%s: %w", source, name, err)
+		}
+	}
+	if cq, art := cfg.CodeQualityPath(), cfg.ArtifactPath(); cq != "" && art != "" && filepath.Clean(cq) == filepath.Clean(art) {
+		return nil, fmt.Errorf("%s: publish.code_quality and publish.artifact must be different files", source)
+	}
 	if cfg.LLM.MaxTokensPerRun < 0 || cfg.Context.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: llm.max_tokens_per_run and context.max_bytes must not be negative", source)
 	}
@@ -295,6 +320,23 @@ func (r RelatedConfig) Resolved() RelatedConfig {
 		r.MaxBytes = DefaultRelatedMaxBytes
 	}
 	return r
+}
+
+// CodeQualityPath returns where the Code Quality report is written, empty when it is disabled
+func (c *Config) CodeQualityPath() string {
+	return outputPath(c.Publish.CodeQuality, DefaultCodeQualityPath)
+}
+
+// ArtifactPath returns where the JSON artifact is written, empty when it is disabled
+func (c *Config) ArtifactPath() string {
+	return outputPath(c.Publish.Artifact, DefaultArtifactPath)
+}
+
+func outputPath(configured *string, fallback string) string {
+	if configured == nil {
+		return fallback
+	}
+	return *configured
 }
 
 // EnabledModes returns the modes that run when none is requested explicitly

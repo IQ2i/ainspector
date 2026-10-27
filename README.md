@@ -80,6 +80,7 @@ ai-review:
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
   script:
     - curl -sL https://github.com/iq2i/ainspector/releases/latest/download/ainspector-linux-amd64 -o ainspector
     - chmod +x ainspector
@@ -91,7 +92,16 @@ ai-review:
     LLM_API_KEY: $LLM_API_KEY
     LLM_BASE_URL: https://api.openai.com
     LLM_MODEL: gpt-4o
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - ainspector-report.json
+    reports:
+      codequality: gl-code-quality-report.json
 ```
+
+The `codequality` report makes the findings appear in the Code Quality section of the merge request (available in the Free edition). See [Reports](#reports).
 
 ### Command Line Options
 
@@ -198,6 +208,11 @@ modes:
       model: claude-opus-5-5   # default on the Anthropic backend
       instructions: "Ignore findings under legacy/"
 
+# Reports written at the end of a run, relative to the directory of the job
+publish:
+  code_quality: gl-code-quality-report.json   # "" disables it
+  artifact: ainspector-report.json            # "" disables it
+
 # Custom review rules enforced by the AI (same as modes.quality.rules)
 rules:
   - "All exceptions must be logged before rethrowing"
@@ -216,6 +231,8 @@ rules:
 **modes.quality** - `enabled` (default `true`), `model` (default: the model of the LLM backend) and `rules`, which are added after the top-level `rules`.
 
 **modes.security** - Disabled unless `enabled: true`. `scope` is the code given with each unit: `function`, `function+class` (adds the header of the class) or `function+class+related` (the default, adds the related files). `max_findings` caps the findings commented per run (default `5`). `hunks` tells which files without functions are reviewed, and how many lines of context surround each change (defaults above); lock files (`*.lock`, `package-lock.json`, `pnpm-lock.yaml`) and minified assets are never reviewed that way. `false_positive.model` is the model of the second pass (`claude-opus-5-5` on the Anthropic backend, the default model of the backend otherwise), `false_positive.instructions` is appended to the built-in instructions. `model` is the model of the review itself.
+
+**publish** - `code_quality` and `artifact` are the paths of the two reports (see [Reports](#reports)), relative to the directory of the job: the defaults are above, an empty string disables the report. An absolute path, a path with `..`, or the same file for both reports is refused.
 
 **context.include** - Files to include when generating project context. The AI will read these files to better understand your project's architecture, conventions, and requirements. By default, ainspector automatically searches for common documentation files like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `README.md`, and `.github/copilot-instructions.md`.
 
@@ -247,6 +264,15 @@ These files are given as they are to the AI, within the `context.max_bytes` limi
 ### Review Summary
 
 After each review, ainspector posts one summary comment per mode and updates it on the next runs instead of adding another one. It tells how many functions (or units, for the security mode) were reviewed and how many issues were reported, the findings left out by the cap and those discarded as false positives, the tokens used, the estimated cost, the functions that could not be reviewed (token budget reached, failed requests) and what was left out of the project context. It also carries the hidden state that lets later runs skip the functions already reviewed. Only a summary written by the account of the token is trusted.
+
+### Reports
+
+Besides the comments, every run writes two files in the directory of the job, even when it found nothing, unless the merge request is ignored:
+
+- `gl-code-quality-report.json`, in the [GitLab Code Quality](https://docs.gitlab.com/ci/testing/code_quality/) format. Declare it under `artifacts.reports.codequality` (see the GitLab CI example) and the findings show in the merge request. Both modes feed it; `security` findings are in the `Security` category, and their severities map to GitLab's (`critical` to `blocker`, `high` to `critical`, `medium` to `major`, `low` to `minor`, `info` to `info`); `quality` findings are `minor`. GitLab only displays the report of the last pipeline, and a run does not review the units it already reviewed: the report therefore also repeats the findings of earlier runs that still hold (their unit did not change), and the findings left out by the cap (but not those the false positive filter never judged, which only reach the artifact). The lines of a repeated finding follow its function when it moves. A finding disappears from it when its unit is reviewed again and no longer reports it.
+- `ainspector-report.json`, the complete record of the run for archiving: the units with their status, the findings (commented, left out by the cap, repeated, carried over), the findings cut before the false positive filter, the verdicts of the filter, the tokens and the estimated cost. It holds no source code (the code suggested by a finding is left out), nor the content of the related files.
+
+A report is written even with `--dry-run`, since it is a local file. If a report cannot be written, the job fails after the comments were posted.
 
 ### Security Review
 

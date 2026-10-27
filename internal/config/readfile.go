@@ -48,3 +48,21 @@ func ReadProjectFile(root, rel string, limit int) ([]byte, error) {
 
 	return io.ReadAll(io.LimitReader(f, int64(limit)))
 }
+
+// CheckOutputPath tells whether a path is fit for a file the tool writes: relative and staying
+// inside the directory it is resolved against. The path comes from the configuration of the
+// project, which the author of the PR/MR controls.
+func CheckOutputPath(p string) error {
+	if p == "" {
+		return errors.New("empty path")
+	}
+	if filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) || filepath.VolumeName(p) != "" {
+		return fmt.Errorf("%s: must be relative", p)
+	}
+	for _, segment := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if segment == ".." {
+			return fmt.Errorf("%s: must not contain a parent directory segment", p)
+		}
+	}
+	return nil
+}

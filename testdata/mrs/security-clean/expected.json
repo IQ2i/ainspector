@@ -202,5 +202,63 @@
   "comments": null,
   "notes": [
     "\u003c!-- ainspector:summary:security --\u003e\n### ainspector: security review\n\nReviewed 2 functions, no issue found.\n\nModel: `test-model`\n\nTokens: 200 in, 20 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:security {\"v\":1,\"scope\":\"function+class+related\",\"ver\":\"security/2\",\"units\":[\"77592550189f\",\"1bdfb9f4d412\"],\"findings\":[]} --\u003e\n"
-  ]
+  ],
+  "code_quality": [],
+  "artifact": {
+    "version": 1,
+    "change": {
+      "number": 1
+    },
+    "modes": [
+      {
+        "mode": "security",
+        "scope": "function+class+related",
+        "version": "security/2",
+        "model": "test-model",
+        "units": [
+          {
+            "kind": "function",
+            "file": "src/Controller/ProfileController.php",
+            "name": "show",
+            "start_line": 14,
+            "end_line": 19,
+            "change_type": "modified",
+            "hash": "77592550189f",
+            "status": "reviewed",
+            "enclosing": "ProfileController"
+          },
+          {
+            "kind": "function",
+            "file": "src/Repository/UserRepository.php",
+            "name": "findByName",
+            "start_line": 16,
+            "end_line": 22,
+            "change_type": "modified",
+            "hash": "1bdfb9f4d412",
+            "status": "reviewed",
+            "enclosing": "UserRepository"
+          }
+        ],
+        "already_reviewed": 0,
+        "published": [],
+        "overflow": [],
+        "unjudged": [],
+        "repeated": [],
+        "carried": [],
+        "discarded": 0,
+        "verdicts": [],
+        "skipped": [],
+        "failed": [],
+        "usage": {
+          "input": 200,
+          "output": 20,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0,
+        "cost_incomplete": true,
+        "notes": []
+      }
+    ]
+  }
 }
