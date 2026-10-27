@@ -775,3 +775,390 @@ func TestParser_ParsePHPAttributes(t *testing.T) {
 		t.Errorf("method without attribute must not capture neighbours' attributes, got:\n%s", list.Content)
 	}
 }
+
+func TestParser_ParsePHPEnclosing(t *testing.T) {
+	p := NewParser()
+	defer p.Close()
+
+	functions, _, err := p.Parse("PostController.php", []byte(symfonyController))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	show := findFunction(t, functions, "show")
+	if show.Enclosing == nil {
+		t.Fatal("expected an enclosing class for show")
+	}
+	if show.Enclosing.Name != "PostController" || show.Enclosing.Kind != "class" {
+		t.Errorf("expected class PostController, got %s %s", show.Enclosing.Kind, show.Enclosing.Name)
+	}
+	if show.Enclosing.StartLine != 9 {
+		t.Errorf("expected class to start at its attribute on line 9, got %d", show.Enclosing.StartLine)
+	}
+}
+
+func TestParser_EnclosingKinds(t *testing.T) {
+	tests := []struct {
+		name, path, source string
+		wantName, wantKind string
+	}{
+		{
+			name: "enum",
+			path: "Status.php",
+			source: `<?php
+enum Status: string {
+    case Active = 'active';
+    public function label(): string { return 'x'; }
+}
+`,
+			wantName: "Status", wantKind: "enum",
+		},
+		{
+			name: "trait",
+			path: "Loggable.php",
+			source: `<?php
+trait Loggable {
+    public function log() { return 1; }
+}
+`,
+			wantName: "Loggable", wantKind: "trait",
+		},
+		{
+			name: "interface",
+			path: "Api.php",
+			source: `<?php
+interface Api {
+    public function x(): void;
+}
+`,
+			wantName: "Api", wantKind: "interface",
+		},
+		{
+			name: "top-level function",
+			path: "helpers.php",
+			source: `<?php
+function helper() { return 1; }
+`,
+		},
+		{
+			name: "language without enclosing types",
+			path: "main.go",
+			source: `package main
+
+func main() {}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewParser()
+			defer p.Close()
+
+			functions, _, err := p.Parse(tt.path, []byte(tt.source))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(functions) != 1 {
+				t.Fatalf("expected 1 function, got %d", len(functions))
+			}
+			got := functions[0].Enclosing
+			if tt.wantKind == "" {
+				if got != nil {
+					t.Fatalf("expected no enclosing class, got %+v", got)
+				}
+				return
+			}
+			if got == nil || got.Name != tt.wantName || got.Kind != tt.wantKind {
+				t.Fatalf("expected %s %s, got %+v", tt.wantKind, tt.wantName, got)
+			}
+		})
+	}
+}
+
+func renderHeader(t *testing.T, path, source, fn string) string {
+	t.Helper()
+	p := NewParser()
+	defer p.Close()
+
+	functions, _, err := p.Parse(path, []byte(source))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	enclosing := findFunction(t, functions, fn).Enclosing
+	if enclosing == nil {
+		t.Fatalf("no enclosing class for %s", fn)
+	}
+	header, err := p.RenderClassHeader(path, []byte(source), enclosing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return header
+}
+
+func TestParser_RenderClassHeaderPHP(t *testing.T) {
+	header := renderHeader(t, "PostController.php", symfonyController, "show")
+
+	want := []string{
+		`namespace App\Controller;`,
+		`use App\Entity\Post;`,
+		`use App\Repository\PostRepository;`,
+		`use Symfony\Component\Security\Http\Attribute\IsGranted;`,
+		`#[Route('/posts')]`,
+		"final class PostController extends AbstractController\n{",
+		"    use LoggerAwareTrait;",
+		"    public const PAGE_SIZE = 20;",
+		"    private int $counter = 0;",
+		"    public function __construct(private readonly PostRepository $posts)",
+		"        $this->counter = 1;",
+		"    #[Route('/{id}', name: 'post_show')]\n    #[IsGranted('POST_VIEW', 'post')]\n    public function show(Post $post): Response { ... }",
+		"    public function list(): Response { ... }",
+	}
+	for _, w := range want {
+		if !strings.Contains(header, w) {
+			t.Errorf("header should contain %q, got:\n%s", w, header)
+		}
+	}
+
+	for _, unwanted := range []string{"post/show.html.twig", "new Response('list')"} {
+		if strings.Contains(header, unwanted) {
+			t.Errorf("header should not contain %q, got:\n%s", unwanted, header)
+		}
+	}
+	if !strings.HasSuffix(header, "}") {
+		t.Errorf("header should end with a closing brace, got:\n%s", header)
+	}
+}
+
+func TestParser_RenderClassHeaderPHPVariants(t *testing.T) {
+	tests := []struct {
+		name, source, fn string
+		want, unwanted   []string
+	}{
+		{
+			name: "enum",
+			source: `<?php
+namespace App\Enum;
+
+enum Status: string
+{
+    case Active = 'active';
+    case Closed = 'closed';
+
+    public function label(): string
+    {
+        return 'secret body';
+    }
+}
+`,
+			fn: "label",
+			want: []string{
+				`namespace App\Enum;`,
+				"enum Status: string\n{",
+				"    case Active = 'active';",
+				"    case Closed = 'closed';",
+				"    public function label(): string { ... }",
+			},
+			unwanted: []string{"secret body"},
+		},
+		{
+			name: "trait",
+			source: `<?php
+namespace App\Util;
+
+use Psr\Log\LoggerInterface;
+
+trait Loggable
+{
+    private ?LoggerInterface $logger = null;
+
+    public function log(): void
+    {
+        $this->logger?->info('x');
+    }
+}
+`,
+			fn: "log",
+			want: []string{
+				`namespace App\Util;`,
+				`use Psr\Log\LoggerInterface;`,
+				"trait Loggable\n{",
+				"    private ?LoggerInterface $logger = null;",
+			},
+			unwanted: []string{"info('x')"},
+		},
+		{
+			name: "braced namespace",
+			source: `<?php
+namespace App\Service {
+    use App\Entity\User;
+
+    class Mailer
+    {
+        public function send(User $user): void
+        {
+            mail('x');
+        }
+    }
+}
+`,
+			fn: "send",
+			want: []string{
+				`namespace App\Service;`,
+				`use App\Entity\User;`,
+				"class Mailer\n    {",
+			},
+			unwanted: []string{"mail('x')"},
+		},
+		{
+			name: "docblocks, case-insensitive constructor and abstract method",
+			source: `<?php
+/**
+ * @Route("/admin")
+ * @IsGranted("ROLE_ADMIN")
+ */
+abstract class AdminController
+{
+    /**
+     * @Groups({"public"})
+     */
+    private $secret;
+
+    public function __CONSTRUCT() { $this->a = 1; }
+
+    /**
+     * @IsGranted("ROLE_SUPER")
+     */
+    abstract protected function guard(): void;
+
+    public function show($id) { return $id; }
+}
+`,
+			fn: "show",
+			want: []string{
+				"/**\n * @Route(\"/admin\")\n * @IsGranted(\"ROLE_ADMIN\")\n */\nabstract class AdminController\n{",
+				"    /**\n     * @Groups({\"public\"})\n     */\n    private $secret;",
+				"    public function __CONSTRUCT() { $this->a = 1; }",
+				"    /**\n     * @IsGranted(\"ROLE_SUPER\")\n     */\n    abstract protected function guard(): void;",
+				"    public function show($id) { ... }",
+			},
+			unwanted: []string{"return $id"},
+		},
+		{
+			name: "interface",
+			source: `<?php
+interface Api
+{
+    #[Route('/x')]
+    public function x(): void;
+}
+`,
+			fn: "x",
+			want: []string{
+				"interface Api\n{",
+				"    #[Route('/x')]\n    public function x(): void;",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			header := renderHeader(t, "file.php", tt.source, tt.fn)
+			for _, w := range tt.want {
+				if !strings.Contains(header, w) {
+					t.Errorf("header should contain %q, got:\n%s", w, header)
+				}
+			}
+			for _, u := range tt.unwanted {
+				if strings.Contains(header, u) {
+					t.Errorf("header should not contain %q, got:\n%s", u, header)
+				}
+			}
+		})
+	}
+}
+
+func TestParser_RenderClassHeaderErrors(t *testing.T) {
+	p := NewParser()
+	defer p.Close()
+
+	source := []byte(symfonyController)
+
+	if _, err := p.RenderClassHeader("PostController.php", source, nil); err == nil {
+		t.Error("expected an error for a nil class reference")
+	}
+	if _, err := p.RenderClassHeader("PostController.php", source, &ClassRef{StartByte: 1, EndByte: 2}); err == nil {
+		t.Error("expected an error for a reference matching no class")
+	}
+	if _, err := p.RenderClassHeader("main.go", []byte("package main"), &ClassRef{}); err == nil {
+		t.Error("expected an error for a language without class header support")
+	}
+	if _, err := p.RenderClassHeader("unknown.xyz", nil, &ClassRef{}); err == nil {
+		t.Error("expected an error for an unsupported file type")
+	}
+}
+
+func TestParser_RenderClassHeaderPHPExact(t *testing.T) {
+	want := `namespace App\Controller;
+use App\Entity\Post;
+use App\Repository\PostRepository;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
+
+#[Route('/posts')]
+final class PostController extends AbstractController
+{
+    use LoggerAwareTrait;
+
+    public const PAGE_SIZE = 20;
+
+    private int $counter = 0;
+
+    public function __construct(private readonly PostRepository $posts)
+    {
+        $this->counter = 1;
+    }
+
+    #[Route('/{id}', name: 'post_show')]
+    #[IsGranted('POST_VIEW', 'post')]
+    public function show(Post $post): Response { ... }
+
+    public function list(): Response { ... }
+}`
+
+	if got := renderHeader(t, "PostController.php", symfonyController, "show"); got != want {
+		t.Errorf("unexpected header, got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestParser_EnclosingBarriersPHP(t *testing.T) {
+	source := `<?php
+#[IsGranted('ROLE_ADMIN')]
+class Outer
+{
+    public function make()
+    {
+        function nested() { return 1; }
+
+        return new class {
+            public function inner() { return 1; }
+        };
+    }
+}
+`
+	p := NewParser()
+	defer p.Close()
+
+	functions, _, err := p.Parse("Outer.php", []byte(source))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := findFunction(t, functions, "make").Enclosing; got == nil || got.Name != "Outer" {
+		t.Errorf("expected make to be enclosed by Outer, got %+v", got)
+	}
+	for _, name := range []string{"nested", "inner"} {
+		if got := findFunction(t, functions, name).Enclosing; got != nil {
+			t.Errorf("%s must not inherit the class Outer, got %+v", name, got)
+		}
+	}
+}
