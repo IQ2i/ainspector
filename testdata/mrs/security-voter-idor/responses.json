@@ -1,0 +1,5 @@
+{
+  "show": "{\"findings\": [{\"line\": 28, \"end_line\": 28, \"severity\": \"high\", \"category\": \"idor\", \"title\": \"The invoice voter lets any user read any invoice\", \"scenario\": \"An authenticated user requests /invoices/42 for an invoice owned by someone else: #[IsGranted('INVOICE_VIEW')] looks like a check, but InvoiceVoter grants the attribute to any logged-in user without comparing the invoice owner, so the invoice of another customer is disclosed.\", \"remediation\": \"Make InvoiceVoter::voteOnAttribute() grant INVOICE_VIEW only when the owner of the invoice is the current user.\", \"confidence\": 0.9, \"suggestion\": \"\"}]}",
+  "index": "{\"findings\": []}",
+  "__false_positive__": "{\"verdicts\": [{\"id\": 0, \"keep\": true, \"reason\": \"The voter shown in the related files never compares the owner of the invoice to the current user.\"}]}"
+}

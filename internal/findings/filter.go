@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/collect"
@@ -130,6 +131,9 @@ func buildFPPrompt(units map[string]collect.ReviewUnit, previous []Reported, fs 
 		fmt.Fprintf(&sb, "\n%s, %s (lines %d-%d)\n", oneLine(u.FilePath), oneLine(u.Name), u.StartLine, u.EndLine)
 		if u.Enclosing != nil {
 			sb.WriteString("Class header:\n" + provider.Fence(u.Language, u.Enclosing.Rendered) + "\n")
+		}
+		for _, r := range u.Related {
+			fmt.Fprintf(&sb, "Related file %s (%s):\n%s\n", oneLine(r.Path), oneLine(r.Reason), provider.Fence(strings.TrimPrefix(path.Ext(r.Path), "."), r.Content))
 		}
 		if u.Diff != "" {
 			sb.WriteString("Changes:\n" + provider.Fence("diff", u.Diff) + "\n")

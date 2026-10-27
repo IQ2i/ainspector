@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "path": "src/Controller/InvoiceController.php",
+      "status": "modified",
+      "patch": "@@ -22,4 +22,11 @@\n     {\n         return $this->render('invoice/index.html.twig', ['invoices' => $this->invoices->findBy(['owner' => $this->getUser()])]);\n     }\n+\n+    #[Route('/{id}', name: 'invoice_show')]\n+    #[IsGranted('INVOICE_VIEW', 'invoice')]\n+    public function show(#[MapEntity] Invoice $invoice): Response\n+    {\n+        return $this->render('invoice/show.html.twig', ['invoice' => $invoice]);\n+    }\n }"
+    }
+  ]
+}

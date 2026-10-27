@@ -35,6 +35,7 @@ func clearCIEnvVars(t *testing.T) func() {
 	envVars := []string{
 		"GITHUB_ACTIONS", "GITHUB_REPOSITORY", "GITHUB_REF", "GITHUB_TOKEN", "GITHUB_EVENT_PATH",
 		"GITLAB_CI", "CI_PROJECT_PATH", "CI_MERGE_REQUEST_IID", "GITLAB_TOKEN", "CI_JOB_TOKEN", "CI_SERVER_HOST",
+		"GITHUB_SHA", "CI_COMMIT_SHA", "GITHUB_EVENT_NAME",
 	}
 
 	originalVals := make(map[string]string)
@@ -520,5 +521,44 @@ func TestEnvironment_Fields(t *testing.T) {
 	}
 	if env.ServerHost != "github.com" {
 		t.Errorf("server host mismatch")
+	}
+}
+
+func TestDetect_CommitSHA(t *testing.T) {
+	cleanup := clearCIEnvVars(t)
+	defer cleanup()
+
+	envCleanup := setEnv(t, map[string]string{
+		"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "owner/repo", "GITHUB_REF": "refs/pull/1/merge", "GITHUB_TOKEN": "t", "GITHUB_SHA": "abc123",
+	})
+	env, err := Detect()
+	envCleanup()
+	if err != nil || env.CommitSHA != "abc123" {
+		t.Errorf("GitHub: got %+v, %v", env, err)
+	}
+
+	envCleanup = setEnv(t, map[string]string{
+		"GITLAB_CI": "true", "CI_PROJECT_PATH": "g/p", "CI_MERGE_REQUEST_IID": "2", "GITLAB_TOKEN": "t", "CI_COMMIT_SHA": "def456",
+	})
+	defer envCleanup()
+	env, err = Detect()
+	if err != nil || env.CommitSHA != "def456" {
+		t.Errorf("GitLab: got %+v, %v", env, err)
+	}
+}
+
+func TestDetect_CommitSHAIsNotTheMergeCommitOfAPullRequest(t *testing.T) {
+	for event, want := range map[string]string{"pull_request": "", "pull_request_target": "abc123"} {
+		cleanup := clearCIEnvVars(t)
+		envCleanup := setEnv(t, map[string]string{
+			"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "owner/repo", "GITHUB_REF": "refs/pull/1/merge", "GITHUB_TOKEN": "t",
+			"GITHUB_SHA": "abc123", "GITHUB_EVENT_NAME": event,
+		})
+		env, err := Detect()
+		envCleanup()
+		cleanup()
+		if err != nil || env.CommitSHA != want {
+			t.Errorf("%s: got %+v, %v, want %q", event, env, err, want)
+		}
 	}
 }

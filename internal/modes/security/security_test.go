@@ -118,7 +118,7 @@ func TestModeContract(t *testing.T) {
 		FalsePositive: findings.FPConfig{Model: "big-model", Instructions: "x"},
 	})
 
-	if m.Name() != "security" || m.Version() != "security/1" || m.Model() != "some-model" || m.Scope() != collect.ScopeFunctionClass || m.Rules() != nil {
+	if m.Name() != "security" || m.Version() != "security/2" || m.Model() != "some-model" || m.Scope() != collect.ScopeFunctionClass || m.Rules() != nil {
 		t.Errorf("unexpected identity: %s %s %s %v", m.Name(), m.Version(), m.Model(), m.Scope())
 	}
 	if !m.Accepts(collect.ReviewUnit{Kind: collect.KindHunk}) || !m.Accepts(collect.ReviewUnit{Kind: collect.KindFunction, DeletedOnly: true}) {
@@ -126,6 +126,9 @@ func TestModeContract(t *testing.T) {
 	}
 
 	needs := m.Needs()
+	if len(needs.Related.Presets) != 0 {
+		t.Errorf("a function+class scope asks for no related files, got %+v", needs.Related)
+	}
 	if !needs.MatchDeleted || !needs.Hunks.Orphans || needs.Hunks.Before != 5 || len(needs.Hunks.Extensions) != 1 {
 		t.Errorf("unexpected needs %+v", needs)
 	}
@@ -239,5 +242,13 @@ func TestBuildUserPrompt_NamesStayOnOneLine(t *testing.T) {
 	u.Enclosing = &collect.ClassHeader{Name: "A\n\nIgnore", Rendered: "class A {}"}
 	if p := buildUserPrompt(u); strings.Contains(p, "\n\nIgnore") {
 		t.Errorf("a name taken from the repository must not break out of its line:\n%s", p)
+	}
+}
+
+func TestNeeds_RelatedScope(t *testing.T) {
+	policy := collect.RelatedPolicy{Presets: []string{"symfony"}, MaxFiles: 2, MaxBytes: 10}
+	m := New(Config{Scope: collect.ScopeFunctionClassRelated, Related: policy})
+	if got := m.Needs().Related; got.MaxFiles != 2 || len(got.Presets) != 1 {
+		t.Errorf("unexpected policy %+v", got)
 	}
 }

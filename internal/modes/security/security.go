@@ -21,6 +21,7 @@ type Config struct {
 	Scope         collect.Scope
 	MaxFindings   int
 	Hunks         collect.HunkPolicy
+	Related       collect.RelatedPolicy
 	FalsePositive findings.FPConfig
 }
 
@@ -40,18 +41,23 @@ func (m *Mode) Scope() collect.Scope { return m.cfg.Scope }
 
 func (m *Mode) Model() string { return m.cfg.Model }
 
-func (m *Mode) Version() string { return "security/1" }
+func (m *Mode) Version() string { return "security/2" }
 
 func (m *Mode) Rules() []string { return nil }
 
 // Accepts takes every unit: functions, functions only touched by deletions, and hunks
 func (m *Mode) Accepts(collect.ReviewUnit) bool { return true }
 
-// Needs asks for the units quality never reviews: deletions, and the changes outside functions
+// Needs asks for the units quality never reviews: deletions, and the changes outside functions.
+// Related files are only asked for by the scope that gives them.
 func (m *Mode) Needs() collect.Request {
 	hunks := m.cfg.Hunks
 	hunks.Orphans = true
-	return collect.Request{MatchDeleted: true, Hunks: hunks}
+	req := collect.Request{MatchDeleted: true, Hunks: hunks}
+	if m.cfg.Scope == collect.ScopeFunctionClassRelated {
+		req.Related = m.cfg.Related
+	}
+	return req
 }
 
 func (m *Mode) BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request {

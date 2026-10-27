@@ -1,0 +1,8 @@
+security:
+    password_hashers:
+        App\Entity\User: auto
+    firewalls:
+        main:
+            lazy: true
+    access_control:
+        - { path: ^/invoices, roles: ROLE_USER }

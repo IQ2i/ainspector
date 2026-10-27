@@ -1,0 +1,8 @@
+context:
+  include:
+    - README.md
+modes:
+  quality:
+    enabled: false
+  security:
+    enabled: true

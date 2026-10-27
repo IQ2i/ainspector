@@ -30,6 +30,8 @@ type Options struct {
 	Number int
 	Modes  []string
 	Force  bool
+	// CheckoutSHA is the commit checked out by the job, to tell when it is not the head of the change
+	CheckoutSHA string
 	// DryRun prints what would be published without writing anything to the PR/MR
 	DryRun bool
 }
@@ -51,8 +53,21 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		return nil
 	}
 
+	var cached *provider.ChangeInfo
+	changeInfo := func() (provider.ChangeInfo, error) {
+		if cached != nil {
+			return *cached, nil
+		}
+		got, err := deps.Provider.GetChangeInfo(ctx, opts.Number)
+		if err != nil {
+			return provider.ChangeInfo{}, err
+		}
+		cached = &got
+		return got, nil
+	}
+
 	if cfg.HasChangeFilters() {
-		info, err := deps.Provider.GetChangeInfo(ctx, opts.Number)
+		info, err := changeInfo()
 		if err != nil {
 			return fmt.Errorf("failed to get change info: %w", err)
 		}
@@ -72,7 +87,8 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 	collector := collect.New(deps.Provider, cfg)
 	defer collector.Close()
-	units, err := collector.Collect(ctx, collectRequest(files, enabled))
+	req := collectRequest(files, enabled)
+	units, err := collector.Collect(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to extract functions: %w", err)
 	}
@@ -82,6 +98,12 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	if len(units) == 0 {
 		fmt.Println("No code to review")
 		return nil
+	}
+
+	if len(req.Related.Presets) > 0 {
+		if err := attachRelated(ctx, deps, opts, units, req.Related, changeInfo); err != nil {
+			return err
+		}
 	}
 
 	self, err := deps.Provider.CurrentUser(ctx)
@@ -376,6 +398,7 @@ func collectRequest(files []provider.ModifiedFile, enabled []modes.Mode) collect
 		h.Orphans = h.Orphans || needs.Hunks.Orphans
 		h.Before = max(h.Before, needs.Hunks.Before)
 		h.After = max(h.After, needs.Hunks.After)
+		req.Related = mergeRelated(req.Related, needs.Related)
 	}
 	return req
 }
@@ -389,6 +412,9 @@ func unitsFor(m modes.Mode, units []collect.ReviewUnit) []collect.ReviewUnit {
 		}
 		if m.Scope() < collect.ScopeFunctionClass {
 			u.Enclosing = nil
+		}
+		if m.Scope() < collect.ScopeFunctionClassRelated {
+			u.Related = nil
 		}
 		result = append(result, u)
 	}

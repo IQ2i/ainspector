@@ -67,6 +67,8 @@ type ReviewUnit struct {
 	ChangeType string   `json:"change_type"` // "added", "modified", "deleted"
 	// Enclosing is the header of the class holding the function, set from ScopeFunctionClass
 	Enclosing *ClassHeader `json:"enclosing,omitempty"`
+	// Related holds the files that help judge the unit, set from ScopeFunctionClassRelated
+	Related []RelatedFile `json:"related,omitempty"`
 	// DeletedOnly is set when the unit was selected because lines were removed from it
 	DeletedOnly bool `json:"deleted_only,omitempty"`
 	// Notes report what was cut or left out while building the unit
@@ -79,6 +81,22 @@ type ClassHeader struct {
 	StartLine int    `json:"start_line"`
 	EndLine   int    `json:"end_line"`
 	Rendered  string `json:"rendered"`
+}
+
+// RelatedFile is a file of the project, other than the one under review, given as context
+type RelatedFile struct {
+	Path      string `json:"path"`
+	Reason    string `json:"reason"`
+	Content   string `json:"content"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// RelatedPolicy tells which related files are attached to a unit, and how many
+type RelatedPolicy struct {
+	// Presets name the resolvers to run (symfony, vue)
+	Presets []string
+	// MaxFiles and MaxBytes cap the related files of one unit
+	MaxFiles, MaxBytes int
 }
 
 // HunkPolicy tells which changes become hunk units
@@ -97,6 +115,8 @@ type Request struct {
 	// MatchDeleted also selects the functions that only had lines removed
 	MatchDeleted bool
 	Hunks        HunkPolicy
+	// Related is read by the pipeline, which attaches the files once the units are collected
+	Related RelatedPolicy
 }
 
 // Collector builds review units from PR/MR files
@@ -124,10 +144,6 @@ func (e *Collector) Close() {
 
 // Collect extracts a review unit for every function that has modified lines
 func (e *Collector) Collect(ctx context.Context, req Request) ([]ReviewUnit, error) {
-	if req.Scope == ScopeFunctionClassRelated {
-		return nil, fmt.Errorf("scope %s is not supported yet", req.Scope)
-	}
-
 	var result []ReviewUnit
 
 	for _, file := range req.Files {

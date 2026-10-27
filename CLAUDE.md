@@ -22,6 +22,7 @@ make lint     # Lint code
 - `internal/diff/` - Parse unified diffs
 - `internal/parser/` - Tree-sitter function extraction, class headers (`header.go`, one `HeaderSpec` per language)
 - `internal/collect/` - Build review units (functions, extended hunks) from modified files, project context
+- `internal/collect/related/` - Related files (voter, security config, repository, parents) read from the checkout; presets in `related/symfony/` and `related/vue/`
 - `internal/llm/` - `Client` interface, `WithBudget` (token cap, usage, cost); `llm/anthropic/` is the Anthropic backend, `llm/openai/` the OpenAI-compatible one
 - `internal/modes/` - Review modes (`modes/quality/` and `modes/security/` hold the prompts)
 - `internal/findings/` - Findings reported by modes: fingerprint, threshold, dedup, cap, false positive filter
@@ -54,8 +55,12 @@ modes:
       - "Database queries must use prepared statements"
   security:
     enabled: true
-    scope: function+class
+    scope: function+class+related
     max_findings: 5
+    related:
+      presets: [symfony, vue]
+      max_files: 6
+      max_bytes: 40000
 ```
 
 ## Environment Variables

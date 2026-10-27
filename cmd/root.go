@@ -109,9 +109,10 @@ func runReview(cmd *cobra.Command, args []string) error {
 		Config:      cfg,
 		ProjectRoot: projectRoot,
 	}, pipeline.Options{
-		Number: env.PRNumber,
-		Modes:  reviewModes,
-		Force:  forceReview,
-		DryRun: dryRun,
+		Number:      env.PRNumber,
+		CheckoutSHA: env.CommitSHA,
+		Modes:       reviewModes,
+		Force:       forceReview,
+		DryRun:      dryRun,
 	})
 }

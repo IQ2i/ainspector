@@ -350,8 +350,11 @@ func TestParse_SecurityDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	sec := cfg.Modes.Security
-	if cfg.SecurityEnabled() || sec.ScopeName() != "function+class" || sec.Findings() != 5 {
+	if cfg.SecurityEnabled() || sec.ScopeName() != "function+class+related" || sec.Findings() != 5 {
 		t.Errorf("unexpected defaults: %+v", sec)
+	}
+	if r := sec.Related.Resolved(); len(r.Presets) != 2 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
+		t.Errorf("unexpected related defaults: %+v", r)
 	}
 	h := sec.Hunks.Resolved()
 	if h.Before != 5 || h.After != 1 || len(h.Extensions) != 5 || h.Extensions[0] != "twig" {
@@ -507,5 +510,31 @@ func TestParse_InvalidLLMSettings(t *testing.T) {
 				t.Errorf("expected an error for %q", yaml)
 			}
 		})
+	}
+}
+
+func TestParse_SecurityRelated(t *testing.T) {
+	cfg, err := parse("ainspector.yaml", []byte(`modes:
+  security:
+    related: {presets: [symfony], max_files: 3, max_bytes: 1000}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := cfg.Modes.Security.Related.Resolved()
+	if len(r.Presets) != 1 || r.Presets[0] != "symfony" || r.MaxFiles != 3 || r.MaxBytes != 1000 {
+		t.Errorf("unexpected related settings: %+v", r)
+	}
+}
+
+func TestParse_SecurityRelatedInvalid(t *testing.T) {
+	for name, doc := range map[string]string{
+		"unknown preset":     "modes:\n  security:\n    related: {presets: [laravel]}\n",
+		"negative max files": "modes:\n  security:\n    related: {max_files: -1}\n",
+		"negative max bytes": "modes:\n  security:\n    related: {max_bytes: -1}\n",
+	} {
+		if _, err := parse("ainspector.yaml", []byte(doc)); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
 	}
 }

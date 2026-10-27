@@ -53,7 +53,7 @@ func TestEnabled_Security(t *testing.T) {
 		t.Fatalf("got %v, %v", got, err)
 	}
 	m := got[0]
-	if m.Name() != "security" || m.Model() != "some-model" || m.Scope() != collect.ScopeFunctionClass {
+	if m.Name() != "security" || m.Model() != "some-model" || m.Scope() != collect.ScopeFunctionClassRelated {
 		t.Errorf("unexpected mode %s %s %v", m.Name(), m.Model(), m.Scope())
 	}
 	p := m.FilterPolicy()
@@ -70,15 +70,46 @@ func TestEnabled_Security(t *testing.T) {
 
 func TestEnabled_SecurityScope(t *testing.T) {
 	for scope, want := range map[string]collect.Scope{
-		"":                       collect.ScopeFunctionClass,
+		"":                       collect.ScopeFunctionClassRelated,
 		"function":               collect.ScopeFunction,
 		"function+class":         collect.ScopeFunctionClass,
-		"function+class+related": collect.ScopeFunctionClass,
+		"function+class+related": collect.ScopeFunctionClassRelated,
 	} {
 		cfg := &config.Config{Modes: config.ModesConfig{Security: config.SecurityConfig{Scope: scope}}}
 		got, err := Enabled([]string{"security"}, cfg)
 		if err != nil || got[0].Scope() != want {
 			t.Errorf("scope %q: got %v, %v, want %v", scope, got, err, want)
 		}
+	}
+}
+
+func TestEnabled_SecurityRelatedNeeds(t *testing.T) {
+	cfg := &config.Config{Modes: config.ModesConfig{Security: config.SecurityConfig{
+		Related: config.RelatedConfig{Presets: []string{"vue"}, MaxFiles: 2},
+	}}}
+	got, err := Enabled([]string{"security"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := got[0].Needs().Related
+	if len(r.Presets) != 1 || r.Presets[0] != "vue" || r.MaxFiles != 2 || r.MaxBytes != config.DefaultRelatedMaxBytes {
+		t.Errorf("unexpected policy %+v", r)
+	}
+
+	cfg.Modes.Security.Scope = "function+class"
+	got, _ = Enabled([]string{"security"}, cfg)
+	if r := got[0].Needs().Related; len(r.Presets) != 0 {
+		t.Errorf("a scope without related files must not ask for them, got %+v", r)
+	}
+}
+
+func TestEnabled_SecurityDefaults(t *testing.T) {
+	got, err := Enabled([]string{"security"}, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := got[0].Needs().Related
+	if len(r.Presets) != 2 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
+		t.Errorf("unexpected defaults %+v", r)
 	}
 }
