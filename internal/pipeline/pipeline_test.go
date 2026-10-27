@@ -35,7 +35,12 @@ type mrFixture struct {
 		Line int    `json:"line"`
 		Body string `json:"body"`
 	} `json:"existing_comments"`
-	Force bool `json:"force"`
+	Force  bool `json:"force"`
+	Change struct {
+		Author string   `json:"author"`
+		Title  string   `json:"title"`
+		Labels []string `json:"labels"`
+	} `json:"change"`
 }
 
 type expectedComment struct {
@@ -74,7 +79,8 @@ func (f *fakeProvider) GetFileContent(ctx context.Context, path string) (string,
 }
 
 func (f *fakeProvider) GetChangeInfo(ctx context.Context, number int) (provider.ChangeInfo, error) {
-	return provider.ChangeInfo{Number: number}, nil
+	c := f.mr.Change
+	return provider.ChangeInfo{Number: number, Author: c.Author, Title: c.Title, Labels: c.Labels}, nil
 }
 
 func (f *fakeProvider) CurrentUser(ctx context.Context) (string, error) {
@@ -310,6 +316,66 @@ func TestRun_PublishFailureIsReturned(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "mode quality") {
 		t.Errorf("expected the publication error of the mode, got %v", err)
 	}
+}
+
+func TestRun_IgnoredChange(t *testing.T) {
+	tests := map[string]struct {
+		author, title string
+		labels        []string
+		wantIgnored   bool
+	}{
+		"bot author, any case": {author: "Renovate-Bot", title: "Update deps", wantIgnored: true},
+		"title pattern":        {author: "alice", title: "[skip-review] wip", wantIgnored: true},
+		"label":                {author: "alice", title: "Fix", labels: []string{"bug", "No-AI-Review"}, wantIgnored: true},
+		"regular change":       {author: "alice", title: "Fix", labels: []string{"bug"}, wantIgnored: false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+			h.fake.mr.Change.Author, h.fake.mr.Change.Title, h.fake.mr.Change.Labels = tt.author, tt.title, tt.labels
+
+			if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+				t.Fatal(err)
+			}
+
+			reviewed := len(h.requests) > 0
+			if reviewed == tt.wantIgnored {
+				t.Errorf("ignored = %v but the LLM was called = %v", tt.wantIgnored, reviewed)
+			}
+			if tt.wantIgnored && (h.newCalls != 0 || h.fake.writes != 0) {
+				t.Error("an ignored change must not create the LLM client nor write anything")
+			}
+		})
+	}
+}
+
+func TestRun_ChangeInfoFailureStopsTheRun(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "ignored-change"))
+	h.deps.Provider = failingChangeInfo{h.fake}
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err == nil {
+		t.Error("expected an error when the filters cannot be evaluated")
+	}
+}
+
+func TestRun_NoModeEnabled(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	off := false
+	h.deps.Config.Modes.Quality.Enabled = &off
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.requests) != 0 || h.fake.writes != 0 {
+		t.Error("nothing should run when no mode is enabled")
+	}
+}
+
+type failingChangeInfo struct{ *fakeProvider }
+
+func (failingChangeInfo) GetChangeInfo(context.Context, int) (provider.ChangeInfo, error) {
+	return provider.ChangeInfo{}, errors.New("api down")
 }
 
 func TestRun_UnknownMode(t *testing.T) {

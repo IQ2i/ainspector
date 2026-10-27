@@ -9,10 +9,13 @@ import (
 )
 
 func TestMode_Identity(t *testing.T) {
-	m := New("some-model", nil)
+	m := New("some-model", []string{"r1"})
 
 	if m.Name() != "quality" || m.Model() != "some-model" || m.Version() != "quality/1" {
 		t.Errorf("unexpected identity: %s %s %s", m.Name(), m.Model(), m.Version())
+	}
+	if len(m.Rules()) != 1 || m.Rules()[0] != "r1" {
+		t.Errorf("unexpected rules: %v", m.Rules())
 	}
 	if m.Scope() != collect.ScopeFunction {
 		t.Errorf("expected function scope, got %s", m.Scope())

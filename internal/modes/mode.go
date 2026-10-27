@@ -18,6 +18,8 @@ type Mode interface {
 	Model() string
 	// Version enters the unit hash: any prompt change must bump it
 	Version() string
+	// Rules are the project rules given to the mode, they enter the unit hash
+	Rules() []string
 	BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request
 	Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Finding, error)
 	FilterPolicy() findings.Policy
@@ -36,7 +38,7 @@ func Enabled(names []string, cfg *config.Config) ([]Mode, error) {
 
 		switch name {
 		case "quality":
-			result = append(result, quality.New("", cfg.Rules))
+			result = append(result, quality.New(cfg.Modes.Quality.Model, cfg.QualityRules()))
 		default:
 			return nil, fmt.Errorf("unknown mode %q", name)
 		}

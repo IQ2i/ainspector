@@ -26,6 +26,8 @@ func (m *Mode) Model() string { return m.model }
 
 func (m *Mode) Version() string { return "quality/1" }
 
+func (m *Mode) Rules() []string { return m.rules }
+
 func (m *Mode) BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request {
 	return llm.Request{
 		Model:    m.model,

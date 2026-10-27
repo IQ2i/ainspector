@@ -1,0 +1,7 @@
+ignore:
+  authors:
+    - renovate-bot
+  title_patterns:
+    - "^\\[skip-review\\]"
+  labels:
+    - no-ai-review

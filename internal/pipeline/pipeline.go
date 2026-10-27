@@ -38,11 +38,26 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 	names := opts.Modes
 	if len(names) == 0 {
-		names = []string{"quality"}
+		names = cfg.EnabledModes()
 	}
 	enabled, err := modes.Enabled(names, cfg)
 	if err != nil {
 		return err
+	}
+	if len(enabled) == 0 {
+		fmt.Println("No review mode enabled")
+		return nil
+	}
+
+	if cfg.HasChangeFilters() {
+		info, err := deps.Provider.GetChangeInfo(ctx, opts.Number)
+		if err != nil {
+			return fmt.Errorf("failed to get change info: %w", err)
+		}
+		if ignored, reason := cfg.ShouldIgnoreChange(info.Author, info.Title, info.Labels); ignored {
+			fmt.Printf("Skipping review: %s\n", reason)
+			return nil
+		}
 	}
 
 	fmt.Printf("Fetching modified files...\n")
@@ -92,7 +107,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	for _, mode := range enabled {
 		toReview := units
 		if index != nil {
-			toReview = index.FilterUnreviewed(mode, state.RulesDigest(cfg.Rules), units)
+			toReview = index.FilterUnreviewed(mode, state.RulesDigest(mode.Rules()), units)
 			if skipped := len(units) - len(toReview); skipped > 0 {
 				fmt.Printf("Skipped %d already reviewed functions\n", skipped)
 			}

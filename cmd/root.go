@@ -63,7 +63,7 @@ var versionCmd = &cobra.Command{
 func init() {
 	reviewCmd.Flags().BoolVarP(&forceReview, "force", "f", false, "Force re-review of all functions, ignoring cache")
 	reviewCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Run the review but print the comments instead of posting them")
-	reviewCmd.Flags().StringSliceVar(&reviewModes, "mode", []string{"quality"}, "Review modes to run, comma separated")
+	reviewCmd.Flags().StringSliceVar(&reviewModes, "mode", nil, "Review modes to run, comma separated (default: the modes enabled in the configuration)")
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(versionCmd)
 }
