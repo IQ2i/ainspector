@@ -233,7 +233,7 @@ func (r *ReviewResult) HasIssues() bool {
 // ReviewFunctions reviews each function using the LLM and returns the results.
 // If projectContext is provided, it will be included in the system prompt for better context.
 // If rules are provided, they will be enforced as mandatory project-specific rules.
-func ReviewFunctions(ctx context.Context, client *Client, functions []collect.ReviewUnit, projectContext *ProjectContext, rules []string) []ReviewResult {
+func ReviewFunctions(ctx context.Context, client Client, functions []collect.ReviewUnit, projectContext *ProjectContext, rules []string) []ReviewResult {
 	results := make([]ReviewResult, 0, len(functions))
 
 	for _, fn := range functions {
@@ -241,18 +241,17 @@ func ReviewFunctions(ctx context.Context, client *Client, functions []collect.Re
 
 		systemPrompt := buildSystemPrompt(fn.Language, projectContext, rules)
 		userPrompt := buildUserPrompt(&fn)
-		messages := []ChatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		}
-
-		review, err := client.Complete(ctx, messages)
+		resp, err := client.Complete(ctx, Request{
+			System:   []Block{{Text: systemPrompt}},
+			Messages: []Message{{Role: "user", Content: userPrompt}},
+		})
 		if err != nil {
 			result.Error = err
 			results = append(results, result)
 			continue
 		}
 
+		review := resp.Text
 		result.RawReview = review
 		result.Suggestions = parseReviewResponse(review)
 		results = append(results, result)

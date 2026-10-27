@@ -10,6 +10,7 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/llm"
+	"github.com/iq2i/ainspector/internal/llm/openai"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -98,7 +99,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 	return review(context.Background(), p, newLLMClient, cfg, env.PRNumber, projectRoot, forceReview)
 }
 
-func newLLMClient() (*llm.Client, error) {
+func newLLMClient() (llm.Client, error) {
 	apiURL := os.Getenv("LLM_BASE_URL")
 	if apiURL == "" {
 		apiURL = "https://api.openai.com"
@@ -114,10 +115,10 @@ func newLLMClient() (*llm.Client, error) {
 		model = "gpt-4o"
 	}
 
-	return llm.NewClient(apiURL, apiKey, model), nil
+	return openai.New(apiURL, apiKey, model), nil
 }
 
-func review(ctx context.Context, p provider.Provider, newClient func() (*llm.Client, error), cfg *config.Config, number int, projectRoot string, force bool) error {
+func review(ctx context.Context, p provider.Provider, newClient func() (llm.Client, error), cfg *config.Config, number int, projectRoot string, force bool) error {
 	fmt.Printf("Fetching modified files...\n")
 	files, err := p.GetModifiedFiles(ctx, number)
 	if err != nil {

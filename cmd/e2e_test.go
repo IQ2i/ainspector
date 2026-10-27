@@ -16,6 +16,7 @@ import (
 
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/llm"
+	"github.com/iq2i/ainspector/internal/llm/openai"
 	"github.com/iq2i/ainspector/internal/provider"
 )
 
@@ -92,7 +93,7 @@ func scriptedLLM(t *testing.T, responses map[string]string, requests *[]json.Raw
 		body, _ := io.ReadAll(r.Body)
 		*requests = append(*requests, json.RawMessage(body))
 
-		var req llm.ChatRequest
+		var req openai.ChatRequest
 		if err := json.Unmarshal(body, &req); err != nil {
 			t.Errorf("invalid request body: %v", err)
 		}
@@ -147,8 +148,8 @@ func TestReviewE2E(t *testing.T) {
 			server := scriptedLLM(t, responses, &requests)
 			defer server.Close()
 
-			newClient := func() (*llm.Client, error) {
-				return llm.NewClient(server.URL, "key", "test-model"), nil
+			newClient := func() (llm.Client, error) {
+				return openai.New(server.URL, "key", "test-model"), nil
 			}
 
 			if err := review(context.Background(), fake, newClient, cfg, 1, fake.head, mr.Force); err != nil {

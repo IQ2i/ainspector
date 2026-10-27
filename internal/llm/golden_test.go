@@ -1,14 +1,10 @@
 package llm
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
@@ -95,26 +91,6 @@ func TestGolden_UserPrompt(t *testing.T) {
 			})
 		}
 	}
-}
-
-func TestGolden_WireRequest(t *testing.T) {
-	var body []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ = io.ReadAll(r.Body)
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"LGTM"}}]}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL, "key", "gpt-4o")
-	_, err := client.Complete(context.Background(), []ChatMessage{
-		{Role: "system", Content: buildSystemPrompt("go", nil, nil)},
-		{Role: "user", Content: "Review this"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assertGolden(t, filepath.Join("testdata", "golden", "wire", "chat_request.json"), body)
 }
 
 func sum(s string) string {

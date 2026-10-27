@@ -1,17 +1,26 @@
-package llm
+package openai
 
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/iq2i/ainspector/internal/llm"
 )
 
-func TestNewClient(t *testing.T) {
-	client := NewClient("https://api.example.com", "test-key", "gpt-4")
+func userRequest(content string) llm.Request {
+	return llm.Request{Messages: []llm.Message{{Role: "user", Content: content}}}
+}
+
+func TestNew(t *testing.T) {
+	client := New("https://api.example.com", "test-key", "gpt-4")
 
 	if client.baseURL != "https://api.example.com" {
 		t.Errorf("expected baseURL 'https://api.example.com', got %s", client.baseURL)
@@ -27,8 +36,8 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
-func TestNewClient_TrimsTrailingSlash(t *testing.T) {
-	client := NewClient("https://api.example.com/", "key", "model")
+func TestNew_TrimsTrailingSlash(t *testing.T) {
+	client := New("https://api.example.com/", "key", "model")
 	if client.baseURL != "https://api.example.com" {
 		t.Errorf("expected trailing slash to be trimmed, got %s", client.baseURL)
 	}
@@ -75,19 +84,18 @@ func TestClient_Complete_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-api-key", "gpt-4")
+	client := New(server.URL, "test-api-key", "gpt-4")
 	ctx := context.Background()
 
-	messages := []ChatMessage{
-		{Role: "user", Content: "Say hello"},
-	}
-
-	result, err := client.Complete(ctx, messages)
+	result, err := client.Complete(ctx, userRequest("Say hello"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result != "Hello, world!" {
-		t.Errorf("expected 'Hello, world!', got %s", result)
+	if result.Text != "Hello, world!" {
+		t.Errorf("expected 'Hello, world!', got %s", result.Text)
+	}
+	if result.Model != "gpt-4" {
+		t.Errorf("expected model 'gpt-4', got %s", result.Model)
 	}
 }
 
@@ -110,10 +118,10 @@ func TestClient_Complete_NoApiKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "", "gpt-4")
+	client := New(server.URL, "", "gpt-4")
 	ctx := context.Background()
 
-	_, err := client.Complete(ctx, []ChatMessage{{Role: "user", Content: "test"}})
+	_, err := client.Complete(ctx, userRequest("test"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,10 +134,10 @@ func TestClient_Complete_APIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "bad-key", "gpt-4")
+	client := New(server.URL, "bad-key", "gpt-4")
 	ctx := context.Background()
 
-	_, err := client.Complete(ctx, []ChatMessage{{Role: "user", Content: "test"}})
+	_, err := client.Complete(ctx, userRequest("test"))
 	if err == nil {
 		t.Fatal("expected error for 401 response")
 	}
@@ -152,10 +160,10 @@ func TestClient_Complete_ErrorInResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key", "gpt-4")
+	client := New(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	_, err := client.Complete(ctx, []ChatMessage{{Role: "user", Content: "test"}})
+	_, err := client.Complete(ctx, userRequest("test"))
 	if err == nil {
 		t.Fatal("expected error for error in response")
 	}
@@ -176,10 +184,10 @@ func TestClient_Complete_NoChoices(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key", "gpt-4")
+	client := New(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	_, err := client.Complete(ctx, []ChatMessage{{Role: "user", Content: "test"}})
+	_, err := client.Complete(ctx, userRequest("test"))
 	if err == nil {
 		t.Fatal("expected error for no choices")
 	}
@@ -195,10 +203,10 @@ func TestClient_Complete_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key", "gpt-4")
+	client := New(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	_, err := client.Complete(ctx, []ChatMessage{{Role: "user", Content: "test"}})
+	_, err := client.Complete(ctx, userRequest("test"))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
@@ -222,13 +230,13 @@ func TestClient_Complete_ContextCanceled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key", "gpt-4")
+	client := New(server.URL, "key", "gpt-4")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Cancel immediately
 	cancel()
 
-	_, err := client.Complete(ctx, []ChatMessage{{Role: "user", Content: "test"}})
+	_, err := client.Complete(ctx, userRequest("test"))
 	if err == nil {
 		t.Fatal("expected error for canceled context")
 	}
@@ -241,10 +249,10 @@ func TestClient_Complete_ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key", "gpt-4")
+	client := New(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	_, err := client.Complete(ctx, []ChatMessage{{Role: "user", Content: "test"}})
+	_, err := client.Complete(ctx, userRequest("test"))
 	if err == nil {
 		t.Fatal("expected error for 500 response")
 	}
@@ -272,17 +280,19 @@ func TestClient_Complete_MultipleMessages(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key", "gpt-4")
+	client := New(server.URL, "key", "gpt-4")
 	ctx := context.Background()
 
-	messages := []ChatMessage{
-		{Role: "system", Content: "You are a helpful assistant"},
-		{Role: "user", Content: "Hello"},
-		{Role: "assistant", Content: "Hi there!"},
-		{Role: "user", Content: "How are you?"},
+	req := llm.Request{
+		System: []llm.Block{{Text: "You are a helpful assistant"}},
+		Messages: []llm.Message{
+			{Role: "user", Content: "Hello"},
+			{Role: "assistant", Content: "Hi there!"},
+			{Role: "user", Content: "How are you?"},
+		},
 	}
 
-	_, err := client.Complete(ctx, messages)
+	_, err := client.Complete(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -340,5 +350,101 @@ func TestChatRequest_JSONSerialization(t *testing.T) {
 	}
 	if len(decoded.Messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(decoded.Messages))
+	}
+}
+
+func TestClient_Complete_SystemBlocksAndOverrides(t *testing.T) {
+	var got ChatRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "key", "default-model")
+	resp, err := client.Complete(context.Background(), llm.Request{
+		Model:     "other-model",
+		System:    []llm.Block{{Text: "first", Cache: true}, {Text: "second"}},
+		Messages:  []llm.Message{{Role: "user", Content: "hi"}},
+		MaxTokens: 256,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got.Model != "other-model" || resp.Model != "other-model" {
+		t.Errorf("expected request model override, got %q / %q", got.Model, resp.Model)
+	}
+	if got.MaxTokens != 256 {
+		t.Errorf("expected max_tokens 256, got %d", got.MaxTokens)
+	}
+	if len(got.Messages) != 2 || got.Messages[0].Role != "system" || got.Messages[0].Content != "first\n\nsecond" {
+		t.Errorf("unexpected messages: %+v", got.Messages)
+	}
+}
+
+func TestClient_Complete_ErrorBodyIsTruncated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(strings.Repeat("x", 100000)))
+	}))
+	defer server.Close()
+
+	_, err := New(server.URL, "key", "m").Complete(context.Background(), userRequest("hi"))
+	if err == nil || len(err.Error()) > 2000 || !strings.Contains(err.Error(), "truncated") {
+		t.Errorf("expected a truncated error, got %d bytes", len(err.Error()))
+	}
+}
+
+func TestClient_Complete_ResponseTooLarge(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"`))
+		chunk := []byte(strings.Repeat("a", 1<<20))
+		for i := 0; i < 17; i++ {
+			_, _ = w.Write(chunk)
+		}
+		_, _ = w.Write([]byte(`"}}]}`))
+	}))
+	defer server.Close()
+
+	_, err := New(server.URL, "key", "m").Complete(context.Background(), userRequest("hi"))
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected a size error, got %v", err)
+	}
+}
+
+func TestClient_Backend(t *testing.T) {
+	if got := New("http://x", "k", "m").Backend(); got != "openai" {
+		t.Errorf("expected backend 'openai', got %s", got)
+	}
+}
+
+func TestClient_WireRequestGolden(t *testing.T) {
+	golden, err := os.ReadFile(filepath.Join("testdata", "golden", "wire", "chat_request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want ChatRequest
+	if err := json.Unmarshal(golden, &want); err != nil {
+		t.Fatal(err)
+	}
+
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"LGTM"}}]}`))
+	}))
+	defer server.Close()
+
+	_, err = New(server.URL, "key", want.Model).Complete(context.Background(), llm.Request{
+		System:   []llm.Block{{Text: want.Messages[0].Content}},
+		Messages: []llm.Message{{Role: want.Messages[1].Role, Content: want.Messages[1].Content}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(body) != string(golden) {
+		t.Errorf("wire body changed\n--- want ---\n%s\n--- got ---\n%s", golden, body)
 	}
 }

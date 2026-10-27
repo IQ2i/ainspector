@@ -1,4 +1,4 @@
-package llm
+package openai
 
 import (
 	"bytes"
@@ -9,6 +9,13 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/iq2i/ainspector/internal/llm"
+)
+
+const (
+	maxResponseBytes = 16 << 20
+	maxErrorBytes    = 1 << 10
 )
 
 // Client is an HTTP client for OpenAI-compatible APIs.
@@ -27,8 +34,9 @@ type ChatMessage struct {
 
 // ChatRequest represents a request to the chat completions endpoint.
 type ChatRequest struct {
-	Model    string        `json:"model"`
-	Messages []ChatMessage `json:"messages"`
+	Model     string        `json:"model"`
+	Messages  []ChatMessage `json:"messages"`
+	MaxTokens int           `json:"max_tokens,omitempty"`
 }
 
 // ChatResponse represents a response from the chat completions endpoint.
@@ -41,8 +49,8 @@ type ChatResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// NewClient creates a new LLM client.
-func NewClient(baseURL, apiKey, model string) *Client {
+// New creates a new OpenAI-compatible client.
+func New(baseURL, apiKey, model string) *Client {
 	// Ensure baseURL doesn't end with a slash
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
@@ -56,13 +64,39 @@ func NewClient(baseURL, apiKey, model string) *Client {
 	}
 }
 
+// Backend returns the name of the backend.
+func (c *Client) Backend() string {
+	return "openai"
+}
+
 // Complete sends a chat completion request and returns the response content.
-func (c *Client) Complete(ctx context.Context, messages []ChatMessage) (string, error) {
-	req := ChatRequest{
-		Model:    c.model,
-		Messages: messages,
+// Schema is ignored: the reply is plain text.
+func (c *Client) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
+	model := req.Model
+	if model == "" {
+		model = c.model
 	}
 
+	chatReq := ChatRequest{Model: model, MaxTokens: req.MaxTokens}
+	if len(req.System) > 0 {
+		texts := make([]string, len(req.System))
+		for i, b := range req.System {
+			texts[i] = b.Text
+		}
+		chatReq.Messages = append(chatReq.Messages, ChatMessage{Role: "system", Content: strings.Join(texts, "\n\n")})
+	}
+	for _, m := range req.Messages {
+		chatReq.Messages = append(chatReq.Messages, ChatMessage{Role: m.Role, Content: m.Content})
+	}
+
+	text, err := c.send(ctx, chatReq)
+	if err != nil {
+		return llm.Response{}, err
+	}
+	return llm.Response{Text: text, Model: model}, nil
+}
+
+func (c *Client) send(ctx context.Context, req ChatRequest) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
@@ -85,13 +119,21 @@ func (c *Client) Complete(ctx context.Context, messages []ChatMessage) (string, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
+		msg := string(respBody)
+		if len(msg) > maxErrorBytes {
+			msg = msg[:maxErrorBytes] + "... (truncated)"
+		}
+		return "", fmt.Errorf("API error (status %d): %s", resp.StatusCode, msg)
+	}
+
+	if len(respBody) > maxResponseBytes {
+		return "", fmt.Errorf("response exceeds %d bytes", maxResponseBytes)
 	}
 
 	var chatResp ChatResponse
