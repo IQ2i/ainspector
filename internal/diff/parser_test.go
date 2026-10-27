@@ -328,3 +328,16 @@ func TestHasDeletionInRange(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePatch_BlankDeletionsAreNotSignals(t *testing.T) {
+	m, err := ParsePatch("@@ -1,5 +1,3 @@\n a\n-\n-   \n-removed\n b\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Deleted) != 3 {
+		t.Errorf("Deleted = %v, all removed lines are kept", m.Deleted)
+	}
+	if len(m.DeletedAt) != 1 || m.DeletedAt[0] != 2 {
+		t.Errorf("DeletedAt = %v, want only the non-blank removal", m.DeletedAt)
+	}
+}

@@ -187,7 +187,7 @@ func (e *Collector) extractFromFile(ctx context.Context, file provider.ModifiedF
 	}
 
 	if !parsed {
-		return hunkUnits(file, content, changeType, extensionLanguage(file.Path), changedLines(modifiedLines, nil), req.Hunks), nil
+		return hunkUnits(file, content, changeType, extensionLanguage(file.Path), changedLines(modifiedLines, nil, splitLines(content)), req.Hunks), nil
 	}
 
 	// Parse the file to get all functions
@@ -232,7 +232,7 @@ func (e *Collector) extractFromFile(ctx context.Context, file provider.ModifiedF
 		for _, fn := range functions {
 			covered = append(covered, [2]int{fn.StartLine, fn.EndLine})
 		}
-		result = append(result, hunkUnits(file, content, changeType, language, changedLines(modifiedLines, covered), req.Hunks)...)
+		result = append(result, hunkUnits(file, content, changeType, language, changedLines(modifiedLines, covered, splitLines(content)), req.Hunks)...)
 	}
 
 	return result, nil

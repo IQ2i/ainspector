@@ -53,11 +53,16 @@ func extensionLanguage(path string) string {
 }
 
 // changedLines lists the lines of the new file touched by a patch, added ones and those where
-// something was removed, leaving out the ranges already covered by another unit
-func changedLines(m *diff.ModifiedLines, covered [][2]int) []int {
+// something was removed, leaving out added blank lines and the ranges already covered by another
+// unit. A deletion is located by the line that took its place, which may well be blank: blank
+// deletions are already left out of DeletedAt.
+func changedLines(m *diff.ModifiedLines, covered [][2]int, fileLines []string) []int {
 	var lines []int
-	for _, group := range [][]int{m.Added, m.DeletedAt} {
+	for i, group := range [][]int{m.Added, m.DeletedAt} {
 		for _, line := range group {
+			if i == 0 && line >= 1 && line <= len(fileLines) && strings.TrimSpace(fileLines[line-1]) == "" {
+				continue
+			}
 			inside := false
 			for _, r := range covered {
 				if line >= r[0] && line <= r[1] {
@@ -74,13 +79,17 @@ func changedLines(m *diff.ModifiedLines, covered [][2]int) []int {
 	return lines
 }
 
+func splitLines(content string) []string {
+	return strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+}
+
 // hunkUnits groups changed lines in ranges extended by a few lines of context, merges those
 // that overlap, and returns one unit per range
 func hunkUnits(file provider.ModifiedFile, content, changeType, language string, lines []int, policy HunkPolicy) []ReviewUnit {
 	if len(lines) == 0 {
 		return nil
 	}
-	fileLines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+	fileLines := splitLines(content)
 
 	var ranges [][2]int
 	for _, line := range lines {

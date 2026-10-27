@@ -635,6 +635,28 @@ func TestCollect_ExtendedHunksForFilesWithoutFunctions(t *testing.T) {
 	}
 }
 
+func TestCollect_DeletionBeforeABlankLineBecomesAHunk(t *testing.T) {
+	// the removed rule is now replaced, in the new file, by a blank line
+	content := "security:\n    access_control:\n        - { path: ^/admin, roles: ROLE_ADMIN }\n\nother: x\n"
+	patch := "@@ -1,6 +1,5 @@\n security:\n     access_control:\n         - { path: ^/admin, roles: ROLE_ADMIN }\n-        - { path: ^/api, roles: ROLE_USER }\n \n other: x"
+
+	mock := &mockProvider{files: map[string]string{"config/packages/security.yaml": content}}
+	e := New(mock, nil)
+	defer e.Close()
+
+	units, err := e.Collect(context.Background(), Request{
+		MatchDeleted: true,
+		Hunks:        HunkPolicy{Extensions: []string{"yaml"}, Before: 2, After: 1},
+		Files:        []provider.ModifiedFile{{Path: "config/packages/security.yaml", Status: "modified", Patch: patch}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(units) != 1 || !strings.Contains(units[0].Diff, "-        - { path: ^/api") {
+		t.Fatalf("a removed rule must be reviewed, got %+v", units)
+	}
+}
+
 func TestCollect_HunkUnitsAreTruncated(t *testing.T) {
 	content := strings.Repeat(strings.Repeat("x", 99)+"\n", 400)
 	mock := &mockProvider{files: map[string]string{"config/big.yaml": content}}
@@ -758,5 +780,18 @@ func TestCollect_LongClassHeaderIsTruncated(t *testing.T) {
 	u := units[0]
 	if len(u.Enclosing.Rendered) > maxHeaderBytes+len(headerTruncated) || !strings.HasSuffix(u.Enclosing.Rendered, headerTruncated) || len(u.Notes) != 1 {
 		t.Errorf("header of %d bytes, notes %v", len(u.Enclosing.Rendered), u.Notes)
+	}
+}
+
+func TestCollect_BlankLinesBetweenMethodsAreNotHunks(t *testing.T) {
+	// a method is added: its blank separator line lies outside every function
+	patch := "@@ -17,3 +17,9 @@\n     }\n+\n+    public function added(): Response\n+    {\n+        return new Response('z');\n+    }\n \n     #[Route('/{id}/edit')]"
+	content := strings.Replace(symfonyController, "    #[Route('/{id}/edit')]", "    public function added(): Response\n    {\n        return new Response('z');\n    }\n\n    #[Route('/{id}/edit')]", 1)
+
+	units := collectPHP(t, content, patch, Request{Scope: ScopeFunctionClass, MatchDeleted: true, Hunks: HunkPolicy{Orphans: true, Before: 2, After: 1}})
+	for _, u := range units {
+		if u.Kind == KindHunk {
+			t.Errorf("a blank line must not become a hunk: %+v", u)
+		}
 	}
 }
