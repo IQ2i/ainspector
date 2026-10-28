@@ -15,7 +15,6 @@ type Logger func(format string, args ...any)
 // Totals is what a run consumed
 type Totals struct {
 	Usage Usage
-	Calls int
 	// Cost is the estimate in USD of the calls whose model has a price
 	Cost float64
 	// UnpricedCalls counts the calls whose model has no price: Cost is then incomplete
@@ -25,13 +24,7 @@ type Totals struct {
 // Sub returns what was consumed between an earlier snapshot and t
 func (t Totals) Sub(earlier Totals) Totals {
 	return Totals{
-		Usage: Usage{
-			Input:      t.Usage.Input - earlier.Usage.Input,
-			Output:     t.Usage.Output - earlier.Usage.Output,
-			CacheRead:  t.Usage.CacheRead - earlier.Usage.CacheRead,
-			CacheWrite: t.Usage.CacheWrite - earlier.Usage.CacheWrite,
-		},
-		Calls:         t.Calls - earlier.Calls,
+		Usage:         t.Usage.Sub(earlier.Usage),
 		Cost:          t.Cost - earlier.Cost,
 		UnpricedCalls: t.UnpricedCalls - earlier.UnpricedCalls,
 	}
@@ -61,8 +54,6 @@ func WithBudget(c Client, maxTokens int, pricing Pricing, log Logger) *Budget {
 	}
 	return &Budget{inner: c, max: maxTokens, pricing: pricing, log: log}
 }
-
-func (b *Budget) Backend() string { return b.inner.Backend() }
 
 // Complete forwards the request unless the budget is spent
 func (b *Budget) Complete(ctx context.Context, req Request) (Response, error) {
@@ -104,11 +95,7 @@ func (b *Budget) account(resp Response) {
 
 	b.mu.Lock()
 	b.used += resp.Usage.Input + resp.Usage.Output + resp.Usage.CacheWrite
-	b.totals.Calls++
-	b.totals.Usage.Input += resp.Usage.Input
-	b.totals.Usage.Output += resp.Usage.Output
-	b.totals.Usage.CacheRead += resp.Usage.CacheRead
-	b.totals.Usage.CacheWrite += resp.Usage.CacheWrite
+	b.totals.Usage = b.totals.Usage.Add(resp.Usage)
 	b.totals.Cost += cost
 	b.totals.UnpricedCalls += unpriced
 	used := b.used

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/config"
+	"github.com/iq2i/ainspector/internal/llm/anthropic"
+	"github.com/iq2i/ainspector/internal/llm/openai"
 )
 
 func TestNewLLMClient(t *testing.T) {
@@ -45,8 +47,15 @@ func TestNewLLMClient(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if client.Backend() != tt.backend {
-				t.Errorf("expected backend %s, got %s", tt.backend, client.Backend())
+			var got string
+			switch client.(type) {
+			case *anthropic.Client:
+				got = "anthropic"
+			case *openai.Client:
+				got = "openai"
+			}
+			if got != tt.backend {
+				t.Errorf("expected backend %s, got %s", tt.backend, got)
 			}
 		})
 	}
@@ -84,5 +93,22 @@ func TestCredentials(t *testing.T) {
 	got := credentials()
 	if len(got) != 2 || got[0] != "sk-abcdefgh" || got[1] != "glpat-abcdefgh" {
 		t.Errorf("got %v", got)
+	}
+}
+
+func TestDefaultFPModel(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	if got := defaultFPModel(config.LLMConfig{}); got != "" {
+		t.Errorf("the openai-compatible backend keeps its default model, got %q", got)
+	}
+	if got := defaultFPModel(config.LLMConfig{Provider: "anthropic"}); got != "claude-opus-5-5" {
+		t.Errorf("the anthropic backend judges with the stronger model, got %q", got)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "k")
+	if got := defaultFPModel(config.LLMConfig{}); got != "claude-opus-5-5" {
+		t.Errorf("the backend is guessed from the key, got %q", got)
+	}
+	if got := defaultFPModel(config.LLMConfig{Provider: "openai"}); got != "" {
+		t.Errorf("an explicit provider wins over the key, got %q", got)
 	}
 }

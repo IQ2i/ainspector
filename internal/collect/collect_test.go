@@ -46,10 +46,7 @@ func TestCollect_SkipsDeletedFiles(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 0 {
 		t.Errorf("expected 0 functions for deleted file, got %d", len(result))
@@ -68,10 +65,7 @@ func TestCollect_SkipsUnsupportedFiles(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 0 {
 		t.Errorf("expected 0 functions for unsupported file, got %d", len(result))
@@ -105,10 +99,7 @@ func hello() {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 function, got %d", len(result))
@@ -154,10 +145,7 @@ func newFunc() {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 function, got %d", len(result))
@@ -210,10 +198,7 @@ func third() {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 functions, got %d", len(result))
@@ -279,10 +264,7 @@ func funcB() {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 functions, got %d", len(result))
@@ -334,10 +316,7 @@ func goodFunc() {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	// Should still extract from the good file
 	if len(result) != 1 {
@@ -376,10 +355,7 @@ func unchanged() {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 0 {
 		t.Errorf("expected 0 functions (none modified), got %d", len(result))
@@ -412,10 +388,7 @@ func hello() {
 	}
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: files})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: files})
 
 	if len(result) != 1 {
 		t.Fatalf("expected 1 function, got %d", len(result))
@@ -433,10 +406,7 @@ func TestCollect_EmptyFileList(t *testing.T) {
 	defer e.Close()
 
 	ctx := context.Background()
-	result, err := e.Collect(ctx, Request{Files: []provider.ModifiedFile{}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result := e.Collect(ctx, Request{Files: []provider.ModifiedFile{}})
 
 	if len(result) != 0 {
 		t.Errorf("expected 0 functions for empty file list, got %d", len(result))
@@ -505,10 +475,7 @@ func collectPHP(t *testing.T, content, patch string, req Request) []ReviewUnit {
 	defer e.Close()
 
 	req.Files = []provider.ModifiedFile{{Path: "src/Controller/AccountController.php", Status: "modified", Patch: patch}}
-	units, err := e.Collect(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	units := e.Collect(context.Background(), req)
 	return units
 }
 
@@ -615,10 +582,7 @@ func TestCollect_ExtendedHunksForFilesWithoutFunctions(t *testing.T) {
 		Hunks:        HunkPolicy{Extensions: []string{"twig"}, Before: 2, After: 1},
 		Files:        []provider.ModifiedFile{{Path: "templates/a.html.twig", Status: "modified", Patch: patch}},
 	}
-	units, err := e.Collect(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	units := e.Collect(context.Background(), req)
 	if len(units) != 2 {
 		t.Fatalf("got %d units, want 2: %+v", len(units), units)
 	}
@@ -633,7 +597,7 @@ func TestCollect_ExtendedHunksForFilesWithoutFunctions(t *testing.T) {
 	}
 
 	req.Hunks.Extensions = nil
-	if units, _ := e.Collect(context.Background(), req); len(units) != 0 {
+	if units := e.Collect(context.Background(), req); len(units) != 0 {
 		t.Errorf("a file whose extension is not listed is skipped, got %+v", units)
 	}
 }
@@ -647,14 +611,11 @@ func TestCollect_DeletionBeforeABlankLineBecomesAHunk(t *testing.T) {
 	e := New(mock, nil)
 	defer e.Close()
 
-	units, err := e.Collect(context.Background(), Request{
+	units := e.Collect(context.Background(), Request{
 		MatchDeleted: true,
 		Hunks:        HunkPolicy{Extensions: []string{"yaml"}, Before: 2, After: 1},
 		Files:        []provider.ModifiedFile{{Path: "config/packages/security.yaml", Status: "modified", Patch: patch}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if len(units) != 1 || !strings.Contains(units[0].Diff, "-        - { path: ^/api") {
 		t.Fatalf("a removed rule must be reviewed, got %+v", units)
 	}
@@ -678,9 +639,9 @@ func TestCollect_HunkUnitsAreTruncated(t *testing.T) {
 	}
 	req.Files[0].Patch = patch.String()
 
-	units, err := e.Collect(context.Background(), req)
-	if err != nil || len(units) != 1 {
-		t.Fatalf("units %d, err %v", len(units), err)
+	units := e.Collect(context.Background(), req)
+	if len(units) != 1 {
+		t.Fatalf("units %d", len(units))
 	}
 	if len(units[0].Content) > maxHunkBytes || len(units[0].Notes) != 1 || units[0].ChangeType != "added" || units[0].Language != "yaml" {
 		t.Errorf("unexpected unit: %d bytes, notes %v", len(units[0].Content), units[0].Notes)
@@ -696,20 +657,20 @@ func TestCollect_GeneratedFilesAreNotHunks(t *testing.T) {
 	for _, path := range []string{"pnpm-lock.yaml", "web/package-lock.json", "composer.lock", "public/app.min.css"} {
 		mock := &mockProvider{files: map[string]string{path: content}}
 		e := New(mock, nil)
-		units, err := e.Collect(context.Background(), Request{
+		units := e.Collect(context.Background(), Request{
 			Hunks: HunkPolicy{Extensions: []string{"yaml", "json", "lock", "css"}, Before: 2, After: 1},
 			Files: []provider.ModifiedFile{{Path: path, Status: "modified", Patch: patch}},
 		})
 		e.Close()
-		if err != nil || len(units) != 0 {
-			t.Errorf("%s: a generated file must not be reviewed, got %d units, err %v", path, len(units), err)
+		if len(units) != 0 {
+			t.Errorf("%s: a generated file must not be reviewed, got %d units", path, len(units))
 		}
 	}
 
 	mock := &mockProvider{files: map[string]string{"config/services.yaml": content}}
 	e := New(mock, nil)
 	defer e.Close()
-	units, _ := e.Collect(context.Background(), Request{
+	units := e.Collect(context.Background(), Request{
 		Hunks: HunkPolicy{Extensions: []string{"yaml"}, Before: 2, After: 1},
 		Files: []provider.ModifiedFile{{Path: "config/services.yaml", Status: "modified", Patch: patch}},
 	})
@@ -761,12 +722,12 @@ func TestCollect_LongClassHeaderIsTruncated(t *testing.T) {
 	mock := &mockProvider{files: map[string]string{"Big.php": content}}
 	e := New(mock, nil)
 	defer e.Close()
-	units, err := e.Collect(context.Background(), Request{
+	units := e.Collect(context.Background(), Request{
 		Scope: ScopeFunctionClass,
 		Files: []provider.ModifiedFile{{Path: "Big.php", Status: "modified", Patch: patch}},
 	})
-	if err != nil || len(units) != 1 {
-		t.Fatalf("units %d, err %v", len(units), err)
+	if len(units) != 1 {
+		t.Fatalf("units %d", len(units))
 	}
 	u := units[0]
 	if len(u.Enclosing.Rendered) > maxHeaderBytes+len(headerTruncated) || !strings.HasSuffix(u.Enclosing.Rendered, headerTruncated) || len(u.Notes) != 1 {
@@ -801,10 +762,7 @@ func TestCollect_VendoredAndGeneratedFilesAreSkippedWithoutConfig(t *testing.T) 
 		files = append(files, provider.ModifiedFile{Path: path, Status: "modified", Patch: patch})
 	}
 
-	result, err := e.Collect(context.Background(), Request{Files: files})
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := e.Collect(context.Background(), Request{Files: files})
 	if len(result) != 1 || result[0].FilePath != "ok.go" {
 		t.Errorf("only ok.go should be collected, got %+v", result)
 	}
@@ -826,9 +784,9 @@ func TestCollect_FunctionUnitsAreTruncated(t *testing.T) {
 	e := New(mock, nil)
 	defer e.Close()
 
-	units, err := e.Collect(context.Background(), Request{Files: []provider.ModifiedFile{{Path: "main.go", Status: "added", Patch: patch.String()}}})
-	if err != nil || len(units) != 1 {
-		t.Fatalf("units %d, err %v", len(units), err)
+	units := e.Collect(context.Background(), Request{Files: []provider.ModifiedFile{{Path: "main.go", Status: "added", Patch: patch.String()}}})
+	if len(units) != 1 {
+		t.Fatalf("units %d", len(units))
 	}
 	if len(units[0].Content) > maxFunctionBytes || len(units[0].Diff) > maxFunctionBytes {
 		t.Errorf("function capped at %d bytes, got content %d and diff %d", maxFunctionBytes, len(units[0].Content), len(units[0].Diff))

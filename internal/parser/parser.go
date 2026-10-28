@@ -13,12 +13,9 @@ import (
 	tree_sitter_csharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	tree_sitter_c "github.com/tree-sitter/tree-sitter-c/bindings/go"
 	tree_sitter_cpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
-	tree_sitter_css "github.com/tree-sitter/tree-sitter-css/bindings/go"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
-	tree_sitter_html "github.com/tree-sitter/tree-sitter-html/bindings/go"
 	tree_sitter_java "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	tree_sitter_javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
-	tree_sitter_json "github.com/tree-sitter/tree-sitter-json/bindings/go"
 	tree_sitter_php "github.com/tree-sitter/tree-sitter-php/bindings/go"
 	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	tree_sitter_ruby "github.com/tree-sitter/tree-sitter-ruby/bindings/go"
@@ -38,7 +35,6 @@ type Function struct {
 // ClassRef identifies the class-like declaration (class, enum, trait) enclosing a function
 type ClassRef struct {
 	Name      string
-	Kind      string
 	StartLine int
 	EndLine   int
 	StartByte uint
@@ -141,226 +137,147 @@ func withSpec(base HeaderSpec, edit func(*HeaderSpec)) *HeaderSpec {
 	return &base
 }
 
+// scriptFunctionQuery finds the functions of JavaScript and of both TypeScript grammars
+const scriptFunctionQuery = `
+	(function_declaration name: (identifier) @name) @function
+	(method_definition name: (property_identifier) @name) @function
+	(arrow_function) @function
+	(function_expression) @function
+`
+
 // languageConfigs maps file extensions to language configurations
 var languageConfigs map[string]*LanguageConfig
 
 func init() {
-	languageConfigs = map[string]*LanguageConfig{
-		// Go
-		".go": {
-			Name:     "go",
-			Language: tree_sitter_go.Language(),
-			FunctionQuery: `
-				(function_declaration name: (identifier) @name) @function
-				(method_declaration name: (field_identifier) @name) @function
-			`,
-		},
-		// JavaScript
-		".js": {
-			Name:     "javascript",
-			Language: tree_sitter_javascript.Language(),
-			FunctionQuery: `
-				(function_declaration name: (identifier) @name) @function
-				(method_definition name: (property_identifier) @name) @function
-				(arrow_function) @function
-				(function_expression) @function
-			`,
-			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
-			EnclosingBarriers: []string{"statement_block"},
-			LeadingKinds:      []string{"decorator"},
-			Header:            scriptHeader,
-		},
-		".jsx": {
-			Name:     "javascript",
-			Language: tree_sitter_javascript.Language(),
-			FunctionQuery: `
-				(function_declaration name: (identifier) @name) @function
-				(method_definition name: (property_identifier) @name) @function
-				(arrow_function) @function
-				(function_expression) @function
-			`,
-			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
-			EnclosingBarriers: []string{"statement_block"},
-			LeadingKinds:      []string{"decorator"},
-			Header:            scriptHeader,
-		},
-		// TypeScript
-		".ts": {
-			Name:     "typescript",
-			Language: tree_sitter_typescript.LanguageTypescript(),
-			FunctionQuery: `
-				(function_declaration name: (identifier) @name) @function
-				(method_definition name: (property_identifier) @name) @function
-				(arrow_function) @function
-				(function_expression) @function
-			`,
-			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
-			EnclosingBarriers: []string{"statement_block"},
-			LeadingKinds:      []string{"decorator"},
-			Header:            scriptHeader,
-		},
-		".tsx": {
-			Name:     "typescript",
-			Language: tree_sitter_typescript.LanguageTSX(),
-			FunctionQuery: `
-				(function_declaration name: (identifier) @name) @function
-				(method_definition name: (property_identifier) @name) @function
-				(arrow_function) @function
-				(function_expression) @function
-			`,
-			EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
-			EnclosingBarriers: []string{"statement_block"},
-			LeadingKinds:      []string{"decorator"},
-			Header:            scriptHeader,
-		},
-		// Python
-		".py": {
-			Name:     "python",
-			Language: tree_sitter_python.Language(),
-			FunctionQuery: `
-				(function_definition name: (identifier) @name) @function
-			`,
-			EnclosingTypes:    []string{"class_definition"},
-			EnclosingBarriers: []string{"function_definition"},
-			DecoratedKinds:    []string{"decorated_definition"},
-			Header:            &pythonHeader,
-		},
-		// Rust
-		".rs": {
-			Name:     "rust",
-			Language: tree_sitter_rust.Language(),
-			FunctionQuery: `
-				(function_item name: (identifier) @name) @function
-			`,
-		},
-		// Java
-		".java": {
-			Name:     "java",
-			Language: tree_sitter_java.Language(),
-			FunctionQuery: `
-				(method_declaration name: (identifier) @name) @function
-				(constructor_declaration name: (identifier) @name) @function
-			`,
-			EnclosingTypes:    []string{"class_declaration", "interface_declaration", "record_declaration"},
-			EnclosingBarriers: []string{"object_creation_expression"},
-			Header:            javaHeader,
-		},
-		// C
-		".c": {
-			Name:     "c",
-			Language: tree_sitter_c.Language(),
-			FunctionQuery: `
-				(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function
-			`,
-		},
-		".h": {
-			Name:     "c",
-			Language: tree_sitter_c.Language(),
-			FunctionQuery: `
-				(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function
-			`,
-		},
-		// C++
-		".cpp": {
-			Name:     "cpp",
-			Language: tree_sitter_cpp.Language(),
-			FunctionQuery: `
-				(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function
-				(function_definition declarator: (function_declarator declarator: (qualified_identifier) @name)) @function
-			`,
-		},
-		".cc": {
-			Name:     "cpp",
-			Language: tree_sitter_cpp.Language(),
-			FunctionQuery: `
-				(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function
-				(function_definition declarator: (function_declarator declarator: (qualified_identifier) @name)) @function
-			`,
-		},
-		".hpp": {
-			Name:     "cpp",
-			Language: tree_sitter_cpp.Language(),
-			FunctionQuery: `
-				(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function
-				(function_definition declarator: (function_declarator declarator: (qualified_identifier) @name)) @function
-			`,
-		},
-		// C#
-		".cs": {
-			Name:     "csharp",
-			Language: tree_sitter_csharp.Language(),
-			FunctionQuery: `
-				(method_declaration name: (identifier) @name) @function
-				(constructor_declaration name: (identifier) @name) @function
-			`,
-			EnclosingTypes:    []string{"class_declaration", "struct_declaration", "interface_declaration", "record_declaration"},
-			EnclosingBarriers: []string{"object_creation_expression"},
-			Header:            csharpHeader,
-		},
-		// PHP
-		".php": {
-			Name:     "php",
-			Language: tree_sitter_php.LanguagePHP(),
-			FunctionQuery: `
-				(function_definition name: (name) @name) @function
-				(method_declaration name: (name) @name) @function
-			`,
-			EnclosingTypes:    []string{"class_declaration", "enum_declaration", "trait_declaration", "interface_declaration"},
-			EnclosingBarriers: []string{"anonymous_class", "compound_statement"},
-			DocComments:       true,
-			Header:            &phpHeader,
-		},
-		// Ruby
-		".rb": {
-			Name:     "ruby",
-			Language: tree_sitter_ruby.Language(),
-			FunctionQuery: `
-				(method name: (identifier) @name) @function
-				(singleton_method name: (identifier) @name) @function
-			`,
-			EnclosingTypes:    []string{"class", "module"},
-			EnclosingBarriers: []string{"method", "singleton_method"},
-			Header:            &rubyHeader,
-		},
-		// Bash
-		".sh": {
-			Name:     "bash",
-			Language: tree_sitter_bash.Language(),
-			FunctionQuery: `
-				(function_definition name: (word) @name) @function
-			`,
-		},
-		".bash": {
-			Name:     "bash",
-			Language: tree_sitter_bash.Language(),
-			FunctionQuery: `
-				(function_definition name: (word) @name) @function
-			`,
-		},
-		// JSON (no functions, but can parse)
-		".json": {
-			Name:          "json",
-			Language:      tree_sitter_json.Language(),
-			FunctionQuery: ``,
-		},
-		// HTML (no functions, but can parse)
-		".html": {
-			Name:          "html",
-			Language:      tree_sitter_html.Language(),
-			FunctionQuery: ``,
-		},
-		".htm": {
-			Name:          "html",
-			Language:      tree_sitter_html.Language(),
-			FunctionQuery: ``,
-		},
-		// CSS (no functions, but can parse)
-		".css": {
-			Name:          "css",
-			Language:      tree_sitter_css.Language(),
-			FunctionQuery: ``,
-		},
+	languageConfigs = make(map[string]*LanguageConfig)
+
+	// A language that spans several extensions is configured once
+	add := func(c *LanguageConfig, extensions ...string) {
+		for _, ext := range extensions {
+			languageConfigs[ext] = c
+		}
 	}
+
+	add(&LanguageConfig{
+		Name:     "go",
+		Language: tree_sitter_go.Language(),
+		FunctionQuery: `
+			(function_declaration name: (identifier) @name) @function
+			(method_declaration name: (field_identifier) @name) @function
+		`,
+	}, ".go")
+	add(&LanguageConfig{
+		Name:              "javascript",
+		Language:          tree_sitter_javascript.Language(),
+		FunctionQuery:     scriptFunctionQuery,
+		EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
+		EnclosingBarriers: []string{"statement_block"},
+		LeadingKinds:      []string{"decorator"},
+		Header:            scriptHeader,
+	}, ".js", ".jsx")
+	add(&LanguageConfig{
+		Name:              "typescript",
+		Language:          tree_sitter_typescript.LanguageTypescript(),
+		FunctionQuery:     scriptFunctionQuery,
+		EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
+		EnclosingBarriers: []string{"statement_block"},
+		LeadingKinds:      []string{"decorator"},
+		Header:            scriptHeader,
+	}, ".ts")
+	add(&LanguageConfig{
+		Name:              "typescript",
+		Language:          tree_sitter_typescript.LanguageTSX(),
+		FunctionQuery:     scriptFunctionQuery,
+		EnclosingTypes:    []string{"class_declaration", "abstract_class_declaration"},
+		EnclosingBarriers: []string{"statement_block"},
+		LeadingKinds:      []string{"decorator"},
+		Header:            scriptHeader,
+	}, ".tsx")
+	add(&LanguageConfig{
+		Name:     "python",
+		Language: tree_sitter_python.Language(),
+		FunctionQuery: `
+			(function_definition name: (identifier) @name) @function
+		`,
+		EnclosingTypes:    []string{"class_definition"},
+		EnclosingBarriers: []string{"function_definition"},
+		DecoratedKinds:    []string{"decorated_definition"},
+		Header:            &pythonHeader,
+	}, ".py")
+	add(&LanguageConfig{
+		Name:     "rust",
+		Language: tree_sitter_rust.Language(),
+		FunctionQuery: `
+			(function_item name: (identifier) @name) @function
+		`,
+	}, ".rs")
+	add(&LanguageConfig{
+		Name:     "java",
+		Language: tree_sitter_java.Language(),
+		FunctionQuery: `
+			(method_declaration name: (identifier) @name) @function
+			(constructor_declaration name: (identifier) @name) @function
+		`,
+		EnclosingTypes:    []string{"class_declaration", "interface_declaration", "record_declaration"},
+		EnclosingBarriers: []string{"object_creation_expression"},
+		Header:            javaHeader,
+	}, ".java")
+	add(&LanguageConfig{
+		Name:     "c",
+		Language: tree_sitter_c.Language(),
+		FunctionQuery: `
+			(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function
+		`,
+	}, ".c", ".h")
+	add(&LanguageConfig{
+		Name:     "cpp",
+		Language: tree_sitter_cpp.Language(),
+		FunctionQuery: `
+			(function_definition declarator: (function_declarator declarator: (identifier) @name)) @function
+			(function_definition declarator: (function_declarator declarator: (qualified_identifier) @name)) @function
+		`,
+	}, ".cpp", ".cc", ".hpp")
+	add(&LanguageConfig{
+		Name:     "csharp",
+		Language: tree_sitter_csharp.Language(),
+		FunctionQuery: `
+			(method_declaration name: (identifier) @name) @function
+			(constructor_declaration name: (identifier) @name) @function
+		`,
+		EnclosingTypes:    []string{"class_declaration", "struct_declaration", "interface_declaration", "record_declaration"},
+		EnclosingBarriers: []string{"object_creation_expression"},
+		Header:            csharpHeader,
+	}, ".cs")
+	add(&LanguageConfig{
+		Name:     "php",
+		Language: tree_sitter_php.LanguagePHP(),
+		FunctionQuery: `
+			(function_definition name: (name) @name) @function
+			(method_declaration name: (name) @name) @function
+		`,
+		EnclosingTypes:    []string{"class_declaration", "enum_declaration", "trait_declaration", "interface_declaration"},
+		EnclosingBarriers: []string{"anonymous_class", "compound_statement"},
+		DocComments:       true,
+		Header:            &phpHeader,
+	}, ".php")
+	add(&LanguageConfig{
+		Name:     "ruby",
+		Language: tree_sitter_ruby.Language(),
+		FunctionQuery: `
+			(method name: (identifier) @name) @function
+			(singleton_method name: (identifier) @name) @function
+		`,
+		EnclosingTypes:    []string{"class", "module"},
+		EnclosingBarriers: []string{"method", "singleton_method"},
+		Header:            &rubyHeader,
+	}, ".rb")
+	add(&LanguageConfig{
+		Name:     "bash",
+		Language: tree_sitter_bash.Language(),
+		FunctionQuery: `
+			(function_definition name: (word) @name) @function
+		`,
+	}, ".sh", ".bash")
 }
 
 // Parser parses source code using tree-sitter
@@ -390,17 +307,6 @@ func GetConfig(path string) *LanguageConfig {
 func IsSupported(path string) bool {
 	config := GetConfig(path)
 	return config != nil && config.FunctionQuery != ""
-}
-
-// SupportedExtensions returns all supported file extensions
-func SupportedExtensions() []string {
-	extensions := make([]string, 0, len(languageConfigs))
-	for ext, config := range languageConfigs {
-		if config.FunctionQuery != "" {
-			extensions = append(extensions, ext)
-		}
-	}
-	return extensions
 }
 
 // Parse parses source code and returns all functions
@@ -494,7 +400,6 @@ func findEnclosing(node *tree_sitter.Node, config *LanguageConfig, content []byt
 			continue
 		}
 		ref := &ClassRef{
-			Kind:      strings.TrimSuffix(n.Kind(), "_declaration"),
 			StartLine: int(n.StartPosition().Row) + 1,
 			EndLine:   int(n.EndPosition().Row) + 1,
 			StartByte: n.StartByte(),

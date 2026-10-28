@@ -11,14 +11,13 @@ import (
 
 // Environment represents the detected CI environment
 type Environment struct {
-	Provider   string // "github" or "gitlab"
-	Owner      string // Repository owner
-	Repo       string // Repository name
-	PRNumber   int    // Pull request / Merge request number
-	Token      string // API token
-	ServerHost string // Server host (for self-hosted instances)
-	APIURL     string // Base URL of the GitLab REST API, empty for GitHub
-	CommitSHA  string // Commit checked out by the job
+	Provider  string // "github" or "gitlab"
+	Owner     string // Repository owner
+	Repo      string // Repository name
+	PRNumber  int    // Pull request / Merge request number
+	Token     string // API token
+	APIURL    string // Base URL of the GitLab REST API, empty for GitHub
+	CommitSHA string // Commit checked out by the job
 }
 
 // Detect detects the CI environment from environment variables
@@ -69,13 +68,12 @@ func detectGitHub() (*Environment, error) {
 	}
 
 	return &Environment{
-		Provider:   "github",
-		Owner:      parts[0],
-		Repo:       parts[1],
-		PRNumber:   prNumber,
-		Token:      token,
-		ServerHost: "github.com",
-		CommitSHA:  commitSHA,
+		Provider:  "github",
+		Owner:     parts[0],
+		Repo:      parts[1],
+		PRNumber:  prNumber,
+		Token:     token,
+		CommitSHA: commitSHA,
 	}, nil
 }
 
@@ -158,13 +156,12 @@ func detectGitLab() (*Environment, error) {
 	}
 
 	return &Environment{
-		Provider:   "gitlab",
-		Owner:      parts[0],
-		Repo:       parts[1],
-		PRNumber:   mrNumber,
-		Token:      token,
-		ServerHost: serverHost,
-		APIURL:     apiURL,
-		CommitSHA:  os.Getenv("CI_COMMIT_SHA"),
+		Provider:  "gitlab",
+		Owner:     parts[0],
+		Repo:      parts[1],
+		PRNumber:  mrNumber,
+		Token:     token,
+		APIURL:    apiURL,
+		CommitSHA: os.Getenv("CI_COMMIT_SHA"),
 	}, nil
 }

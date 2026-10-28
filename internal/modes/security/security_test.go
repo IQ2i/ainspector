@@ -118,8 +118,8 @@ func TestModeContract(t *testing.T) {
 		FalsePositive: findings.FPConfig{Model: "big-model", Instructions: "x"},
 	})
 
-	if m.Name() != "security" || m.Version() != "security/2" || m.Model() != "some-model" || m.Scope() != collect.ScopeFunctionClass || m.Rules() != nil {
-		t.Errorf("unexpected identity: %s %s %s %v", m.Name(), m.Version(), m.Model(), m.Scope())
+	if m.Name() != "security" || m.Version() != "security/2" || m.BuildRequest(collect.ReviewUnit{}, nil).Model != "some-model" || m.Scope() != collect.ScopeFunctionClass || m.Rules() != nil {
+		t.Errorf("unexpected identity: %s %s %s %v", m.Name(), m.Version(), m.BuildRequest(collect.ReviewUnit{}, nil).Model, m.Scope())
 	}
 	if !m.Accepts(collect.ReviewUnit{Kind: collect.KindHunk}) || !m.Accepts(collect.ReviewUnit{Kind: collect.KindFunction, DeletedOnly: true}) {
 		t.Error("security reviews every kind of unit")
@@ -136,9 +136,6 @@ func TestModeContract(t *testing.T) {
 	p := m.FilterPolicy()
 	if p.MaxPublished != 3 || p.MinSeverity != findings.SeverityLow || p.MinConfidence != 0.5 || p.FalsePositive == nil || p.FalsePositive.Model != "big-model" {
 		t.Errorf("unexpected policy %+v", p)
-	}
-	if pp := m.PublishPolicy(); !pp.Inline || !pp.Summary || !pp.CodeQuality || !pp.Artifact {
-		t.Errorf("unexpected publish policy %+v", pp)
 	}
 }
 

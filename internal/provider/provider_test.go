@@ -6,11 +6,10 @@ import (
 
 func TestModifiedFile_Fields(t *testing.T) {
 	mf := ModifiedFile{
-		Path:       "src/main.go",
-		OldPath:    "src/old_main.go",
-		Status:     "renamed",
-		Patch:      "@@ -1,3 +1,4 @@",
-		RawContent: "package main",
+		Path:    "src/main.go",
+		OldPath: "src/old_main.go",
+		Status:  "renamed",
+		Patch:   "@@ -1,3 +1,4 @@",
 	}
 
 	if mf.Path != "src/main.go" {
@@ -24,9 +23,6 @@ func TestModifiedFile_Fields(t *testing.T) {
 	}
 	if mf.Patch != "@@ -1,3 +1,4 @@" {
 		t.Errorf("expected patch '@@ -1,3 +1,4 @@', got %s", mf.Patch)
-	}
-	if mf.RawContent != "package main" {
-		t.Errorf("expected raw content 'package main', got %s", mf.RawContent)
 	}
 }
 

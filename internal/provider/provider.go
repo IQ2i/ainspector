@@ -13,8 +13,7 @@ type ModifiedFile struct {
 	Patch   string // Unified diff patch
 	// NoPatch is set when the platform sent no patch for a file whose content changed: the diff
 	// is too large, or collapsed
-	NoPatch    bool
-	RawContent string // Full file content (populated lazily)
+	NoPatch bool
 }
 
 // ReviewComment represents an inline review comment with an optional code suggestion
@@ -35,7 +34,6 @@ func (c ReviewComment) replacesRange() bool {
 
 // ChangeInfo describes the PR/MR being reviewed
 type ChangeInfo struct {
-	Number   int
 	Author   string
 	Title    string
 	Labels   []string

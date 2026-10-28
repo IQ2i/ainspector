@@ -9,7 +9,6 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
-	"github.com/iq2i/ainspector/internal/publish"
 )
 
 // minConfidence is the confidence under which a finding is not worth a comment
@@ -38,8 +37,6 @@ func New(cfg Config) *Mode {
 func (m *Mode) Name() string { return "security" }
 
 func (m *Mode) Scope() collect.Scope { return m.cfg.Scope }
-
-func (m *Mode) Model() string { return m.cfg.Model }
 
 func (m *Mode) Version() string { return "security/2" }
 
@@ -132,8 +129,4 @@ func (m *Mode) FilterPolicy() findings.Policy {
 		MinConfidence: minConfidence,
 		FalsePositive: &fp,
 	}
-}
-
-func (m *Mode) PublishPolicy() publish.Policy {
-	return publish.Policy{Inline: true, Summary: true, CodeQuality: true, Artifact: true}
 }

@@ -33,7 +33,7 @@ func TestGitLab_GetChangeInfo(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if info.Number != 1 || info.Author != "alice" || info.Title != "Add feature" {
+	if info.Author != "alice" || info.Title != "Add feature" {
 		t.Errorf("unexpected info: %+v", info)
 	}
 	if len(info.Labels) != 2 || info.Labels[1] != "no-ai-review" {

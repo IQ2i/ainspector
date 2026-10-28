@@ -81,7 +81,7 @@ func TestBodyFor(t *testing.T) {
 func TestInline_PostsReview(t *testing.T) {
 	p := &fakeProvider{reviewFn: allOK}
 
-	err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{
+	err := Inline(context.Background(), p, 5, Run{Units: testUnits, Published: []findings.Finding{
 		finding("a.go", 3, "first", "aaaaaaaaaaaa", "fix()"),
 		finding("b.go", 8, "second", "bbbbbbbbbbbb", ""),
 	}})
@@ -107,7 +107,7 @@ func TestInline_NoFindingsDoesNothing(t *testing.T) {
 		return nil, nil
 	}}
 
-	if err := NewInline(p, 5).Publish(context.Background(), Run{}); err != nil {
+	if err := Inline(context.Background(), p, 5, Run{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -119,7 +119,7 @@ func TestInline_FallsBackToGeneralComment(t *testing.T) {
 		return results, nil
 	}}
 
-	err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{
+	err := Inline(context.Background(), p, 5, Run{Units: testUnits, Published: []findings.Finding{
 		finding("a.go", 3, "first", "aaaaaaaaaaaa", ""),
 		finding("b.go", 8, "second", "bbbbbbbbbbbb", "fix()"),
 	}})
@@ -141,7 +141,7 @@ func TestInline_ReviewErrorFallsBackForEveryComment(t *testing.T) {
 		return nil, errors.New("boom")
 	}}
 
-	err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{
+	err := Inline(context.Background(), p, 5, Run{Units: testUnits, Published: []findings.Finding{
 		finding("a.go", 3, "first", "aaaaaaaaaaaa", ""),
 		finding("b.go", 8, "second", "bbbbbbbbbbbb", ""),
 	}})
@@ -160,7 +160,7 @@ func TestInline_ErrorWhenNothingCanBePosted(t *testing.T) {
 		noteErr:  errors.New("forbidden"),
 	}
 
-	err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{finding("a.go", 3, "first", "aaaaaaaaaaaa", "")}})
+	err := Inline(context.Background(), p, 5, Run{Units: testUnits, Published: []findings.Finding{finding("a.go", 3, "first", "aaaaaaaaaaaa", "")}})
 	if err == nil || !strings.Contains(err.Error(), "1 of 1") {
 		t.Errorf("expected a posting error, got %v", err)
 	}
@@ -169,7 +169,7 @@ func TestInline_ErrorWhenNothingCanBePosted(t *testing.T) {
 func TestInline_LineOutsideUnitIsNeverTriedInline(t *testing.T) {
 	p := &fakeProvider{reviewFn: allOK}
 
-	err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{
+	err := Inline(context.Background(), p, 5, Run{Units: testUnits, Published: []findings.Finding{
 		finding("a.go", 3, "inside", "aaaaaaaaaaaa", ""),
 		finding("a.go", 11, "after the unit", "aaaaaaaaaaaa", ""),
 		finding("a.go", 0, "no line", "aaaaaaaaaaaa", ""),
@@ -199,7 +199,7 @@ func TestInline_MultiLineSuggestionReplacesItsRange(t *testing.T) {
 	noSuggestion.EndLine = 4
 
 	units := []collect.ReviewUnit{{FilePath: "a.go", StartLine: 1, EndLine: 10}, {FilePath: "b.go", StartLine: 5, EndLine: 500}}
-	err := NewInline(p, 5).Publish(context.Background(), Run{Units: units, Published: []findings.Finding{multi, outside, huge, noSuggestion}})
+	err := Inline(context.Background(), p, 5, Run{Units: units, Published: []findings.Finding{multi, outside, huge, noSuggestion}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestInline_FallbackFenceCannotBeClosedBySuggestion(t *testing.T) {
 		return nil, errors.New("boom")
 	}}
 
-	err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{
+	err := Inline(context.Background(), p, 5, Run{Units: testUnits, Published: []findings.Finding{
 		finding("a.go", 3, "x", "aaaaaaaaaaaa", "a\n```\n/close"),
 	}})
 	if err != nil {
@@ -323,7 +323,7 @@ func TestInline_FallbackCannotForgeMarkers(t *testing.T) {
 		}}
 		units := []collect.ReviewUnit{{FilePath: path, StartLine: 1, EndLine: 10}}
 
-		err := NewInline(p, 5).Publish(context.Background(), Run{Units: units, Published: []findings.Finding{finding(path, 3, "text", "aaaaaaaaaaaa", "")}})
+		err := Inline(context.Background(), p, 5, Run{Units: units, Published: []findings.Finding{finding(path, 3, "text", "aaaaaaaaaaaa", "")}})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -337,8 +337,7 @@ func TestInline_FallbackCannotForgeMarkers(t *testing.T) {
 				t.Errorf("a file name forged a unit marker in %q", body)
 			}
 		}
-		ix := state.LoadIndex([]provider.ExistingComment{{Author: "bot", Body: body}}, "bot")
-		if _, ok := ix.Block("security"); ok {
+		if _, ok := state.ParseStateBlock("security", body); ok {
 			t.Errorf("a file name forged a state block in %q", body)
 		}
 	}
@@ -350,7 +349,7 @@ func TestInline_DropsSuggestionHoldingMarker(t *testing.T) {
 	}}
 	f := finding("a.go", 3, "first", "aaaaaaaaaaaa", "<!-- ainspector:fn:cccccccccccc -->")
 
-	if err := NewInline(p, 5).Publish(context.Background(), Run{Units: testUnits, Published: []findings.Finding{f}}); err != nil {
+	if err := Inline(context.Background(), p, 5, Run{Units: testUnits, Published: []findings.Finding{f}}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := p.reviews[0][0].Suggestion; got != "" {

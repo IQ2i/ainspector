@@ -7,7 +7,6 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
-	"github.com/iq2i/ainspector/internal/publish"
 )
 
 // Mode reviews modified functions for bugs, readability and project rules
@@ -24,8 +23,6 @@ func New(model string, rules []string) *Mode {
 func (m *Mode) Name() string { return "quality" }
 
 func (m *Mode) Scope() collect.Scope { return collect.ScopeFunction }
-
-func (m *Mode) Model() string { return m.model }
 
 func (m *Mode) Version() string { return "quality/3" }
 
@@ -48,19 +45,16 @@ func (m *Mode) BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) ll
 }
 
 func (m *Mode) Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Finding, error) {
-	var issues []Suggestion
 	if resp.JSON == nil {
-		issues = parseReviewResponse(resp.Text)
-	} else {
-		var doc ReviewResponse
-		if err := json.Unmarshal(resp.JSON, &doc); err != nil {
-			return nil, fmt.Errorf("invalid review document: %w", err)
-		}
-		issues = doc.Issues
+		return nil, fmt.Errorf("the reply holds no structured output")
+	}
+	var doc ReviewResponse
+	if err := json.Unmarshal(resp.JSON, &doc); err != nil {
+		return nil, fmt.Errorf("invalid review document: %w", err)
 	}
 
 	var result []findings.Finding
-	for _, s := range issues {
+	for _, s := range doc.Issues {
 		result = append(result, findings.Finding{
 			Mode:        m.Name(),
 			File:        u.FilePath,
@@ -74,7 +68,3 @@ func (m *Mode) Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Findin
 }
 
 func (m *Mode) FilterPolicy() findings.Policy { return findings.Policy{} }
-
-func (m *Mode) PublishPolicy() publish.Policy {
-	return publish.Policy{Inline: true, Summary: true, CodeQuality: true, Artifact: true}
-}

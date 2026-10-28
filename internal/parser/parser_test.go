@@ -29,9 +29,9 @@ func TestGetConfig(t *testing.T) {
 		{path: "app.rb", expectedName: "ruby", shouldExist: true},
 		{path: "script.sh", expectedName: "bash", shouldExist: true},
 		{path: "script.bash", expectedName: "bash", shouldExist: true},
-		{path: "data.json", expectedName: "json", shouldExist: true},
-		{path: "index.html", expectedName: "html", shouldExist: true},
-		{path: "style.css", expectedName: "css", shouldExist: true},
+		{path: "data.json", expectedName: "", shouldExist: false},
+		{path: "index.html", expectedName: "", shouldExist: false},
+		{path: "style.css", expectedName: "", shouldExist: false},
 		{path: "unknown.xyz", expectedName: "", shouldExist: false},
 		{path: "noext", expectedName: "", shouldExist: false},
 	}
@@ -96,30 +96,16 @@ func TestIsSupported(t *testing.T) {
 	}
 }
 
-func TestSupportedExtensions(t *testing.T) {
-	extensions := SupportedExtensions()
-	if len(extensions) == 0 {
-		t.Fatal("expected at least one supported extension")
-	}
-
-	// Check that common extensions are included
-	expected := []string{".go", ".js", ".py", ".ts", ".java", ".rs", ".c", ".php", ".rb"}
-	extensionSet := make(map[string]bool)
-	for _, ext := range extensions {
-		extensionSet[ext] = true
-	}
-
-	for _, ext := range expected {
-		if !extensionSet[ext] {
-			t.Errorf("expected %s to be in supported extensions", ext)
+func TestIsSupported_ByExtension(t *testing.T) {
+	for _, ext := range []string{".go", ".js", ".py", ".ts", ".java", ".rs", ".c", ".php", ".rb"} {
+		if !IsSupported("file" + ext) {
+			t.Errorf("expected %s to be supported", ext)
 		}
 	}
-
-	// JSON, HTML, CSS should NOT be in supported extensions (no function query)
-	notSupported := []string{".json", ".html", ".css"}
-	for _, ext := range notSupported {
-		if extensionSet[ext] {
-			t.Errorf("expected %s to NOT be in supported extensions", ext)
+	// No function query: the grammar would give nothing
+	for _, ext := range []string{".json", ".html", ".css", ".md"} {
+		if IsSupported("file" + ext) {
+			t.Errorf("expected %s to NOT be supported", ext)
 		}
 	}
 }
@@ -600,23 +586,14 @@ func TestParser_EmptyFile(t *testing.T) {
 	}
 }
 
-func TestParser_NoFunctionLanguage(t *testing.T) {
+func TestParser_RejectsLanguagesWithoutFunctions(t *testing.T) {
 	p := NewParser()
 	defer p.Close()
 
-	content := []byte(`{"key": "value"}`)
-
-	functions, lang, err := p.Parse("data.json", content)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if lang != "json" {
-		t.Errorf("expected language 'json', got %s", lang)
-	}
-
-	if len(functions) != 0 {
-		t.Errorf("expected 0 functions for JSON, got %d", len(functions))
+	for _, path := range []string{"data.json", "index.html", "index.htm", "style.css"} {
+		if _, _, err := p.Parse(path, []byte("x")); err == nil {
+			t.Errorf("%s has no grammar, Parse must refuse it", path)
+		}
 	}
 }
 
@@ -791,8 +768,8 @@ func TestParser_ParsePHPEnclosing(t *testing.T) {
 	if show.Enclosing == nil {
 		t.Fatal("expected an enclosing class for show")
 	}
-	if show.Enclosing.Name != "PostController" || show.Enclosing.Kind != "class" {
-		t.Errorf("expected class PostController, got %s %s", show.Enclosing.Kind, show.Enclosing.Name)
+	if show.Enclosing.Name != "PostController" {
+		t.Errorf("expected class PostController, got %s", show.Enclosing.Name)
 	}
 	if show.Enclosing.StartLine != 9 {
 		t.Errorf("expected class to start at its attribute on line 9, got %d", show.Enclosing.StartLine)
@@ -871,8 +848,8 @@ func main() {}
 				}
 				return
 			}
-			if got == nil || got.Name != tt.wantName || got.Kind != tt.wantKind {
-				t.Fatalf("expected %s %s, got %+v", tt.wantKind, tt.wantName, got)
+			if got == nil || got.Name != tt.wantName {
+				t.Fatalf("expected %s, got %+v", tt.wantName, got)
 			}
 		})
 	}

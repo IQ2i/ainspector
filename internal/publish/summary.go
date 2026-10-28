@@ -2,7 +2,6 @@ package publish
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -10,58 +9,25 @@ import (
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/iq2i/ainspector/internal/state"
+	"github.com/iq2i/ainspector/internal/text"
 )
-
-type summary struct {
-	provider provider.Provider
-	number   int
-	self     string
-}
 
 // SummaryMarker identifies the summary comment of a mode
 func SummaryMarker(mode string) string {
 	return state.SummaryMarker(mode)
 }
 
-// NewSummary maintains one comment per mode: created by the first run, updated by the next
+// Summary maintains one comment per mode: created by the first run, updated by the next
 // ones. It also stores the state block that lets later runs skip the units already reviewed,
 // which is why only a comment written by self is trusted.
-func NewSummary(p provider.Provider, number int, self string) Publisher {
-	return &summary{provider: p, number: number, self: self}
-}
-
-func (s *summary) Publish(ctx context.Context, run Run) error {
-	// Without an identity any participant could plant a comment carrying the marker and have
-	// the tool edit it or take its forged state for granted
-	if s.self == "" {
-		return errors.New("cannot publish the summary: the token owner is unknown")
-	}
-
-	existing, err := s.provider.ListComments(ctx, s.number)
-	if err != nil {
-		return fmt.Errorf("failed to list comments: %w", err)
-	}
-
-	var id string
-	var previous *state.StateBlock
-	if c, ok := ownNote(existing, s.self, SummaryMarker(run.Mode)); ok {
-		id = c.ID
-		if b, ok := state.ParseStateBlock(run.Mode, c.Body); ok {
+func Summary(ctx context.Context, p provider.Provider, number int, self string, run Run) error {
+	return upsertNote(ctx, p, number, self, SummaryMarker(run.Mode), "summary", func(existing provider.ExistingComment) string {
+		var previous *state.StateBlock
+		if b, ok := state.ParseStateBlock(run.Mode, existing.Body); ok {
 			previous = &b
 		}
-	}
-
-	body := SummaryBody(run, previous)
-	if id == "" {
-		if _, err := s.provider.PostComment(ctx, s.number, body); err != nil {
-			return fmt.Errorf("failed to post the summary: %w", err)
-		}
-		return nil
-	}
-	if err := s.provider.UpdateComment(ctx, s.number, id, body); err != nil {
-		return fmt.Errorf("failed to update the summary: %w", err)
-	}
-	return nil
+		return SummaryBody(run, previous)
+	})
 }
 
 // SummaryBody renders the summary comment of a run. previous is the state block of the comment
@@ -75,7 +41,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 
 	issues := "no issue found"
 	if n := len(run.Published); n > 0 {
-		issues = fmt.Sprintf("%d %s reported", n, plural(n, "issue"))
+		issues = fmt.Sprintf("%d %s reported", n, text.Plural(n, "issue"))
 	}
 	unit := "function"
 	for _, u := range run.Units {
@@ -84,13 +50,13 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 			break
 		}
 	}
-	fmt.Fprintf(&sb, "Reviewed %d %s, %s.\n", len(run.Reviewed), plural(len(run.Reviewed), unit), issues)
+	fmt.Fprintf(&sb, "Reviewed %d %s, %s.\n", len(run.Reviewed), text.Plural(len(run.Reviewed), unit), issues)
 
 	if run.Model != "" {
 		fmt.Fprintf(&sb, "\nModel: `%s`\n", run.Model)
 	}
 	if run.Discarded > 0 {
-		fmt.Fprintf(&sb, "\n%d %s discarded as false %s", run.Discarded, plural(run.Discarded, "finding"), plural(run.Discarded, "positive"))
+		fmt.Fprintf(&sb, "\n%d %s discarded as false %s", run.Discarded, text.Plural(run.Discarded, "finding"), text.Plural(run.Discarded, "positive"))
 		if run.FPModel != "" {
 			fmt.Fprintf(&sb, " by `%s`", run.FPModel)
 		}
@@ -116,7 +82,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 	}
 	var overflow []string
 	for _, f := range append(append([]findings.Finding{}, run.Overflow...), run.Unjudged...) {
-		overflow = append(overflow, fmt.Sprintf("%s:%d [%s] %s", f.File, f.StartLine, f.Severity, oneLine(f.Title)))
+		overflow = append(overflow, fmt.Sprintf("%s:%d [%s] %s", f.File, f.StartLine, f.Severity, text.OneLine(f.Title)))
 	}
 	writeList(fmt.Sprintf("Not commented, only the %d most severe findings are published:", len(run.Published)), overflow)
 	writeList("Not reviewed, the token budget was reached:", run.Skipped)
@@ -165,13 +131,6 @@ func feedbackLine(feedback []Feedback) string {
 		}
 	}
 	return fmt.Sprintf("Reactions to earlier comments: %d useful, %d not useful, %d without a verdict.", useful, useless, len(feedback)-useful-useless)
-}
-
-func plural(n int, word string) string {
-	if n == 1 {
-		return word
-	}
-	return word + "s"
 }
 
 // FormatCost renders an estimated cost, saying when it is incomplete

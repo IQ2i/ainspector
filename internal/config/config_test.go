@@ -149,37 +149,6 @@ func TestLoad(t *testing.T) {
 	})
 }
 
-func TestLoadFromPath(t *testing.T) {
-	t.Run("loads from specific path", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		configPath := filepath.Join(tmpDir, "custom-config.yaml")
-
-		content := `ignore:
-  paths:
-    - custom/
-`
-		_ = os.WriteFile(configPath, []byte(content), 0644)
-
-		cfg, err := LoadFromPath(configPath)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if cfg.Ignore.Paths[0] != "custom/" {
-			t.Errorf("expected custom/, got %s", cfg.Ignore.Paths[0])
-		}
-	})
-
-	t.Run("returns empty config for non-existent path", func(t *testing.T) {
-		cfg, err := LoadFromPath("/nonexistent/path.yaml")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(cfg.Ignore.Paths) != 0 {
-			t.Errorf("expected empty paths")
-		}
-	})
-}
-
 func TestShouldIgnore(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -367,7 +336,7 @@ func TestParse_SecurityDefaults(t *testing.T) {
 	if cfg.SecurityEnabled() || sec.ScopeName() != "function+class+related" || sec.Findings() != 5 {
 		t.Errorf("unexpected defaults: %+v", sec)
 	}
-	if r := sec.Related.Resolved(); len(r.Presets) != 2 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
+	if r := sec.Related.Resolved(); len(r.Presets) != 0 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
 		t.Errorf("unexpected related defaults: %+v", r)
 	}
 	h := sec.Hunks.Resolved()
@@ -440,11 +409,11 @@ func TestParse_InvalidTitlePattern(t *testing.T) {
 }
 
 func TestLoad_InvalidTitlePattern(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "ainspector.yaml")
-	_ = os.WriteFile(path, []byte("ignore:\n  title_patterns: [\"(\"]\n"), 0644)
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "ainspector.yaml"), []byte("ignore:\n  title_patterns: [\"(\"]\n"), 0644)
 
-	if _, err := LoadFromPath(path); err == nil {
-		t.Error("LoadFromPath must reject an invalid pattern")
+	if _, err := Load(dir); err == nil {
+		t.Error("Load must reject an invalid pattern")
 	}
 }
 
@@ -552,7 +521,6 @@ func TestParse_SecurityRelated(t *testing.T) {
 
 func TestParse_SecurityRelatedInvalid(t *testing.T) {
 	for name, doc := range map[string]string{
-		"unknown preset":     "modes:\n  security:\n    related: {presets: [laravel]}\n",
 		"negative max files": "modes:\n  security:\n    related: {max_files: -1}\n",
 		"negative max bytes": "modes:\n  security:\n    related: {max_bytes: -1}\n",
 	} {
@@ -687,5 +655,17 @@ func TestLoad_RefusesUnsafeConfigFile(t *testing.T) {
 	}
 	if _, err := Load(root); err == nil {
 		t.Error("a named pipe must be refused without blocking")
+	}
+}
+
+func TestShouldIgnore_NilConfigStillSkipsVendoredAndGeneratedFiles(t *testing.T) {
+	var cfg *Config
+	for _, p := range []string{"vendor/a.go", "web/node_modules/x.js", "composer.lock", "app.min.js"} {
+		if !cfg.ShouldIgnore(p) {
+			t.Errorf("%s must be ignored without a configuration", p)
+		}
+	}
+	if cfg.ShouldIgnore("src/main.go") {
+		t.Error("an ordinary file is reviewed without a configuration")
 	}
 }

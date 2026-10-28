@@ -116,73 +116,6 @@ func TestBuildUserPrompt_SpecialCharacters(t *testing.T) {
 	}
 }
 
-func TestParseReviewResponse(t *testing.T) {
-	tests := []struct {
-		name          string
-		response      string
-		expectedCount int
-		expectedFirst *Suggestion
-	}{
-		{
-			name:          "LGTM response",
-			response:      "LGTM",
-			expectedCount: 0,
-		},
-		{
-			name:          "LGTM with whitespace",
-			response:      "  LGTM  \n",
-			expectedCount: 0,
-		},
-		{
-			name:          "valid JSON response",
-			response:      `{"issues":[{"line":10,"description":"Bug","suggestion":"fix"}]}`,
-			expectedCount: 1,
-			expectedFirst: &Suggestion{Line: 10, Description: "Bug", Code: "fix"},
-		},
-		{
-			name:          "JSON with extra text",
-			response:      `Here's my review:\n{"issues":[{"line":5,"description":"Issue","suggestion":""}]}`,
-			expectedCount: 1,
-			expectedFirst: &Suggestion{Line: 5, Description: "Issue", Code: ""},
-		},
-		{
-			name:          "multiple issues",
-			response:      `{"issues":[{"line":1,"description":"A","suggestion":"a"},{"line":2,"description":"B","suggestion":"b"}]}`,
-			expectedCount: 2,
-		},
-		{
-			name:          "invalid JSON",
-			response:      "This is not JSON",
-			expectedCount: 0,
-		},
-		{
-			name:          "empty issues array",
-			response:      `{"issues":[]}`,
-			expectedCount: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			suggestions := parseReviewResponse(tt.response)
-			if len(suggestions) != tt.expectedCount {
-				t.Errorf("expected %d suggestions, got %d", tt.expectedCount, len(suggestions))
-			}
-			if tt.expectedFirst != nil && len(suggestions) > 0 {
-				if suggestions[0].Line != tt.expectedFirst.Line {
-					t.Errorf("expected line %d, got %d", tt.expectedFirst.Line, suggestions[0].Line)
-				}
-				if suggestions[0].Description != tt.expectedFirst.Description {
-					t.Errorf("expected description %q, got %q", tt.expectedFirst.Description, suggestions[0].Description)
-				}
-				if suggestions[0].Code != tt.expectedFirst.Code {
-					t.Errorf("expected code %q, got %q", tt.expectedFirst.Code, suggestions[0].Code)
-				}
-			}
-		})
-	}
-}
-
 func TestBuildSystemPrompt_LanguageSpecific(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -380,7 +313,6 @@ func TestBuildSystemPrompt_RulesPlacement(t *testing.T) {
 func TestBuildSystemPrompt_WithProjectContext(t *testing.T) {
 	projectContext := &collect.ProjectContext{
 		Description: "A web application using React and TypeScript",
-		Languages:   []string{"javascript", "typescript"},
 	}
 
 	prompt := buildSystemPrompt("javascript", projectContext, nil)
@@ -427,7 +359,6 @@ func TestBuildSystemPrompt_WithoutProjectContext(t *testing.T) {
 func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 	projectContext := &collect.ProjectContext{
 		Description: "",
-		Languages:   []string{"go"},
 	}
 
 	prompt := buildSystemPrompt("go", projectContext, nil)
@@ -439,7 +370,7 @@ func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_ContextHeader(t *testing.T) {
-	pc := &collect.ProjectContext{Description: "=== README.md ===\nContent", Languages: []string{"go"}}
+	pc := &collect.ProjectContext{Description: "=== README.md ===\nContent"}
 
 	prompt := buildSystemPrompt("go", pc, nil)
 

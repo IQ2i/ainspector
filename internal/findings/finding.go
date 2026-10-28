@@ -3,6 +3,7 @@ package findings
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/iq2i/ainspector/internal/text"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,9 +84,9 @@ func (f Finding) Report() Reported {
 // A finding without title (quality mode) keeps the start of its explanation instead.
 // unitStart and unitName tell where and what the unit that produced it is.
 func (f Finding) Open(unitStart int, unitName string) Reported {
-	title := oneLine(f.Title)
+	title := text.OneLine(f.Title)
 	if title == "" {
-		title = oneLine(f.Explanation)
+		title = text.OneLine(f.Explanation)
 		if r := []rune(title); len(r) > maxOpenTitle {
 			title = string(r[:maxOpenTitle])
 		}

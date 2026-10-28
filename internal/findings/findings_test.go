@@ -197,8 +197,6 @@ func (f *fakeClient) Complete(ctx context.Context, req llm.Request) (llm.Respons
 	return llm.Response{JSON: json.RawMessage(f.reply), Text: f.reply}, nil
 }
 
-func (f *fakeClient) Backend() string { return "fake" }
-
 func fpFixtures() ([]Finding, map[string]collect.ReviewUnit) {
 	units := map[string]collect.ReviewUnit{
 		"h1": {Name: "show", FilePath: "src/A.php", Language: "php", StartLine: 10, EndLine: 20, Content: "public function show() {}", Diff: "+x", Enclosing: &collect.ClassHeader{Rendered: "class A {}"}},

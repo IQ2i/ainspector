@@ -6,16 +6,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/iq2i/ainspector/internal/config"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // ProjectContext holds the project files given to the LLM with every request
 type ProjectContext struct {
 	// Description is the content of the files, each one under a "=== path ===" header
 	Description string
-	Languages   []string
 	// Notes tell what the size limit cut, to report in the review summary
 	Notes []string
 	// ChangedFiles lists the files of the PR/MR, for the modes that reason about what changed
@@ -23,10 +22,8 @@ type ProjectContext struct {
 	ChangedFiles []string
 }
 
-// minPartialBytes is the room a file needs to be worth including truncated
-const minPartialBytes = 200
-
-const truncationMarker = "\n... (truncated)\n"
+// contextTruncation ends a file of the project context that was cut
+const contextTruncation = text.TruncationMarker + "\n"
 
 // Files looked for when the project does not choose its own. Instructions come first as they
 // carry the project rules, then the README, then the dependency manifests: when the size limit
@@ -53,7 +50,7 @@ type contextFile struct {
 // GenerateProjectContext reads the project files that describe the project: the ones listed
 // in context.include, or else the well-known instruction, README and manifest files.
 // The result never exceeds context.max_bytes.
-func GenerateProjectContext(projectRoot string, languages []string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
+func GenerateProjectContext(projectRoot string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
 	limit := config.DefaultContextMaxBytes
 	if contextConfig != nil {
 		limit = contextConfig.Limit()
@@ -69,13 +66,8 @@ func GenerateProjectContext(projectRoot string, languages []string, contextConfi
 			fmt.Printf("Warning: %s\n", warning)
 		}
 
-		paths := make([]string, 0, len(configured))
-		for path := range configured {
-			paths = append(paths, path)
-		}
-		sort.Strings(paths)
-		for _, path := range paths {
-			files = append(files, contextFile{path, configured[path]})
+		for _, f := range configured {
+			files = append(files, contextFile{f.Path, f.Content})
 		}
 	} else {
 		var warnings []string
@@ -89,7 +81,7 @@ func GenerateProjectContext(projectRoot string, languages []string, contextConfi
 	}
 
 	description, notes := renderContext(files, limit)
-	return &ProjectContext{Description: description, Languages: languages, Notes: notes}, nil
+	return &ProjectContext{Description: description, Notes: notes}, nil
 }
 
 // findContextFiles returns the well-known project files that exist, in priority order. A file
@@ -149,10 +141,10 @@ func renderContext(files []contextFile, limit int) (string, []string) {
 
 		cut := ""
 		omitted := files[i:]
-		if room := limit - sb.Len() - len(header) - len(truncationMarker); room >= minPartialBytes {
+		if room := limit - sb.Len() - len(header) - len(contextTruncation); room >= text.MinPartialBytes {
 			sb.WriteString(header)
-			sb.WriteString(cutAtRune(f.content, room))
-			sb.WriteString(truncationMarker)
+			sb.WriteString(text.CutAtRune(f.content, room))
+			sb.WriteString(contextTruncation)
 			cut = f.path + " truncated"
 			omitted = files[i+1:]
 		}
@@ -172,15 +164,4 @@ func renderContext(files []contextFile, limit int) (string, []string) {
 	}
 
 	return sb.String(), nil
-}
-
-// cutAtRune truncates s to at most n bytes without splitting a multi-byte character
-func cutAtRune(s string, n int) string {
-	if n >= len(s) {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
 }

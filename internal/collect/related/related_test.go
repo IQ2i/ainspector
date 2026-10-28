@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 func writeTree(t *testing.T, files map[string]string) string {
@@ -89,7 +89,7 @@ func TestAttach_TruncatesTheFileThatCrossesTheByteCap(t *testing.T) {
 	if total > 800 {
 		t.Errorf("the byte cap is exceeded: %d", total)
 	}
-	if !strings.HasSuffix(got[1].Content, truncationMarker) {
+	if !strings.HasSuffix(got[1].Content, text.TruncationMarker) {
 		t.Error("a truncated file must say so")
 	}
 	if !strings.Contains(units[0].Notes[0], "1 left out and 1 truncated") {
@@ -135,20 +135,5 @@ func TestAttach_StopsOnCancelledContext(t *testing.T) {
 	Attach(ctx, units, nil, []Resolver{fixedResolver{files: []collect.RelatedFile{file("x", 1)}}}, collect.RelatedPolicy{MaxFiles: 5})
 	if units[0].Related != nil {
 		t.Error("a cancelled run must not resolve")
-	}
-}
-
-func TestCut_NeverSplitsARune(t *testing.T) {
-	s := strings.Repeat("é", 50)
-	for n := 1; n < 40; n++ {
-		if got := cut(s, n); !utf8.ValidString(got) || len(got) > n {
-			t.Fatalf("cut(%d) = %q", n, got)
-		}
-	}
-	if cut("abc\ndef", 5) != "abc" {
-		t.Error("expected a cut on a line boundary")
-	}
-	if cut("abc", 0) != "" || cut("abc", 10) != "abc" {
-		t.Error("unexpected bounds")
 	}
 }

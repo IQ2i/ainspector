@@ -8,8 +8,7 @@ import (
 
 // ModifiedLines represents the lines that were modified in a file
 type ModifiedLines struct {
-	Added   []int // Line numbers of added lines (in new file)
-	Deleted []int // Line numbers of deleted lines (in old file)
+	Added []int // Line numbers of added lines (in new file)
 	// DeletedAt holds, for each deleted line that was not blank, the line of the new file that
 	// now sits where it was
 	DeletedAt []int
@@ -32,14 +31,12 @@ func ParsePatch(patch string) (*ModifiedLines, error) {
 	}
 
 	result := &ModifiedLines{
-		Added:   make([]int, 0),
-		Deleted: make([]int, 0),
+		Added: make([]int, 0),
 	}
 
 	for _, fd := range fileDiffs {
 		for _, hunk := range fd.Hunks {
 			newLine := int(hunk.NewStartLine)
-			oldLine := int(hunk.OrigStartLine)
 
 			lines := strings.Split(string(hunk.Body), "\n")
 			for _, line := range lines {
@@ -52,20 +49,16 @@ func ParsePatch(patch string) (*ModifiedLines, error) {
 					result.Added = append(result.Added, newLine)
 					newLine++
 				case '-':
-					result.Deleted = append(result.Deleted, oldLine)
 					// Removing a blank line can open no vulnerability
 					if strings.TrimSpace(line[1:]) != "" {
 						result.DeletedAt = append(result.DeletedAt, newLine)
 					}
-					oldLine++
 				case ' ':
 					// Context line
 					newLine++
-					oldLine++
 				default:
 					// No prefix means context line too
 					newLine++
-					oldLine++
 				}
 			}
 		}

@@ -25,8 +25,6 @@ type fakeClient struct {
 	usage    llm.Usage
 }
 
-func (f *fakeClient) Backend() string { return "fake" }
-
 func (f *fakeClient) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	f.mu.Lock()
 	f.requests = append(f.requests, req)
@@ -41,7 +39,7 @@ func (f *fakeClient) Complete(ctx context.Context, req llm.Request) (llm.Respons
 	return resp, err
 }
 
-func lgtm(int, llm.Request) (string, error) { return "LGTM", nil }
+func lgtm(int, llm.Request) (string, error) { return `{"issues":[]}`, nil }
 
 func goUnit(name string) collect.ReviewUnit {
 	return collect.ReviewUnit{
@@ -102,7 +100,7 @@ func TestReviewUnits_ContinuesAfterFailure(t *testing.T) {
 		if strings.Contains(req.Messages[0].Content, "Function: b ") {
 			return "", errors.New("server error")
 		}
-		return "LGTM", nil
+		return `{"issues":[]}`, nil
 	}}
 	units := []collect.ReviewUnit{goUnit("a"), goUnit("b"), goUnit("c")}
 

@@ -215,12 +215,6 @@ func LoadIndex(comments []provider.ExistingComment, self string) *Index {
 	return ix
 }
 
-// Block returns the state block previously written for a mode
-func (ix *Index) Block(mode string) (StateBlock, bool) {
-	b, ok := ix.blocks[mode]
-	return b, ok
-}
-
 // ReportedFindings returns the fingerprints of the findings a mode already reported, from its
 // inline comments and its state block, and what the block remembers of them
 func (ix *Index) ReportedFindings(mode string) (map[string]bool, []findings.Reported) {
@@ -267,11 +261,6 @@ func (ix *Index) OpenFindings(m ModeKey, skipped map[string]int) []findings.Repo
 	return open
 }
 
-// Len returns the number of distinct inline markers found
-func (ix *Index) Len() int {
-	return len(ix.markers)
-}
-
 // IsReviewed tells whether a unit was already reviewed by a mode, whichever hash formula was used
 func (ix *Index) IsReviewed(m ModeKey, rulesDigest string, u collect.ReviewUnit) bool {
 	hash := UnitHash(m, u, rulesDigest)
@@ -292,13 +281,17 @@ func (ix *Index) IsReviewed(m ModeKey, rulesDigest string, u collect.ReviewUnit)
 	return false
 }
 
-// FilterUnreviewed returns only the units that were not reviewed yet
-func (ix *Index) FilterUnreviewed(m ModeKey, rulesDigest string, units []collect.ReviewUnit) []collect.ReviewUnit {
-	var result []collect.ReviewUnit
+// Partition splits the units of a mode into those that were not reviewed yet and those that
+// were. The latter come as a map from their hash to the line where each starts now, which is
+// what OpenFindings needs to follow a unit that moved.
+func (ix *Index) Partition(m ModeKey, rulesDigest string, units []collect.ReviewUnit) (toReview []collect.ReviewUnit, skipped map[string]int) {
+	skipped = make(map[string]int)
 	for _, u := range units {
-		if !ix.IsReviewed(m, rulesDigest, u) {
-			result = append(result, u)
+		if ix.IsReviewed(m, rulesDigest, u) {
+			skipped[UnitHash(m, u, rulesDigest)] = u.StartLine
+		} else {
+			toReview = append(toReview, u)
 		}
 	}
-	return result
+	return toReview, skipped
 }

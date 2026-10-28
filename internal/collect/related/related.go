@@ -6,10 +6,9 @@ package related
 import (
 	"context"
 	"fmt"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // Repo gives read access to the local checkout of the project
@@ -28,11 +27,6 @@ type Resolver interface {
 	Name() string
 	Resolve(ctx context.Context, u *collect.ReviewUnit, repo Repo) ([]collect.RelatedFile, error)
 }
-
-// minPartialBytes is the room a file needs to be worth including truncated
-const minPartialBytes = 200
-
-const truncationMarker = "\n... (truncated)"
 
 // Load reads a file of the project as a related file, reporting whether it exists
 func Load(repo Repo, path, reason string) (collect.RelatedFile, bool) {
@@ -91,11 +85,11 @@ func limit(files []collect.RelatedFile, self string, p collect.RelatedPolicy) (k
 		}
 		if p.MaxBytes > 0 && used+len(f.Content) > p.MaxBytes {
 			room := p.MaxBytes - used
-			if room < minPartialBytes {
+			if room < text.MinPartialBytes {
 				omitted++
 				continue
 			}
-			f.Content = cut(f.Content, room-len(truncationMarker)) + truncationMarker
+			f.Content = text.Cut(f.Content, room-len(text.TruncationMarker)) + text.TruncationMarker
 			f.Truncated = true
 			truncated++
 		}
@@ -103,22 +97,4 @@ func limit(files []collect.RelatedFile, self string, p collect.RelatedPolicy) (k
 		kept = append(kept, f)
 	}
 	return kept, omitted, truncated
-}
-
-// cut shortens s to at most n bytes, on a line boundary when there is one and never inside a rune
-func cut(s string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	s = s[:n]
-	if i := strings.LastIndex(s, "\n"); i > 0 {
-		return s[:i]
-	}
-	return s
 }

@@ -43,10 +43,13 @@ func IsNestedVendoredPath(path string) bool {
 }
 
 // ShouldIgnore checks if a file path should be ignored: vendored and generated files always are,
-// the others according to ignore.paths
+// the others according to ignore.paths. A nil configuration ignores nothing else.
 func (c *Config) ShouldIgnore(path string) bool {
 	if IsGeneratedPath(path) || IsVendoredPath(path) {
 		return true
+	}
+	if c == nil {
+		return false
 	}
 
 	// Normalize path separators

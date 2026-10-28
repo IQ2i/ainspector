@@ -150,24 +150,11 @@ func comment(body string) provider.ExistingComment {
 	return provider.ExistingComment{Body: body}
 }
 
-func TestLoadIndex_CountsMarkers(t *testing.T) {
-	ix := LoadIndex([]provider.ExistingComment{
-		comment("Review 1\n\n" + FormatMarker("abc123def456")),
-		comment("Review 2\n\n" + FormatMarker("fedcba987654")),
-		comment("Same unit again\n\n" + FormatMarker("fedcba987654")),
-		comment("Comment without hash"),
-	}, "")
-
-	if ix.Len() != 2 {
-		t.Errorf("Len = %d, want 2", ix.Len())
-	}
-}
-
-func TestIndex_FilterUnreviewed_LegacyMarker(t *testing.T) {
+func TestIndex_Partition_LegacyMarker(t *testing.T) {
 	reviewed, fresh := unit("Func1"), unit("Func2")
 	ix := LoadIndex([]provider.ExistingComment{comment("x\n\n" + FormatMarker(LegacyFunctionHash(reviewed)))}, "")
 
-	got := ix.FilterUnreviewed(quality, "d", []collect.ReviewUnit{reviewed, fresh})
+	got := unreviewed(ix, quality, "d", []collect.ReviewUnit{reviewed, fresh})
 
 	if len(got) != 1 || got[0].Name != "Func2" {
 		t.Errorf("expected only Func2, got %+v", got)
@@ -179,7 +166,7 @@ func TestIndex_LegacyMarkerOnlyCountsForQuality(t *testing.T) {
 	ix := LoadIndex([]provider.ExistingComment{comment(FormatMarker(LegacyFunctionHash(reviewed)))}, "")
 
 	other := fakeMode{"security", collect.ScopeFunction, "security/1"}
-	if got := ix.FilterUnreviewed(other, "d", []collect.ReviewUnit{reviewed}); len(got) != 1 {
+	if got := unreviewed(ix, other, "d", []collect.ReviewUnit{reviewed}); len(got) != 1 {
 		t.Error("a legacy marker written by quality must not skip a security review")
 	}
 }
@@ -195,51 +182,48 @@ func TestLoadIndex_OnlyTrustsOwnComments(t *testing.T) {
 	units := []collect.ReviewUnit{forged, own}
 
 	ix := LoadIndex(comments, "project_1_bot")
-	got := ix.FilterUnreviewed(quality, "d", units)
+	got := unreviewed(ix, quality, "d", units)
 	if len(got) != 1 || got[0].Name != "Forged" {
 		t.Errorf("expected only the forged unit to be reviewed, got %+v", got)
 	}
-	if _, ok := ix.Block("quality"); ok {
-		t.Error("a state block from another author must be ignored")
-	}
 
-	if got := LoadIndex(comments, "").FilterUnreviewed(quality, "d", units); len(got) != 0 {
+	if got := unreviewed(LoadIndex(comments, ""), quality, "d", units); len(got) != 0 {
 		t.Errorf("without identity every comment is trusted, got %+v", got)
 	}
 }
 
-func TestIndex_FilterUnreviewed_UnitHashMarker(t *testing.T) {
+func TestIndex_Partition_UnitHashMarker(t *testing.T) {
 	reviewed, fresh := unit("Func1"), unit("Func2")
 	ix := LoadIndex([]provider.ExistingComment{comment(FormatMarker(UnitHash(quality, reviewed, "d")))}, "")
 
-	got := ix.FilterUnreviewed(quality, "d", []collect.ReviewUnit{reviewed, fresh})
+	got := unreviewed(ix, quality, "d", []collect.ReviewUnit{reviewed, fresh})
 	if len(got) != 1 || got[0].Name != "Func2" {
 		t.Errorf("expected only Func2, got %+v", got)
 	}
 
-	got = ix.FilterUnreviewed(quality, "other rules", []collect.ReviewUnit{reviewed})
+	got = unreviewed(ix, quality, "other rules", []collect.ReviewUnit{reviewed})
 	if len(got) != 1 {
 		t.Error("changed rules must invalidate unit hashes")
 	}
 
-	got = ix.FilterUnreviewed(fakeMode{"quality", collect.ScopeFunction, "quality/2"}, "d", []collect.ReviewUnit{reviewed})
+	got = unreviewed(ix, fakeMode{"quality", collect.ScopeFunction, "quality/2"}, "d", []collect.ReviewUnit{reviewed})
 	if len(got) != 1 {
 		t.Error("a new mode version must invalidate unit hashes")
 	}
 }
 
-func TestIndex_FilterUnreviewed_StateBlock(t *testing.T) {
+func TestIndex_Partition_StateBlock(t *testing.T) {
 	reviewed, fresh := unit("Func1"), unit("Func2")
 	block := FormatStateBlock("quality", StateBlock{Ver: "quality/1", Units: []string{UnitHash(quality, reviewed, "d")}})
 	ix := LoadIndex([]provider.ExistingComment{comment(SummaryMarker("quality") + "\n\n" + block)}, "")
 
-	got := ix.FilterUnreviewed(quality, "d", []collect.ReviewUnit{reviewed, fresh})
+	got := unreviewed(ix, quality, "d", []collect.ReviewUnit{reviewed, fresh})
 	if len(got) != 1 || got[0].Name != "Func2" {
 		t.Errorf("expected only Func2, got %+v", got)
 	}
 
 	other := fakeMode{"security", collect.ScopeFunction, "quality/1"}
-	if got := ix.FilterUnreviewed(other, "d", []collect.ReviewUnit{reviewed}); len(got) != 1 {
+	if got := unreviewed(ix, other, "d", []collect.ReviewUnit{reviewed}); len(got) != 1 {
 		t.Error("the state block of another mode must be ignored")
 	}
 }
@@ -249,7 +233,7 @@ func TestIndex_MixedLegacyAndNewMarkers(t *testing.T) {
 	body := "Review\n\n" + FormatMarker(LegacyFunctionHash(a)) + "\n" + FormatMarker(UnitHash(quality, b, "d"))
 	ix := LoadIndex([]provider.ExistingComment{comment(body)}, "")
 
-	got := ix.FilterUnreviewed(quality, "d", []collect.ReviewUnit{a, b, c})
+	got := unreviewed(ix, quality, "d", []collect.ReviewUnit{a, b, c})
 	if len(got) != 1 || got[0].Name != "C" {
 		t.Errorf("expected only C, got %+v", got)
 	}
@@ -584,9 +568,29 @@ func TestLoadIndex_StateBlockOnlyCountsInTheSummaryOfItsMode(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			ix := LoadIndex([]provider.ExistingComment{{Author: "github-actions[bot]", Body: body}}, "github-actions[bot]")
-			if got := ix.FilterUnreviewed(quality, "d", units); len(got) != 1 {
+			if got := unreviewed(ix, quality, "d", units); len(got) != 1 {
 				t.Errorf("a state block outside the summary of its mode must be ignored, got %+v", got)
 			}
 		})
+	}
+}
+
+func unreviewed(ix *Index, m ModeKey, digest string, units []collect.ReviewUnit) []collect.ReviewUnit {
+	toReview, _ := ix.Partition(m, digest, units)
+	return toReview
+}
+
+func TestIndex_Partition_SkippedUnitsCarryTheirCurrentStartLine(t *testing.T) {
+	moved, fresh := unit("Show"), unit("Edit")
+	moved.StartLine, fresh.StartLine = 40, 70
+	block := FormatStateBlock("quality", StateBlock{Ver: "quality/1", Units: []string{UnitHash(quality, moved, "d")}})
+	ix := LoadIndex([]provider.ExistingComment{comment(SummaryMarker("quality") + "\n" + block)}, "")
+
+	toReview, skipped := ix.Partition(quality, "d", []collect.ReviewUnit{moved, fresh})
+	if len(toReview) != 1 || toReview[0].Name != "Edit" {
+		t.Errorf("only the new unit is left to review, got %+v", toReview)
+	}
+	if len(skipped) != 1 || skipped[UnitHash(quality, moved, "d")] != 40 {
+		t.Errorf("the skipped unit must be at its current line, got %v", skipped)
 	}
 }

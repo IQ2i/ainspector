@@ -1,7 +1,6 @@
 package publish
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -9,15 +8,8 @@ import (
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/state"
+	"github.com/iq2i/ainspector/internal/text"
 )
-
-// Policy tells which outputs a mode produces
-type Policy struct {
-	Inline      bool
-	Summary     bool
-	CodeQuality bool
-	Artifact    bool
-}
 
 // Review status of a unit
 const (
@@ -85,10 +77,6 @@ type Run struct {
 	Feedback []Feedback
 }
 
-type Publisher interface {
-	Publish(ctx context.Context, run Run) error
-}
-
 // BodyFor renders a finding as a comment body, with the marker that prevents reviewing its unit
 // again. A finding with a title carries severity, scenario and remediation, and a second marker
 // that identifies it whatever line it moves to.
@@ -98,7 +86,7 @@ func BodyFor(f findings.Finding) string {
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "**[%s] %s**", f.Severity, oneLine(sanitizeText(f.Title)))
+	fmt.Fprintf(&sb, "**[%s] %s**", f.Severity, text.OneLine(sanitizeText(f.Title)))
 	if f.Category != "" {
 		fmt.Fprintf(&sb, " (%s, confidence %.0f%%)", f.Category, f.Confidence*100)
 	}
@@ -117,10 +105,6 @@ func BodyFor(f findings.Finding) string {
 		sb.WriteString("\n" + state.FormatFindingMarker(f.Fingerprint))
 	}
 	return sb.String()
-}
-
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
 }
 
 // openFindings summarizes the findings of the run that are still true, each with the unit that

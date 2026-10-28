@@ -6,30 +6,13 @@ import (
 
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/collect/related"
-	"github.com/iq2i/ainspector/internal/collect/related/symfony"
-	"github.com/iq2i/ainspector/internal/collect/related/vue"
+	"github.com/iq2i/ainspector/internal/collect/related/presets"
 	"github.com/iq2i/ainspector/internal/provider"
 )
 
-// resolversFor builds the resolvers of the named presets
-func resolversFor(presets []string) ([]related.Resolver, error) {
-	var resolvers []related.Resolver
-	for _, name := range presets {
-		switch name {
-		case "symfony":
-			resolvers = append(resolvers, symfony.Resolvers()...)
-		case "vue":
-			resolvers = append(resolvers, vue.Resolvers()...)
-		default:
-			return nil, fmt.Errorf("unknown related files preset %q", name)
-		}
-	}
-	return resolvers, nil
-}
-
 // attachRelated gives each unit the files related to it, read in the checkout of the job
 func attachRelated(ctx context.Context, deps Deps, opts Options, units []collect.ReviewUnit, policy collect.RelatedPolicy, changeInfo func() (provider.ChangeInfo, error)) error {
-	resolvers, err := resolversFor(policy.Presets)
+	resolvers, err := presets.Resolvers(policy.Presets)
 	if err != nil {
 		return err
 	}

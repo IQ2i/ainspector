@@ -12,17 +12,14 @@ import (
 func TestMode_Identity(t *testing.T) {
 	m := New("some-model", []string{"r1"})
 
-	if m.Name() != "quality" || m.Model() != "some-model" || m.Version() != "quality/3" {
-		t.Errorf("unexpected identity: %s %s %s", m.Name(), m.Model(), m.Version())
+	if m.Name() != "quality" || m.BuildRequest(collect.ReviewUnit{}, nil).Model != "some-model" || m.Version() != "quality/3" {
+		t.Errorf("unexpected identity: %s %s %s", m.Name(), m.BuildRequest(collect.ReviewUnit{}, nil).Model, m.Version())
 	}
 	if len(m.Rules()) != 1 || m.Rules()[0] != "r1" {
 		t.Errorf("unexpected rules: %v", m.Rules())
 	}
 	if m.Scope() != collect.ScopeFunction {
 		t.Errorf("expected function scope, got %s", m.Scope())
-	}
-	if pp := m.PublishPolicy(); !pp.Inline || !pp.Summary || !pp.CodeQuality || !pp.Artifact {
-		t.Errorf("unexpected publish policy %+v", pp)
 	}
 	if p := m.FilterPolicy(); p.MaxPublished != 0 || p.MinConfidence != 0 || p.MinSeverity != "" {
 		t.Errorf("quality must not filter findings, got %+v", p)
@@ -80,17 +77,13 @@ func TestMode_ParseIgnoresUnknownFields(t *testing.T) {
 	}
 }
 
-func TestMode_ParseTextFallback(t *testing.T) {
+func TestMode_ParseRequiresStructuredOutput(t *testing.T) {
 	m := New("", nil)
 
-	got, err := m.Parse(llm.Response{Text: " LGTM\n"}, collect.ReviewUnit{})
-	if err != nil || len(got) != 0 {
-		t.Errorf("expected no findings for LGTM, got %v / %v", got, err)
-	}
-
-	got, err = m.Parse(llm.Response{Text: "Review:\n{\"issues\":[{\"line\":3,\"description\":\"Bug\",\"suggestion\":\"\"}]}"}, collect.ReviewUnit{FilePath: "a.go"})
-	if err != nil || len(got) != 1 || got[0].StartLine != 3 {
-		t.Errorf("expected the issue to be salvaged from text, got %v / %v", got, err)
+	for _, text := range []string{"LGTM", "Review:\n{\"issues\":[{\"line\":3,\"description\":\"Bug\",\"suggestion\":\"\"}]}"} {
+		if got, err := m.Parse(llm.Response{Text: text}, collect.ReviewUnit{}); err == nil || len(got) != 0 {
+			t.Errorf("a reply without structured output must be an error, got %v / %v", got, err)
+		}
 	}
 }
 

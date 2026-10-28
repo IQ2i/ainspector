@@ -105,7 +105,7 @@ func (f *fakeProvider) GetFileContent(ctx context.Context, path string) (string,
 
 func (f *fakeProvider) GetChangeInfo(ctx context.Context, number int) (provider.ChangeInfo, error) {
 	c := f.mr.Change
-	return provider.ChangeInfo{Number: number, Author: c.Author, Title: c.Title, Labels: c.Labels, ChangedFiles: f.changedFiles}, nil
+	return provider.ChangeInfo{Author: c.Author, Title: c.Title, Labels: c.Labels, ChangedFiles: f.changedFiles}, nil
 }
 
 func (f *fakeProvider) CurrentUser(ctx context.Context) (string, error) {
@@ -238,7 +238,7 @@ func newHarness(t *testing.T, dir string) *harness {
 	readJSON(t, filepath.Join(dir, "responses.json"), &responses)
 	h.responses = responses
 
-	cfg, err := config.LoadFromPath(filepath.Join(dir, "ainspector.yaml"))
+	cfg, err := config.Load(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

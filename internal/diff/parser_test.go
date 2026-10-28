@@ -12,9 +12,6 @@ func TestParsePatch_EmptyPatch(t *testing.T) {
 	if len(result.Added) != 0 {
 		t.Errorf("expected 0 added lines, got %d", len(result.Added))
 	}
-	if len(result.Deleted) != 0 {
-		t.Errorf("expected 0 deleted lines, got %d", len(result.Deleted))
-	}
 }
 
 func TestParsePatch_AddedLines(t *testing.T) {
@@ -54,14 +51,8 @@ func TestParsePatch_DeletedLines(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expectedDeleted := []int{2, 3}
-	if len(result.Deleted) != len(expectedDeleted) {
-		t.Fatalf("expected %d deleted lines, got %d", len(expectedDeleted), len(result.Deleted))
-	}
-	for i, line := range expectedDeleted {
-		if result.Deleted[i] != line {
-			t.Errorf("expected deleted line %d, got %d", line, result.Deleted[i])
-		}
+	if len(result.Added) != 0 || len(result.DeletedAt) != 2 {
+		t.Errorf("expected only removals, got added %v, deleted at %v", result.Added, result.DeletedAt)
 	}
 }
 
@@ -81,8 +72,8 @@ func TestParsePatch_MixedChanges(t *testing.T) {
 	if len(result.Added) != 1 || result.Added[0] != 2 {
 		t.Errorf("expected added line 2, got %v", result.Added)
 	}
-	if len(result.Deleted) != 1 || result.Deleted[0] != 2 {
-		t.Errorf("expected deleted line 2, got %v", result.Deleted)
+	if len(result.DeletedAt) != 1 {
+		t.Errorf("expected one removal, got %v", result.DeletedAt)
 	}
 }
 
@@ -333,9 +324,6 @@ func TestParsePatch_BlankDeletionsAreNotSignals(t *testing.T) {
 	m, err := ParsePatch("@@ -1,5 +1,3 @@\n a\n-\n-   \n-removed\n b\n")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(m.Deleted) != 3 {
-		t.Errorf("Deleted = %v, all removed lines are kept", m.Deleted)
 	}
 	if len(m.DeletedAt) != 1 || m.DeletedAt[0] != 2 {
 		t.Errorf("DeletedAt = %v, want only the non-blank removal", m.DeletedAt)

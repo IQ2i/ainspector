@@ -4,19 +4,18 @@ import (
 	"fmt"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/collect/related/presets"
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/modes/quality"
 	"github.com/iq2i/ainspector/internal/modes/security"
-	"github.com/iq2i/ainspector/internal/publish"
 )
 
 // Mode is a kind of review with its own prompt, output parsing and noise policy
 type Mode interface {
 	Name() string
 	Scope() collect.Scope
-	Model() string
 	// Version enters the unit hash: any prompt change must bump it
 	Version() string
 	// Rules are the project rules given to the mode, they enter the unit hash
@@ -28,7 +27,6 @@ type Mode interface {
 	BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) llm.Request
 	Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Finding, error)
 	FilterPolicy() findings.Policy
-	PublishPolicy() publish.Policy
 }
 
 // Enabled builds the modes named in names, in order
@@ -67,6 +65,12 @@ func newSecurity(cfg *config.Config) (*security.Mode, error) {
 
 	hunks := sec.Hunks.Resolved()
 	related := sec.Related.Resolved()
+	if len(related.Presets) == 0 {
+		related.Presets = presets.Names()
+	}
+	if err := presets.Check(related.Presets); err != nil {
+		return nil, fmt.Errorf("modes.security.related.presets: %w", err)
+	}
 	return security.New(security.Config{
 		Model:       sec.Model,
 		Scope:       scope,

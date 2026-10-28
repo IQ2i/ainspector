@@ -1,6 +1,7 @@
 package modes
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/collect"
@@ -20,8 +21,8 @@ func TestEnabled(t *testing.T) {
 	if len(got) != 1 || got[0].Name() != "quality" {
 		t.Fatalf("expected a single quality mode, got %v", got)
 	}
-	if got[0].Model() != "some-model" {
-		t.Errorf("expected the configured model, got %q", got[0].Model())
+	if got[0].BuildRequest(collect.ReviewUnit{}, nil).Model != "some-model" {
+		t.Errorf("expected the configured model, got %q", got[0].BuildRequest(collect.ReviewUnit{}, nil).Model)
 	}
 	if r := got[0].Rules(); len(r) != 2 || r[0] != "No globals" || r[1] != "Small functions" {
 		t.Errorf("expected top-level then mode rules, got %v", r)
@@ -53,8 +54,8 @@ func TestEnabled_Security(t *testing.T) {
 		t.Fatalf("got %v, %v", got, err)
 	}
 	m := got[0]
-	if m.Name() != "security" || m.Model() != "some-model" || m.Scope() != collect.ScopeFunctionClassRelated {
-		t.Errorf("unexpected mode %s %s %v", m.Name(), m.Model(), m.Scope())
+	if m.Name() != "security" || m.BuildRequest(collect.ReviewUnit{}, nil).Model != "some-model" || m.Scope() != collect.ScopeFunctionClassRelated {
+		t.Errorf("unexpected mode %s %s %v", m.Name(), m.BuildRequest(collect.ReviewUnit{}, nil).Model, m.Scope())
 	}
 	p := m.FilterPolicy()
 	if p.MaxPublished != 2 || p.FalsePositive.Model != "big-model" || p.FalsePositive.Instructions != "Ignore legacy/" {
@@ -111,5 +112,18 @@ func TestEnabled_SecurityDefaults(t *testing.T) {
 	r := got[0].Needs().Related
 	if len(r.Presets) != 2 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
 		t.Errorf("unexpected defaults %+v", r)
+	}
+}
+
+func TestEnabled_SecurityUnknownPreset(t *testing.T) {
+	cfg := &config.Config{Modes: config.ModesConfig{Security: config.SecurityConfig{
+		Related: config.RelatedConfig{Presets: []string{"symfony", "laravel"}},
+	}}}
+	_, err := Enabled([]string{"security"}, cfg)
+	if err == nil || !strings.Contains(err.Error(), "laravel") {
+		t.Errorf("an unknown preset must be refused and named, got %v", err)
+	}
+	if _, err := Enabled([]string{"quality"}, cfg); err != nil {
+		t.Errorf("the quality mode does not use presets, got %v", err)
 	}
 }

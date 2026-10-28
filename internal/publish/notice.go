@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // NoticeMarker identifies the comment that tells a review stopped before reviewing anything
@@ -28,24 +29,34 @@ func ownNote(existing []provider.ExistingComment, self, marker string) (provider
 // puts files out of review (notes). A change that blinds its own review would otherwise leave
 // no trace on the PR/MR. The comment is created once, then updated.
 func PostNotice(ctx context.Context, p provider.Provider, number int, self, configFile, reason string, notes []string) error {
+	body := NoticeBody(configFile, reason, notes)
+	return upsertNote(ctx, p, number, self, NoticeMarker, "notice", func(provider.ExistingComment) string { return body })
+}
+
+// upsertNote creates the general comment that opens with marker, or updates the one self already
+// wrote. render gets the existing comment (zero when there is none) and returns the new body.
+// Without an identity any participant could plant a comment carrying the marker and have the
+// tool edit it or take its forged state for granted.
+func upsertNote(ctx context.Context, p provider.Provider, number int, self, marker, what string, render func(existing provider.ExistingComment) string) error {
 	if self == "" {
-		return fmt.Errorf("cannot post the notice: the token owner is unknown")
+		return fmt.Errorf("cannot publish the %s: the token owner is unknown", what)
 	}
 
-	existing, err := p.ListComments(ctx, number)
+	comments, err := p.ListComments(ctx, number)
 	if err != nil {
 		return fmt.Errorf("failed to list comments: %w", err)
 	}
 
-	body := NoticeBody(configFile, reason, notes)
-	if c, ok := ownNote(existing, self, NoticeMarker); ok {
-		if err := p.UpdateComment(ctx, number, c.ID, body); err != nil {
-			return fmt.Errorf("failed to update the notice: %w", err)
+	existing, found := ownNote(comments, self, marker)
+	body := render(existing)
+	if !found {
+		if _, err := p.PostComment(ctx, number, body); err != nil {
+			return fmt.Errorf("failed to post the %s: %w", what, err)
 		}
 		return nil
 	}
-	if _, err := p.PostComment(ctx, number, body); err != nil {
-		return fmt.Errorf("failed to post the notice: %w", err)
+	if err := p.UpdateComment(ctx, number, existing.ID, body); err != nil {
+		return fmt.Errorf("failed to update the %s: %w", what, err)
 	}
 	return nil
 }
@@ -54,14 +65,14 @@ func PostNotice(ctx context.Context, p provider.Provider, number int, self, conf
 func NoticeBody(configFile, reason string, notes []string) string {
 	var sb strings.Builder
 	sb.WriteString(NoticeMarker + "\n### ainspector\n\n")
-	fmt.Fprintf(&sb, "The review stopped before reviewing anything: %s.\n", oneLine(sanitizeText(reason)))
+	fmt.Fprintf(&sb, "The review stopped before reviewing anything: %s.\n", text.OneLine(sanitizeText(reason)))
 	if configFile != "" {
-		fmt.Fprintf(&sb, "\nThis change modifies `%s`, its settings may be the cause.\n", oneLine(sanitizeText(configFile)))
+		fmt.Fprintf(&sb, "\nThis change modifies `%s`, its settings may be the cause.\n", text.OneLine(sanitizeText(configFile)))
 	}
 	if len(notes) > 0 {
 		sb.WriteString("\nNotes:\n")
 		for _, n := range notes {
-			fmt.Fprintf(&sb, "- %s\n", oneLine(sanitizeText(n)))
+			fmt.Fprintf(&sb, "- %s\n", text.OneLine(sanitizeText(n)))
 		}
 	}
 	return sb.String()
