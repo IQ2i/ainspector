@@ -2,8 +2,10 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -380,5 +382,100 @@ func TestReadProjectFile(t *testing.T) {
 	}
 	if _, err := ReadProjectFile(dir, "missing", 5); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("expected a not-exist error, got %v", err)
+	}
+}
+
+func TestCheckContextPattern(t *testing.T) {
+	for _, p := range []string{"docs/*.md", "README.md", "src/**", "a/b/c.txt"} {
+		if err := CheckContextPattern(p); err != nil {
+			t.Errorf("%q must be accepted: %v", p, err)
+		}
+	}
+	for _, p := range []string{"", "../secrets", "docs/../../x", "/etc/passwd", `\etc`, `..\x`, "a/../../b", "**/../x"} {
+		if err := CheckContextPattern(p); err == nil {
+			t.Errorf("%q must be refused", p)
+		}
+	}
+}
+
+func TestParse_RefusesContextPatternsLeavingTheProject(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"parent include":   "context:\n  include: ['../outside/**']\n",
+		"absolute include": "context:\n  include: ['/etc/passwd']\n",
+		"parent exclude":   "context:\n  exclude: ['../x']\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parse("ainspector.yaml", []byte(yaml)); err == nil {
+				t.Errorf("expected an error for %q", yaml)
+			}
+		})
+	}
+}
+
+func TestCollectContextFiles_SkipsSensitiveFiles(t *testing.T) {
+	root := t.TempDir()
+	createTestFile(t, root, "docs/guide.md", "guide")
+	createTestFile(t, root, ".env", "SECRET=1")
+	createTestFile(t, root, ".env.local", "SECRET=1")
+	createTestFile(t, root, "deploy/server.pem", "KEY")
+	createTestFile(t, root, ".npmrc", "//registry:_authToken=x")
+
+	cfg := &ContextConfig{Include: []string{".env", ".env.local", "deploy", ".npmrc", "docs", "*.md", ".*"}}
+	files, warnings, err := cfg.CollectContextFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files["docs/guide.md"] == "" {
+		t.Errorf("only the guide may be read, got %v", files)
+	}
+	if len(warnings) == 0 {
+		t.Error("the skipped secrets must be reported")
+	}
+}
+
+func TestCollectContextFiles_DoesNotFollowDirectoryLinks(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	createTestFile(t, outside, "secret.txt", "outside")
+	createTestFile(t, root, "docs/guide.md", "guide")
+	if err := os.Symlink(outside, filepath.Join(root, "docs", "link")); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+
+	cfg := &ContextConfig{Include: []string{"docs/**/*.txt", "docs/**"}}
+	files, _, err := cfg.CollectContextFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p := range files {
+		if filepath.Base(p) == "secret.txt" {
+			t.Errorf("a linked directory was followed: %v", files)
+		}
+	}
+}
+
+func TestCollectContextFiles_CapsFilesAndBytes(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < maxContextFiles+30; i++ {
+		createTestFile(t, root, filepath.Join("docs", fmt.Sprintf("f%03d.md", i)), "x")
+	}
+	files, warnings, err := (&ContextConfig{Include: []string{"docs"}}).CollectContextFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != maxContextFiles || len(warnings) == 0 {
+		t.Errorf("expected %d files and a warning, got %d files, warnings %v", maxContextFiles, len(files), warnings)
+	}
+
+	big := t.TempDir()
+	for i := 0; i < 5; i++ {
+		createTestFile(t, big, fmt.Sprintf("docs/f%d.md", i), strings.Repeat("y", 400))
+	}
+	files, _, err = (&ContextConfig{Include: []string{"docs"}, MaxBytes: 1000}).CollectContextFiles(big)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 {
+		t.Errorf("reading must stop once max_bytes is reached, got %d files", len(files))
 	}
 }

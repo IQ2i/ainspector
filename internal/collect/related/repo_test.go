@@ -68,11 +68,16 @@ func TestRepo_NeverExposesDependenciesNorSecrets(t *testing.T) {
 		"dist/app.js":                                  "secret",
 		"public/build/app.min.js":                      "secret",
 		"assets/app.js.map":                            "secret",
+		".git-credentials":                             "secret",
+		".netrc":                                       "secret",
+		".pypirc":                                      "secret",
+		".docker/config.json":                          "secret",
 	})
 	r := NewRepo(root, func(p string) bool { return strings.HasPrefix(p, "src/Ignored/") })
 
 	for _, p := range []string{"vendor/x/X.php", "node_modules/y/y.js", "var/cache/z.php", ".env", ".env.local", "config/.env.prod", "src/Ignored/I.php", "nested/vendor/V.php",
-		"config/secrets/prod/prod.decrypt.private.php", "config/jwt/private.pem", "deploy/id_rsa", "auth.json", "dist/app.js", "public/build/app.min.js", "assets/app.js.map"} {
+		"config/secrets/prod/prod.decrypt.private.php", "config/jwt/private.pem", "deploy/id_rsa", "auth.json", "dist/app.js", "public/build/app.min.js", "assets/app.js.map",
+		".git-credentials", ".netrc", ".pypirc", ".docker/config.json"} {
 		if _, err := r.Read(p); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("%s must not be readable, got %v", p, err)
 		}

@@ -91,12 +91,16 @@ func TestComponent_IgnoresOtherFiles(t *testing.T) {
 
 func TestResolveImport(t *testing.T) {
 	cases := map[string]string{
-		"./a":          "src/c/a",
-		"../s/b":       "src/s/b",
-		"@/stores/x":   "src/stores/x",
-		"~/stores/x":   "src/stores/x",
-		"vue":          "",
-		"../../../etc": "",
+		"./a":                 "src/c/a",
+		"../s/b":              "src/s/b",
+		"@/stores/x":          "src/stores/x",
+		"~/stores/x":          "src/stores/x",
+		"vue":                 "",
+		"../../../etc":        "",
+		"@/stores/../../x":    "",
+		"@/stores/../../../x": "",
+		"./../../../etc":      "",
+		"@/stores/a/../b":     "src/stores/b",
 	}
 	for spec, want := range cases {
 		if got := resolveImport("src/c", spec); got != want {

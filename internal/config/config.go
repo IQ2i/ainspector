@@ -292,6 +292,11 @@ func parse(source string, data []byte) (*Config, error) {
 	if cfg.LLM.MaxTokensPerRun < 0 || cfg.Context.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: llm.max_tokens_per_run and context.max_bytes must not be negative", source)
 	}
+	for _, pattern := range append(slices.Clone(cfg.Context.Include), cfg.Context.Exclude...) {
+		if err := CheckContextPattern(pattern); err != nil {
+			return nil, fmt.Errorf("%s: invalid context pattern: %w", source, err)
+		}
+	}
 	if cfg.Context.MaxBytes > MaxContextBytes {
 		return nil, fmt.Errorf("%s: context.max_bytes must not exceed %d", source, MaxContextBytes)
 	}

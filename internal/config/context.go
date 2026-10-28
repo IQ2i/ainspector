@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,7 +12,31 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// CollectContextFiles collects files based on include/exclude patterns
+// maxContextFiles caps the files read for the project context
+const maxContextFiles = 200
+
+// errEnough stops a walk once a pattern matched more files than can be read
+var errEnough = errors.New("enough files")
+
+// CheckContextPattern rejects an include or exclude pattern that leaves the project: the
+// patterns come from the configuration of the change under review
+func CheckContextPattern(pattern string) error {
+	if pattern == "" {
+		return errors.New("empty pattern")
+	}
+	if filepath.IsAbs(pattern) || strings.HasPrefix(pattern, "/") || strings.HasPrefix(pattern, `\`) || filepath.VolumeName(pattern) != "" {
+		return fmt.Errorf("%q: must be relative", pattern)
+	}
+	for _, segment := range strings.FieldsFunc(pattern, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if segment == ".." {
+			return fmt.Errorf("%q: must not contain a parent directory segment", pattern)
+		}
+	}
+	return nil
+}
+
+// CollectContextFiles collects files based on include/exclude patterns, up to maxContextFiles
+// files and until their size reaches the limit of the context
 // Returns map[relativePath]content, warnings, and error
 func (c *ContextConfig) CollectContextFiles(projectRoot string) (map[string]string, []string, error) {
 	if len(c.Include) == 0 {
@@ -26,11 +51,15 @@ func (c *ContextConfig) CollectContextFiles(projectRoot string) (map[string]stri
 
 	// Process each include pattern
 	for _, pattern := range c.Include {
+		if err := CheckContextPattern(pattern); err != nil {
+			warnings = append(warnings, fmt.Sprintf("context pattern ignored: %v", err))
+			continue
+		}
 		files, err := collectFromPattern(projectRoot, pattern)
 		if err != nil {
 			// Non-existent paths generate warnings, not errors
 			if os.IsNotExist(err) {
-				warnings = append(warnings, fmt.Sprintf("context path not found: %s", pattern))
+				warnings = append(warnings, fmt.Sprintf("context path not found: %q", pattern))
 				continue
 			}
 			return nil, warnings, err
@@ -52,18 +81,28 @@ func (c *ContextConfig) CollectContextFiles(projectRoot string) (map[string]stri
 	allFiles := append(explicitFiles, directoryFiles...)
 
 	// Read file contents, applying exclusions
+	total := 0
 	for _, relPath := range allFiles {
 		if c.shouldExclude(relPath) {
 			continue
 		}
+		if IsSensitivePath(filepath.ToSlash(relPath)) {
+			warnings = append(warnings, fmt.Sprintf("context file ignored, it may hold secrets: %q", relPath))
+			continue
+		}
+		if len(fileMap) >= maxContextFiles || total >= c.Limit() {
+			warnings = append(warnings, fmt.Sprintf("context files beyond %d files or %d bytes were left out", maxContextFiles, c.Limit()))
+			break
+		}
 
 		content, err := ReadProjectFile(projectRoot, relPath, c.Limit())
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("failed to read %s: %v", relPath, err))
+			warnings = append(warnings, fmt.Sprintf("failed to read %q: %v", relPath, err))
 			continue
 		}
 
 		fileMap[relPath] = string(content)
+		total += len(content)
 	}
 
 	return fileMap, warnings, nil
@@ -94,11 +133,14 @@ func collectFromPattern(projectRoot, pattern string) ([]string, error) {
 		err := doublestar.GlobWalk(os.DirFS(basePath), pattern, func(path string, d fs.DirEntry) error {
 			if !d.IsDir() {
 				matches = append(matches, path)
+				if len(matches) > maxContextFiles {
+					return errEnough
+				}
 			}
 			return nil
-		})
+		}, doublestar.WithNoFollow())
 
-		if err != nil {
+		if err != nil && !errors.Is(err, errEnough) {
 			return nil, err
 		}
 
@@ -134,12 +176,15 @@ func collectFromPattern(projectRoot, pattern string) ([]string, error) {
 				return err
 			}
 			files = append(files, relPath)
+			if len(files) > maxContextFiles {
+				return errEnough
+			}
 		}
 
 		return nil
 	})
 
-	if err != nil {
+	if err != nil && !errors.Is(err, errEnough) {
 		return nil, err
 	}
 
