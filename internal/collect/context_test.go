@@ -223,3 +223,20 @@ func TestFindContextFiles_ReadsAtMostTheLimit(t *testing.T) {
 		t.Errorf("expected 100 bytes read, got %v / %v", found, err)
 	}
 }
+
+func TestGenerateProjectContext_NamedFilesComeBeforeDirectoriesWhenTheLimitCuts(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"docs/a.md": strings.Repeat("a", 400),
+		"ZZZ.md":    "named file",
+	})
+
+	pc, err := GenerateProjectContext(dir, &config.ContextConfig{Include: []string{"docs", "ZZZ.md"}, MaxBytes: 300})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := strings.Index(pc.Description, "=== ZZZ.md ===")
+	if first != 0 || !strings.Contains(pc.Description, "named file") {
+		t.Errorf("the file named in include must come first and survive the cut, got %q", pc.Description)
+	}
+}

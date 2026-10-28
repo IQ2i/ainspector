@@ -68,13 +68,8 @@ func GenerateProjectContext(projectRoot string, contextConfig *config.ContextCon
 			fmt.Printf("Warning: %s\n", warning)
 		}
 
-		paths := make([]string, 0, len(configured))
-		for path := range configured {
-			paths = append(paths, path)
-		}
-		sort.Strings(paths)
-		for _, path := range paths {
-			files = append(files, contextFile{path, configured[path]})
+		for _, f := range configured {
+			files = append(files, contextFile{f.Path, f.Content})
 		}
 	} else {
 		var warnings []string

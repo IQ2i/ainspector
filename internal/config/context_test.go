@@ -53,7 +53,8 @@ func TestCollectContextFiles_IncludeExclude(t *testing.T) {
 				Exclude: tt.exclude,
 			}
 
-			files, warnings, err := cfg.CollectContextFiles(tmpDir)
+			list, warnings, err := cfg.CollectContextFiles(tmpDir)
+			files := byPath(list)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -114,7 +115,8 @@ func TestCollectContextFiles_GlobPatterns(t *testing.T) {
 				Include: []string{tt.pattern},
 			}
 
-			files, _, err := cfg.CollectContextFiles(tmpDir)
+			list, _, err := cfg.CollectContextFiles(tmpDir)
+			files := byPath(list)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -144,7 +146,8 @@ func TestCollectContextFiles_Directories(t *testing.T) {
 		Include: []string{"docs"},
 	}
 
-	files, _, err := cfg.CollectContextFiles(tmpDir)
+	list, _, err := cfg.CollectContextFiles(tmpDir)
+	files := byPath(list)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -169,7 +172,8 @@ func TestCollectContextFiles_MissingFiles(t *testing.T) {
 		Include: []string{"nonexistent.md", "missing/dir"},
 	}
 
-	files, warnings, err := cfg.CollectContextFiles(tmpDir)
+	list, warnings, err := cfg.CollectContextFiles(tmpDir)
+	files := byPath(list)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,61 +189,26 @@ func TestCollectContextFiles_MissingFiles(t *testing.T) {
 
 func TestCollectContextFiles_DeterministicOrder(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create files in non-alphabetical order
 	createTestFile(t, tmpDir, "z.md", "z")
 	createTestFile(t, tmpDir, "a.md", "a")
 	createTestFile(t, tmpDir, "docs/y.md", "y")
 	createTestFile(t, tmpDir, "docs/b.md", "b")
 
-	cfg := &ContextConfig{
-		Include: []string{"z.md", "a.md", "docs"},
-	}
-
+	cfg := &ContextConfig{Include: []string{"docs", "z.md", "a.md"}}
 	files, _, err := cfg.CollectContextFiles(tmpDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Convert map to ordered slice to check ordering
-	var keys []string
-	for k := range files {
-		keys = append(keys, k)
+	// The files named one by one come first, whatever the order of the patterns, then the
+	// ones found in directories, each group in alphabetical order
+	var got []string
+	for _, f := range files {
+		got = append(got, f.Path)
 	}
-
-	// Explicit files (a.md, z.md) should come before directory files
-	// Within each category, files should be alphabetically sorted
-	// So expected order: a.md, z.md, docs/b.md, docs/y.md
-	expectedOrder := []string{"a.md", "z.md"}
-
-	// Check that explicit files come first
-	if len(keys) < 2 {
-		t.Fatalf("expected at least 2 files")
-	}
-
-	// Note: map iteration order is random, so we need to check the logic differently
-	// We verify explicit files and directory files separately
-	explicitCount := 0
-	for _, key := range keys {
-		if key == "a.md" || key == "z.md" {
-			explicitCount++
-		}
-	}
-
-	if explicitCount != 2 {
-		t.Errorf("expected 2 explicit files, got %d", explicitCount)
-	}
-
-	// Verify all expected files are present
-	expectedFiles := []string{"a.md", "z.md", "docs/b.md", "docs/y.md"}
-	if len(files) != len(expectedFiles) {
-		t.Errorf("got %d files, want %d", len(files), len(expectedFiles))
-	}
-
-	for _, expected := range expectedOrder {
-		if _, ok := files[expected]; !ok {
-			t.Errorf("expected file %s not found", expected)
-		}
+	want := []string{"a.md", "z.md", "docs/b.md", "docs/y.md"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
 
@@ -341,7 +310,8 @@ func TestCollectContextFiles_SymlinkOutsideTheProjectIsRefused(t *testing.T) {
 	}
 
 	cfg := &ContextConfig{Include: []string{"*.md", "../" + filepath.Base(outside) + "/secret"}}
-	files, warnings, err := cfg.CollectContextFiles(dir)
+	list, warnings, err := cfg.CollectContextFiles(dir)
+	files := byPath(list)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +391,8 @@ func TestCollectContextFiles_SkipsSensitiveFiles(t *testing.T) {
 	createTestFile(t, root, ".npmrc", "//registry:_authToken=x")
 
 	cfg := &ContextConfig{Include: []string{".env", ".env.local", "deploy", ".npmrc", "docs", "*.md", ".*"}}
-	files, warnings, err := cfg.CollectContextFiles(root)
+	list, warnings, err := cfg.CollectContextFiles(root)
+	files := byPath(list)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +411,8 @@ func TestCollectContextFiles_DoesNotFollowDirectoryLinks(t *testing.T) {
 		t.Skip("symlinks unavailable")
 	}
 
-	files, _, err := (&ContextConfig{Include: []string{"docs/**/*.md"}}).CollectContextFiles(root)
+	list, _, err := (&ContextConfig{Include: []string{"docs/**/*.md"}}).CollectContextFiles(root)
+	files := byPath(list)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,7 +432,8 @@ func TestCollectContextFiles_RefusesLinksToSecrets(t *testing.T) {
 		}
 	}
 
-	files, warnings, err := (&ContextConfig{Include: []string{"notes.md", "docs"}}).CollectContextFiles(root)
+	list, warnings, err := (&ContextConfig{Include: []string{"notes.md", "docs"}}).CollectContextFiles(root)
+	files := byPath(list)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,7 +466,8 @@ func TestCollectContextFiles_CapsFilesAndBytes(t *testing.T) {
 	for i := 0; i < maxContextFiles+30; i++ {
 		createTestFile(t, root, filepath.Join("docs", fmt.Sprintf("f%03d.md", i)), "x")
 	}
-	files, warnings, err := (&ContextConfig{Include: []string{"docs"}}).CollectContextFiles(root)
+	list, warnings, err := (&ContextConfig{Include: []string{"docs"}}).CollectContextFiles(root)
+	files := byPath(list)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,11 +479,20 @@ func TestCollectContextFiles_CapsFilesAndBytes(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		createTestFile(t, big, fmt.Sprintf("docs/f%d.md", i), strings.Repeat("y", 400))
 	}
-	files, _, err = (&ContextConfig{Include: []string{"docs"}, MaxBytes: 1000}).CollectContextFiles(big)
+	list, _, err = (&ContextConfig{Include: []string{"docs"}, MaxBytes: 1000}).CollectContextFiles(big)
+	files = byPath(list)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 3 {
 		t.Errorf("reading must stop once max_bytes is reached, got %d files", len(files))
 	}
+}
+
+func byPath(files []ContextFile) map[string]string {
+	m := make(map[string]string, len(files))
+	for _, f := range files {
+		m[f.Path] = f.Content
+	}
+	return m
 }

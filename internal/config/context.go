@@ -35,16 +35,24 @@ func CheckContextPattern(pattern string) error {
 	return nil
 }
 
+// ContextFile is a file given as project context
+type ContextFile struct {
+	Path    string
+	Content string
+}
+
 // CollectContextFiles collects files based on include/exclude patterns, up to maxContextFiles
-// files and until their size reaches the limit of the context
-// Returns map[relativePath]content, warnings, and error
-func (c *ContextConfig) CollectContextFiles(projectRoot string) (map[string]string, []string, error) {
+// files and until their size reaches the limit of the context. The files named one by one come
+// first, then those found in directories and globs, each group in alphabetical order: this is
+// the order in which the limit of the context cuts.
+// Returns the files in that order, warnings, and error
+func (c *ContextConfig) CollectContextFiles(projectRoot string) ([]ContextFile, []string, error) {
 	if len(c.Include) == 0 {
 		return nil, nil, nil
 	}
 
 	// Track files and warnings
-	fileMap := make(map[string]string)
+	var collected []ContextFile
 	var warnings []string
 	var explicitFiles []string  // Files from direct patterns
 	var directoryFiles []string // Files from directory patterns
@@ -90,7 +98,7 @@ func (c *ContextConfig) CollectContextFiles(projectRoot string) (map[string]stri
 			warnings = append(warnings, fmt.Sprintf("context file ignored, it may hold secrets: %q", relPath))
 			continue
 		}
-		if len(fileMap) >= maxContextFiles || total >= c.Limit() {
+		if len(collected) >= maxContextFiles || total >= c.Limit() {
 			warnings = append(warnings, fmt.Sprintf("context files beyond %d files or %d bytes were left out", maxContextFiles, c.Limit()))
 			break
 		}
@@ -101,11 +109,11 @@ func (c *ContextConfig) CollectContextFiles(projectRoot string) (map[string]stri
 			continue
 		}
 
-		fileMap[relPath] = string(content)
+		collected = append(collected, ContextFile{Path: relPath, Content: string(content)})
 		total += len(content)
 	}
 
-	return fileMap, warnings, nil
+	return collected, warnings, nil
 }
 
 // shouldExclude checks if a path matches any exclusion pattern
