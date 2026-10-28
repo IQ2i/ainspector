@@ -1,9 +1,11 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -16,7 +18,7 @@ func TestLoad(t *testing.T) {
 		tmpDir := t.TempDir()
 		_ = os.Chdir(tmpDir)
 
-		cfg, err := Load()
+		cfg, err := Load(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -40,7 +42,7 @@ func TestLoad(t *testing.T) {
 `
 		_ = os.WriteFile("ainspector.yaml", []byte(content), 0644)
 
-		cfg, err := Load()
+		cfg, err := Load(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -59,7 +61,7 @@ func TestLoad(t *testing.T) {
 `
 		_ = os.WriteFile("ainspector.yml", []byte(content), 0644)
 
-		cfg, err := Load()
+		cfg, err := Load(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -78,7 +80,7 @@ func TestLoad(t *testing.T) {
 		_ = os.WriteFile("ainspector.yaml", []byte("ignore:\n  paths:\n    - from_yaml/\n"), 0644)
 		_ = os.WriteFile("ainspector.yml", []byte("ignore:\n  paths:\n    - from_yml/\n"), 0644)
 
-		cfg, err := Load()
+		cfg, err := Load(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -98,7 +100,7 @@ func TestLoad(t *testing.T) {
 `
 		_ = os.WriteFile("ainspector.yaml", []byte(content), 0644)
 
-		cfg, err := Load()
+		cfg, err := Load(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -120,7 +122,7 @@ func TestLoad(t *testing.T) {
 `
 		_ = os.WriteFile("ainspector.yaml", []byte(content), 0644)
 
-		cfg, err := Load()
+		cfg, err := Load(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -137,7 +139,7 @@ func TestLoad(t *testing.T) {
 `
 		_ = os.WriteFile("ainspector.yaml", []byte(content), 0644)
 
-		cfg, err := Load()
+		cfg, err := Load(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -492,7 +494,7 @@ llm:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Context.Limit() != 1000 || cfg.LLM.TokenBudget() != 5000 || cfg.LLM.Provider != "openai" {
+	if cfg.Context.Limit() != 1000 || cfg.LLM.TokenBudget(0) != 5000 || cfg.LLM.Provider != "openai" {
 		t.Errorf("unexpected values: %+v / %+v", cfg.Context, cfg.LLM)
 	}
 	if p := cfg.LLM.Prices["my-model"]; p.Input != 1.5 || p.Output != 6 {
@@ -505,8 +507,8 @@ func TestParse_LLMDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Context.Limit() != DefaultContextMaxBytes || cfg.LLM.TokenBudget() != DefaultMaxTokensPerRun {
-		t.Errorf("unexpected defaults: %d / %d", cfg.Context.Limit(), cfg.LLM.TokenBudget())
+	if cfg.Context.Limit() != DefaultContextMaxBytes || cfg.LLM.TokenBudget(0) != DefaultMaxTokensPerRun {
+		t.Errorf("unexpected defaults: %d / %d", cfg.Context.Limit(), cfg.LLM.TokenBudget(0))
 	}
 }
 
@@ -516,6 +518,15 @@ func TestParse_InvalidLLMSettings(t *testing.T) {
 		"negative tokens": "llm:\n  max_tokens_per_run: -1\n",
 		"negative bytes":  "context:\n  max_bytes: -1\n",
 		"negative price":  "llm:\n  prices:\n    m: {input: -1}\n",
+		"huge context":    "context:\n  max_bytes: 999999999\n",
+		"huge related":    "modes:\n  security:\n    related:\n      max_bytes: 999999999\n",
+		"many files":      "modes:\n  security:\n    related:\n      max_files: 21\n",
+		"huge hunks":      "modes:\n  security:\n    hunks:\n      before: 51\n",
+		"many findings":   "modes:\n  security:\n    max_findings: 51\n",
+		"quality model":   "modes:\n  quality:\n    model: \"x\\n/close\"\n",
+		"security model":  "modes:\n  security:\n    model: \"a b\"\n",
+		"fp model":        "modes:\n  security:\n    false_positive:\n      model: \"@admin <!--\"\n",
+		"price model":     "llm:\n  prices:\n    \"bad model\": {input: 1}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := parse("ainspector.yaml", []byte(yaml)); err == nil {
@@ -630,5 +641,51 @@ func TestIsNestedVendoredPath(t *testing.T) {
 		if got := IsNestedVendoredPath(path); got != want {
 			t.Errorf("IsNestedVendoredPath(%q) = %v, want %v", path, got, want)
 		}
+	}
+}
+
+func TestTokenBudget_ConfigCanOnlyLower(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		configured int
+		env        int
+		want       int
+	}{
+		{"nothing set", 0, 0, DefaultMaxTokensPerRun},
+		{"config above the default is capped", 1 << 40, 0, DefaultMaxTokensPerRun},
+		{"config below the default", 5000, 0, 5000},
+		{"env raises the default", 0, 900000, 900000},
+		{"config above env is capped", 2000000, 900000, 900000},
+		{"config below env", 5000, 900000, 5000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (LLMConfig{MaxTokensPerRun: tc.configured}).TokenBudget(tc.env); got != tc.want {
+				t.Errorf("TokenBudget(%d) with config %d = %d, want %d", tc.env, tc.configured, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoad_RefusesUnsafeConfigFile(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.yaml")
+	if err := os.WriteFile(outside, []byte("ignore:\n  paths: [x]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "ainspector.yaml")); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	if _, err := Load(root); !errors.Is(err, ErrOutsideRoot) {
+		t.Errorf("a configuration linked outside the project must be refused, got %v", err)
+	}
+
+	if err := os.Remove(filepath.Join(root, "ainspector.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(root, "ainspector.yaml"), 0o644); err != nil {
+		t.Skip("fifo unavailable")
+	}
+	if _, err := Load(root); err == nil {
+		t.Error("a named pipe must be refused without blocking")
 	}
 }

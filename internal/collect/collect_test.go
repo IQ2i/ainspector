@@ -809,3 +809,31 @@ func TestCollect_VendoredAndGeneratedFilesAreSkippedWithoutConfig(t *testing.T) 
 		t.Errorf("only ok.go should be collected, got %+v", result)
 	}
 }
+
+func TestCollect_FunctionUnitsAreTruncated(t *testing.T) {
+	var code, patch strings.Builder
+	code.WriteString("package main\n\nfunc big() {\n")
+	patch.WriteString("@@ -0,0 +1,2003 @@\n+package main\n+\n+func big() {\n")
+	for i := 0; i < 2000; i++ {
+		line := "\t_ = \"" + strings.Repeat("x", 80) + "\"\n"
+		code.WriteString(line)
+		patch.WriteString("+" + line)
+	}
+	code.WriteString("}\n")
+	patch.WriteString("+}\n")
+
+	mock := &mockProvider{files: map[string]string{"main.go": code.String()}}
+	e := New(mock, nil)
+	defer e.Close()
+
+	units, err := e.Collect(context.Background(), Request{Files: []provider.ModifiedFile{{Path: "main.go", Status: "added", Patch: patch.String()}}})
+	if err != nil || len(units) != 1 {
+		t.Fatalf("units %d, err %v", len(units), err)
+	}
+	if len(units[0].Content) > maxFunctionBytes || len(units[0].Diff) > maxFunctionBytes {
+		t.Errorf("function capped at %d bytes, got content %d and diff %d", maxFunctionBytes, len(units[0].Content), len(units[0].Diff))
+	}
+	if len(units[0].Notes) != 1 || !strings.Contains(units[0].Notes[0], "truncated") {
+		t.Errorf("the truncation must be reported, got notes %v", units[0].Notes)
+	}
+}

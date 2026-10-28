@@ -24,7 +24,7 @@ type Deps struct {
 	NewLLM      func() (llm.Client, error)
 	Config      *config.Config
 	ProjectRoot string
-	// MaxTokens caps the tokens of a run whatever the configuration says, zero means no cap.
+	// MaxTokens is the token cap set by the environment of the job, zero selects the default cap.
 	// The configuration comes from the checkout of the change and its author could raise its own.
 	MaxTokens int
 	// Secrets are the credentials of the run, hidden from the errors of the LLM backend
@@ -195,10 +195,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			if err != nil {
 				return err
 			}
-			limit := cfg.LLM.TokenBudget()
-			if deps.MaxTokens > 0 {
-				limit = min(limit, deps.MaxTokens)
-			}
+			limit := cfg.LLM.TokenBudget(deps.MaxTokens)
 			client = llm.WithRedaction(client, deps.Secrets...)
 			budget = llm.WithBudget(client, limit, newPricing(cfg), logLine)
 			projectContext = loadProjectContext(deps.ProjectRoot, cfg, units)

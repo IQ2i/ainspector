@@ -77,11 +77,6 @@ func Execute() {
 }
 
 func runReview(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
 	env, err := ci.Detect()
 	if err != nil {
 		return fmt.Errorf("CI detection failed: %w", err)
@@ -106,6 +101,11 @@ func runReview(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		fmt.Printf("Warning: could not get working directory: %v\n", err)
 		projectRoot = "."
+	}
+
+	cfg, err := config.Load(projectRoot)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

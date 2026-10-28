@@ -45,6 +45,9 @@ func newLLMClient(cfg config.LLMConfig) (llm.Client, error) {
 	if model == "" {
 		model = "gpt-4o"
 	}
+	if err := config.CheckModelName(model); err != nil {
+		return nil, fmt.Errorf("LLM_MODEL: %w", err)
+	}
 
 	return openai.New(apiURL, apiKey, model), nil
 }
