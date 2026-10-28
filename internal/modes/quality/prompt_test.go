@@ -382,7 +382,7 @@ func TestBuildSystemPrompt_ContextHeader(t *testing.T) {
 // buildSystemPrompt is the system prompt as one text, the way a backend without blocks sees it
 func buildSystemPrompt(language string, pc *collect.ProjectContext, rules []string) string {
 	var texts []string
-	for _, b := range buildSystemBlocks(language, pc, rules) {
+	for _, b := range buildSystemBlocks(language, pc, rules, false) {
 		texts = append(texts, b.Text)
 	}
 	return strings.Join(texts, "\n\n")
@@ -392,7 +392,7 @@ func TestBuildSystemBlocks_CacheBoundary(t *testing.T) {
 	pc := &collect.ProjectContext{Description: "=== README.md ===\nDemo\n"}
 	rules := []string{"Rule one"}
 
-	blocks := buildSystemBlocks("go", pc, rules)
+	blocks := buildSystemBlocks("go", pc, rules, false)
 	if len(blocks) != 2 || !blocks[0].Cache || blocks[1].Cache {
 		t.Fatalf("expected a cached prefix then a plain language block, got %+v", blocks)
 	}
@@ -406,13 +406,24 @@ func TestBuildSystemBlocks_CacheBoundary(t *testing.T) {
 	}
 
 	// The prefix is what every unit shares, whatever its language
-	other := buildSystemBlocks("python", pc, rules)
+	other := buildSystemBlocks("python", pc, rules, false)
 	if other[0].Text != blocks[0].Text {
 		t.Error("the cached prefix must not depend on the language")
 	}
 
-	if unknown := buildSystemBlocks("unknown", pc, rules); len(unknown) != 1 || !unknown[0].Cache {
+	if unknown := buildSystemBlocks("unknown", pc, rules, false); len(unknown) != 1 || !unknown[0].Cache {
 		t.Errorf("a language without rules has the prefix only, got %+v", unknown)
+	}
+}
+
+func TestBuildSystemBlocks_SecurityReviewedElsewhere(t *testing.T) {
+	if strings.Contains(buildSystemPrompt("go", nil, nil), securitySection) {
+		t.Error("without the security mode, quality keeps reporting vulnerabilities")
+	}
+
+	blocks := buildSystemBlocks("go", nil, nil, true)
+	if !strings.Contains(blocks[0].Text, securitySection) {
+		t.Errorf("the security section belongs to the cached prefix, got %q", blocks[0].Text)
 	}
 }
 

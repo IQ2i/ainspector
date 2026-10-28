@@ -219,6 +219,31 @@ func TestInline_MultiLineSuggestionReplacesItsRange(t *testing.T) {
 	}
 }
 
+func TestInline_RestoresTheIndentationOfTheFirstSuggestedLine(t *testing.T) {
+	units := []collect.ReviewUnit{{FilePath: "a.go", StartLine: 10, EndLine: 14, Content: "func f() {\n\tif ok {\n\t\tdo()\n\t}\n}"}}
+	fs := []findings.Finding{
+		finding("a.go", 12, "unindented", "aaaaaaaaaaaa", "if err := do(); err != nil {\n\t\t\treturn err\n\t\t}"),
+		finding("a.go", 11, "indented", "aaaaaaaaaaaa", "  if ok {"),
+		finding("a.go", 10, "first line", "aaaaaaaaaaaa", "func g() {"),
+	}
+	p := &fakeProvider{reviewFn: allOK}
+
+	if err := Inline(context.Background(), p, 5, Run{Units: units, Published: fs}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := p.reviews[0]
+	for i, want := range []string{
+		"\t\tif err := do(); err != nil {\n\t\t\treturn err\n\t\t}",
+		"  if ok {",
+		"func g() {",
+	} {
+		if got[i].Suggestion != want {
+			t.Errorf("suggestion %d: expected %q, got %q", i, want, got[i].Suggestion)
+		}
+	}
+}
+
 func TestSanitizeText(t *testing.T) {
 	tests := []struct {
 		name, in, want string

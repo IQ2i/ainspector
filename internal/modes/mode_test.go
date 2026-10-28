@@ -29,6 +29,29 @@ func TestEnabled(t *testing.T) {
 	}
 }
 
+func TestEnabled_QualityLeavesVulnerabilitiesToSecurity(t *testing.T) {
+	system := func(names ...string) string {
+		got, err := Enabled(names, &config.Config{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, m := range got {
+			if m.Name() == "quality" {
+				return m.BuildRequest(collect.ReviewUnit{}, nil).System[0].Text
+			}
+		}
+		t.Fatalf("no quality mode in %v", got)
+		return ""
+	}
+
+	if strings.Contains(system("quality"), "dedicated security review") {
+		t.Error("alone, quality reviews vulnerabilities too")
+	}
+	if !strings.Contains(system("quality", "security"), "dedicated security review") {
+		t.Error("with the security mode, quality leaves vulnerabilities to it")
+	}
+}
+
 func TestEnabled_UnknownMode(t *testing.T) {
 	if _, err := Enabled([]string{"quality", "nope"}, &config.Config{}); err == nil {
 		t.Error("expected an error for an unknown mode")

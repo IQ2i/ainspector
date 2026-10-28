@@ -73,12 +73,17 @@ func TestGolden_SystemPrompt(t *testing.T) {
 			for n, rules := range ruleSets {
 				name := fmt.Sprintf("%s-%s-r%d.txt", lang, ctxName, n)
 				t.Run(name, func(t *testing.T) {
-					got := renderBlocks(buildSystemBlocks(lang, pc, rules))
+					got := renderBlocks(buildSystemBlocks(lang, pc, rules, false))
 					assertGolden(t, filepath.Join("testdata", "golden", "system", name), []byte(got))
 				})
 			}
 		}
 	}
+
+	t.Run("go-raw-r2-security.txt", func(t *testing.T) {
+		got := renderBlocks(buildSystemBlocks("go", contexts["raw"], ruleSets[2], true))
+		assertGolden(t, filepath.Join("testdata", "golden", "system", "go-raw-r2-security.txt"), []byte(got))
+	})
 }
 
 func TestGolden_UserPrompt(t *testing.T) {
@@ -112,7 +117,7 @@ func sum(s string) string {
 }
 
 func TestPromptChecksums(t *testing.T) {
-	if got := New("", nil).Version(); got != checksumsVersion {
+	if got := New("", nil, false).Version(); got != checksumsVersion {
 		t.Errorf("checksums were recorded for %s but the mode is %s: update the checksums together with the version", checksumsVersion, got)
 	}
 
@@ -130,9 +135,9 @@ func TestPromptChecksums(t *testing.T) {
 }
 
 // checksumsVersion is the mode version the checksums below belong to
-const checksumsVersion = "quality/3"
+const checksumsVersion = "quality/4"
 
-const wantBaseChecksum = "890b1e3d9fd81070e48a55722ea2d3ce35bd10653ce7587938b49967c0c5e98c"
+const wantBaseChecksum = "a9b80560bcdfc66d3fa495996c0638d8a011fd2ce9dc80e32b9a630bff288877"
 
 var wantRuleChecksums = map[string]string{
 	"bash":       "a9e9d437de8091fdca22c69b77f39babd3b8ff7aa82db4af5fc92783d25e5d5a",

@@ -39,9 +39,18 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 	sb.WriteString(SummaryMarker(run.Mode) + "\n")
 	fmt.Fprintf(&sb, "### ainspector: %s review\n\n", run.Mode)
 
+	// A run that reports nothing new must not read as a clean change while earlier findings hold
+	var stillOpen []findings.Reported
+	for _, f := range run.Repeated {
+		stillOpen = append(stillOpen, f.Open(0, ""))
+	}
+	stillOpen = append(stillOpen, run.Carried...)
+
 	issues := "no issue found"
 	if n := len(run.Published); n > 0 {
 		issues = fmt.Sprintf("%d %s reported", n, text.Plural(n, "issue"))
+	} else if len(stillOpen) > 0 {
+		issues = "no new issue found"
 	}
 	unit := "function"
 	for _, u := range run.Units {
@@ -50,7 +59,11 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 			break
 		}
 	}
-	fmt.Fprintf(&sb, "Reviewed %d %s, %s.\n", len(run.Reviewed), text.Plural(len(run.Reviewed), unit), issues)
+	unchanged := ""
+	if n := run.AlreadyReviewed; n > 0 {
+		unchanged = fmt.Sprintf(" (%d unchanged since an earlier review)", n)
+	}
+	fmt.Fprintf(&sb, "Reviewed %d %s%s, %s.\n", len(run.Reviewed), text.Plural(len(run.Reviewed), unit), unchanged, issues)
 
 	if run.Model != "" {
 		fmt.Fprintf(&sb, "\nModel: `%s`\n", run.Model)
@@ -85,6 +98,15 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 		overflow = append(overflow, fmt.Sprintf("%s:%d [%s] %s", f.File, f.StartLine, f.Severity, text.OneLine(f.Title)))
 	}
 	writeList(fmt.Sprintf("Not commented, only the %d most severe findings are published:", len(run.Published)), overflow)
+	var open []string
+	for _, f := range stillOpen {
+		item := fmt.Sprintf("%s:%d", f.File, f.Line)
+		if f.Severity != "" {
+			item += fmt.Sprintf(" [%s]", f.Severity)
+		}
+		open = append(open, item+" "+text.CutAtRune(text.OneLine(f.Title), maxOpenItem))
+	}
+	writeList("Still open from earlier runs:", open)
 	writeList("Not reviewed, the token budget was reached:", run.Skipped)
 	writeList("Not reviewed, the review failed:", run.Failed)
 	writeList("Notes:", run.Notes)
@@ -114,6 +136,9 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 
 	return sb.String()
 }
+
+// maxOpenItem bounds the title of a finding still open, as the quality ones are whole explanations
+const maxOpenItem = 120
 
 // feedbackLine counts the earlier comments that reviewers found useful (more thumbs up than
 // down), not useful (more down than up), or left without a verdict

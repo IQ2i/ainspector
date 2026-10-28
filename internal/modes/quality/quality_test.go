@@ -10,9 +10,9 @@ import (
 )
 
 func TestMode_Identity(t *testing.T) {
-	m := New("some-model", []string{"r1"})
+	m := New("some-model", []string{"r1"}, false)
 
-	if m.Name() != "quality" || m.BuildRequest(collect.ReviewUnit{}, nil).Model != "some-model" || m.Version() != "quality/3" {
+	if m.Name() != "quality" || m.BuildRequest(collect.ReviewUnit{}, nil).Model != "some-model" || m.Version() != "quality/4" {
 		t.Errorf("unexpected identity: %s %s %s", m.Name(), m.BuildRequest(collect.ReviewUnit{}, nil).Model, m.Version())
 	}
 	if len(m.Rules()) != 1 || m.Rules()[0] != "r1" {
@@ -27,7 +27,7 @@ func TestMode_Identity(t *testing.T) {
 }
 
 func TestMode_Parse(t *testing.T) {
-	m := New("", nil)
+	m := New("", nil, false)
 	u := collect.ReviewUnit{FilePath: "pkg/a.go"}
 	doc := `{"issues":[{"line":7,"description":"Nil deref","suggestion":"check it"},{"line":9,"description":"Leak","suggestion":""}]}`
 
@@ -46,15 +46,29 @@ func TestMode_Parse(t *testing.T) {
 	}
 }
 
+func TestMode_ParseEndLine(t *testing.T) {
+	doc := `{"issues":[{"line":7,"end_line":9,"description":"a","suggestion":"x"},{"line":7,"end_line":3,"description":"b","suggestion":"x"},{"line":7,"description":"c","suggestion":"x"}]}`
+
+	got, err := New("", nil, false).Parse(llm.Response{JSON: json.RawMessage(doc)}, collect.ReviewUnit{FilePath: "a.go"})
+	if err != nil || len(got) != 3 {
+		t.Fatalf("expected 3 findings, got %+v / %v", got, err)
+	}
+	for i, want := range []int{9, 7, 7} {
+		if got[i].StartLine != 7 || got[i].EndLine != want {
+			t.Errorf("finding %d: expected lines 7-%d, got %d-%d", i, want, got[i].StartLine, got[i].EndLine)
+		}
+	}
+}
+
 func TestMode_ParseNoIssues(t *testing.T) {
-	got, err := New("", nil).Parse(llm.Response{JSON: json.RawMessage(`{"issues":[]}`)}, collect.ReviewUnit{})
+	got, err := New("", nil, false).Parse(llm.Response{JSON: json.RawMessage(`{"issues":[]}`)}, collect.ReviewUnit{})
 	if err != nil || len(got) != 0 {
 		t.Errorf("expected no findings, got %v / %v", got, err)
 	}
 }
 
 func TestMode_ParseStructuredOutputIsNotCleaned(t *testing.T) {
-	m := New("", nil)
+	m := New("", nil, false)
 
 	// A document that does not have the shape of the schema is an error, not something to salvage
 	for _, doc := range []string{
@@ -71,14 +85,14 @@ func TestMode_ParseStructuredOutputIsNotCleaned(t *testing.T) {
 // Backends without strict schemas may add fields: dropping the unit would fail it again at every run
 func TestMode_ParseIgnoresUnknownFields(t *testing.T) {
 	doc := `{"issues":[{"line":3,"description":"Bug","suggestion":"","severity":"high"}],"summary":"x"}`
-	got, err := New("", nil).Parse(llm.Response{JSON: json.RawMessage(doc)}, collect.ReviewUnit{FilePath: "a.go"})
+	got, err := New("", nil, false).Parse(llm.Response{JSON: json.RawMessage(doc)}, collect.ReviewUnit{FilePath: "a.go"})
 	if err != nil || len(got) != 1 || got[0].StartLine != 3 {
 		t.Errorf("expected the issue to be parsed, got %+v / %v", got, err)
 	}
 }
 
 func TestMode_ParseRequiresStructuredOutput(t *testing.T) {
-	m := New("", nil)
+	m := New("", nil, false)
 
 	for _, text := range []string{"LGTM", "Review:\n{\"issues\":[{\"line\":3,\"description\":\"Bug\",\"suggestion\":\"\"}]}"} {
 		if got, err := m.Parse(llm.Response{Text: text}, collect.ReviewUnit{}); err == nil || len(got) != 0 {
@@ -90,7 +104,7 @@ func TestMode_ParseRequiresStructuredOutput(t *testing.T) {
 func TestMode_BuildRequest(t *testing.T) {
 	u := collect.ReviewUnit{Name: "f", FilePath: "a.py", Language: "python", StartLine: 1, EndLine: 2, Content: "def f(): pass", ChangeType: "added"}
 
-	req := New("m", []string{"Rule one"}).BuildRequest(u, nil)
+	req := New("m", []string{"Rule one"}, false).BuildRequest(u, nil)
 
 	if req.Model != "m" || len(req.System) != 2 || len(req.Messages) != 1 || req.Messages[0].Role != "user" {
 		t.Fatalf("unexpected request shape: %+v", req)

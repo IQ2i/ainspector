@@ -167,6 +167,42 @@ func TestSummaryBody_NothingFound(t *testing.T) {
 	}
 }
 
+func TestSummaryBody_StillOpen(t *testing.T) {
+	run := Run{
+		Mode: "security", Scope: "function+class", Version: "security/2",
+		Units:           []collect.ReviewUnit{{Kind: collect.KindFunction}, {Kind: collect.KindHunk}},
+		Reviewed:        []string{"aaaaaaaaaaaa", "bbbbbbbbbbbb"},
+		AlreadyReviewed: 1,
+		Repeated:        []findings.Finding{{Mode: "security", File: "a.go", StartLine: 4, Severity: findings.SeverityLow, Title: "Error\nleaked"}},
+		Carried:         []findings.Reported{{Fingerprint: "111111111111", File: "a.go", Line: 16, Severity: findings.SeverityCritical, Title: "SQL injection"}},
+	}
+
+	body := SummaryBody(run, nil)
+
+	for _, want := range []string{
+		"Reviewed 2 units (1 unchanged since an earlier review), no new issue found.",
+		"Still open from earlier runs:\n- a.go:4 [low] Error leaked\n- a.go:16 [critical] SQL injection\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("summary should contain %q, got:\n%s", want, body)
+		}
+	}
+}
+
+func TestSummaryBody_StillOpenQualityFindingIsCut(t *testing.T) {
+	run := baseRun()
+	run.Carried = []findings.Reported{{File: "a.go", Line: 9, Title: strings.Repeat("x", 300)}}
+
+	body := SummaryBody(run, nil)
+
+	if !strings.Contains(body, "Reviewed 3 functions, 2 issues reported.") {
+		t.Errorf("new findings are counted as before, got:\n%s", body)
+	}
+	if !strings.Contains(body, "- a.go:9 "+strings.Repeat("x", maxOpenItem)+"\n") {
+		t.Errorf("a quality finding has no severity and its title is cut, got:\n%s", body)
+	}
+}
+
 func TestSummaryBody_UnreviewedUnitsAndNotes(t *testing.T) {
 	run := baseRun()
 	run.Skipped = []string{"slow (pkg/a.go)"}
