@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-const zeroWidthSpace = "​"
+const zeroWidthSpace = "\u200b"
 
 var mentionRegex = regexp.MustCompile(`(^|[^\w])@(\w)`)
 

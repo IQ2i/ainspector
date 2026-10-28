@@ -68,7 +68,7 @@ jobs:
         run: ./ainspector review --mode quality,security
 ```
 
-Pull requests from forks get neither the secret nor a token that can write: skip the job for them (`if: github.event.pull_request.head.repo.full_name == github.repository`). The `pull-requests: write` permission is what lets `GITHUB_TOKEN` post the review and the summary.
+Pull requests from forks get neither the secret nor a token that can write: skip the job for them (`if: github.event.pull_request.head.repo.full_name == github.repository`). The `pull-requests: write` permission is what lets `GITHUB_TOKEN` post the review and the summary. With `GITHUB_TOKEN` the comments are written as `github-actions[bot]`, an identity shared by every workflow of the repository: ainspector only reads its review state from the summary comment of each mode, but use a dedicated GitHub App if other workflows comment on the same pull requests.
 
 ### GitLab CI
 
@@ -151,7 +151,7 @@ ainspector calls the Anthropic API directly, or any OpenAI-compatible API. The A
 
 With the Anthropic backend, the stable part of the prompt (instructions, project context and project rules) is cached, so that the functions of a merge request after the first one read it at a fraction of the price. With an OpenAI-compatible backend, ainspector asks for a JSON reply conforming to a schema and falls back to a less strict mode when the endpoint rejects it.
 
-Each run stops sending requests once `llm.max_tokens_per_run` tokens were consumed (400000 by default; tokens read from the cache do not count). `AINSPECTOR_MAX_TOKENS_PER_RUN` sets a cap that `ainspector.yaml` can only lower: the file comes from the merge request under review, so its author could otherwise raise their own budget. Set it as a CI/CD variable of the project or the group, which a merge request cannot override. The functions left unreviewed are listed in the summary and reviewed by the next run. The summary also gives the tokens used and an estimated cost, for the models whose price is known (`claude-sonnet-5-5` and `claude-opus-5-5`, others through `llm.prices`).
+Each run stops sending requests once `llm.max_tokens_per_run` tokens were consumed (400000 by default; tokens read from the cache do not count). `AINSPECTOR_MAX_TOKENS_PER_RUN` replaces that default with the cap of your choice, and `ainspector.yaml` can only lower the cap, never raise it: the file comes from the merge request under review, so its author could otherwise raise their own budget. Set it as a CI/CD variable of the project or the group, which a merge request cannot override. The functions left unreviewed are listed in the summary and reviewed by the next run. The summary also gives the tokens used and an estimated cost, for the models whose price is known (`claude-sonnet-5-5` and `claude-opus-5-5`, others through `llm.prices`).
 
 ## Configuration File
 
@@ -243,15 +243,15 @@ rules:
 
 **modes.quality** - `enabled` (default `true`), `model` (default: the model of the LLM backend) and `rules`, which are added after the top-level `rules`.
 
-**modes.security** - Disabled unless `enabled: true`. `scope` is the code given with each unit: `function`, `function+class` (adds the header of the class) or `function+class+related` (the default, adds the related files). `max_findings` caps the findings commented per run (default `5`). `hunks` tells which files without functions are reviewed, and how many lines of context surround each change (defaults above); lock files (`*.lock`, `package-lock.json`, `pnpm-lock.yaml`) and minified assets are never reviewed that way. `false_positive.model` is the model of the second pass (`claude-opus-5-5` on the Anthropic backend, the default model of the backend otherwise), `false_positive.instructions` is appended to the built-in instructions. `model` is the model of the review itself.
+**modes.security** - Disabled unless `enabled: true`. `scope` is the code given with each unit: `function`, `function+class` (adds the header of the class) or `function+class+related` (the default, adds the related files). `max_findings` caps the findings commented per run (default `5`, at most `50`). `hunks` tells which files without functions are reviewed, and how many lines of context surround each change (defaults above, at most 50 lines each way); lock files (`*.lock`, `package-lock.json`, `pnpm-lock.yaml`) and minified assets are never reviewed that way. `false_positive.model` is the model of the second pass (`claude-opus-5-5` on the Anthropic backend, the default model of the backend otherwise), `false_positive.instructions` is appended to the built-in instructions. `model` is the model of the review itself.
 
-**publish** - `code_quality` and `artifact` are the paths of the two reports (see [Reports](#reports)), relative to the directory of the job: the defaults are above, an empty string disables the report. An absolute path, a path with `..`, or the same file for both reports is refused.
+**publish** - `code_quality` and `artifact` are the paths of the two reports (see [Reports](#reports)), relative to the directory of the job: the defaults are above, an empty string disables the report. An absolute path, a path with `..` or a `.git` folder, or the same file for both reports is refused.
 
 **context.include** - Files to include when generating project context. The AI will read these files to better understand your project's architecture, conventions, and requirements. By default, ainspector automatically searches for common documentation files like `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `README.md`, and `.github/copilot-instructions.md`.
 
-**context.exclude** - Files to exclude from project context (overrides include patterns).
+**context.exclude** - Files to exclude from project context (overrides include patterns). Patterns that are absolute or contain `..` are refused, linked directories are not followed, at most 200 files are read, and files that hold secrets (`.env*`, keys, `.npmrc`, `.netrc`, `.git-credentials`, `.pypirc`, `.docker/config.json`, `.git/`) are never given.
 
-**context.max_bytes** - Size cap of the project context (default `32768`). Files are added in order until the cap is reached: the one that crosses it is truncated, the following ones are left out, and the summary says so.
+**context.max_bytes** - Size cap of the project context (default `32768`, at most `262144`). Files are added in order until the cap is reached: the one that crosses it is truncated, the following ones are left out, and the summary says so.
 
 **llm** - `provider` (`anthropic` or `openai`), `max_tokens_per_run` and `prices`, see [LLM Configuration](#llm-configuration).
 
@@ -310,7 +310,7 @@ What it reviews, beyond the functions with added lines:
   | Twig template (`templates/`) | the code that renders it |
   | Vue component | the files importing it, the stores and composables it imports |
 
-  A unit gets at most `related.max_files` files and `related.max_bytes` bytes: the rest is left out or truncated, and the summary says so. Nothing is joined when no rule finds anything. `vendor/`, `node_modules/`, `var/`, `.env*` files and the paths of `ignore.paths` are never read. The files come from the checkout of the job: when it is not the head of the merge request (merge result pipeline), the run logs the difference. Changing a related file reviews the units that use it again.
+  A unit gets at most `related.max_files` files (at most `20`) and `related.max_bytes` bytes (at most `200000`): the rest is left out or truncated, and the summary says so. Nothing is joined when no rule finds anything. `vendor/`, `node_modules/`, `var/`, files that hold secrets (`.env*`, keys, `.npmrc`, `.netrc`...) and the paths of `ignore.paths` are never read. Credential-like settings (`password`, `secret`, `key`, `token`) are removed from the `security.yaml` given to the AI. The files come from the checkout of the job: when it is not the head of the merge request (merge result pipeline), the run logs the difference. Changing a related file reviews the units that use it again.
 
 To keep the noise low, findings of `info` severity or under 50% confidence are dropped, findings already reported by a previous run are not repeated (even if their line moved), and a second call to a stronger model discards the false positives. That filter never discards denial of service or resource exhaustion findings. If the filter fails, the findings are published unfiltered and the summary says so. Only the `max_findings` most severe findings are commented, the others are listed in the summary. When nothing is found, no inline comment is posted: only the summary.
 
