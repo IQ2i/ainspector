@@ -152,7 +152,7 @@ func TestSettleFindings_QualityIsLeftUntouched(t *testing.T) {
 	}
 	client := &scriptedClient{backend: "anthropic"}
 
-	got := settle(context.Background(), client, quality.New("", nil), settleResults(fs...), nil)
+	got := settle(context.Background(), client, quality.New("", nil, false), settleResults(fs...), nil)
 	if len(got.Published) != 3 || got.Published[0].File != "z.go" || got.Published[2].File != "m.go" || got.Overflow != nil || client.request != nil {
 		t.Errorf("unexpected outcome %+v", got)
 	}
@@ -160,7 +160,7 @@ func TestSettleFindings_QualityIsLeftUntouched(t *testing.T) {
 
 func TestCollectRequest_MergesTheNeedsOfTheModes(t *testing.T) {
 	sec := security.New(security.Config{Scope: collect.ScopeFunctionClass, Hunks: collect.HunkPolicy{Extensions: []string{"twig", "yaml"}, Before: 5, After: 1}})
-	q := quality.New("", nil)
+	q := quality.New("", nil, false)
 
 	req := collectRequest(nil, []modes.Mode{q, sec})
 	if req.Scope != collect.ScopeFunctionClass || !req.MatchDeleted || !req.Hunks.Orphans || req.Hunks.Before != 5 || req.Hunks.After != 1 || len(req.Hunks.Extensions) != 2 {
@@ -181,7 +181,7 @@ func TestUnitsFor(t *testing.T) {
 		{Kind: collect.KindHunk, Name: "lines 1-3"},
 	}
 
-	got := unitsFor(quality.New("", nil), units)
+	got := unitsFor(quality.New("", nil, false), units)
 	if len(got) != 1 || got[0].Name != "show" || got[0].Enclosing != nil {
 		t.Errorf("quality only reviews functions with added lines, without class header: %+v", got)
 	}

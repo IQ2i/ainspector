@@ -58,7 +58,7 @@ func goUnit(name string) collect.ReviewUnit {
 func TestReviewUnits_LGTM(t *testing.T) {
 	client := &fakeClient{reply: lgtm}
 
-	results := ReviewUnits(context.Background(), client, quality.New("", nil), []collect.ReviewUnit{goUnit("hello")}, nil)
+	results := ReviewUnits(context.Background(), client, quality.New("", nil, false), []collect.ReviewUnit{goUnit("hello")}, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -73,11 +73,11 @@ func TestReviewUnits_LGTM(t *testing.T) {
 
 func TestReviewUnits_FindingsCarryUnitHash(t *testing.T) {
 	client := &fakeClient{reply: func(int, llm.Request) (string, error) {
-		return `{"issues":[{"line":3,"description":"Bug here","suggestion":"fix()"}]}`, nil
+		return `{"issues":[{"line":3,"end_line":3,"description":"Bug here","suggestion":"fix()"}]}`, nil
 	}}
 	unit := goUnit("hello")
 
-	results := ReviewUnits(context.Background(), client, quality.New("", nil), []collect.ReviewUnit{unit}, nil)
+	results := ReviewUnits(context.Background(), client, quality.New("", nil, false), []collect.ReviewUnit{unit}, nil)
 
 	if len(results[0].Findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(results[0].Findings))
@@ -89,7 +89,7 @@ func TestReviewUnits_FindingsCarryUnitHash(t *testing.T) {
 	if f.Explanation != "Bug here" || f.Suggestion != "fix()" {
 		t.Errorf("unexpected finding content: %+v", f)
 	}
-	want := state.UnitHash(quality.New("", nil), unit, state.RulesDigest(nil))
+	want := state.UnitHash(quality.New("", nil, false), unit, state.RulesDigest(nil))
 	if f.UnitHash != want {
 		t.Errorf("expected unit hash %s, got %s", want, f.UnitHash)
 	}
@@ -104,7 +104,7 @@ func TestReviewUnits_ContinuesAfterFailure(t *testing.T) {
 	}}
 	units := []collect.ReviewUnit{goUnit("a"), goUnit("b"), goUnit("c")}
 
-	results := ReviewUnits(context.Background(), client, quality.New("", nil), units, nil)
+	results := ReviewUnits(context.Background(), client, quality.New("", nil, false), units, nil)
 
 	if len(results) != 3 || len(client.requests) != 3 {
 		t.Fatalf("expected 3 results and 3 calls, got %d and %d", len(results), len(client.requests))
@@ -123,7 +123,7 @@ func TestReviewUnits_EmptyList(t *testing.T) {
 		return "", nil
 	}}
 
-	if results := ReviewUnits(context.Background(), client, quality.New("", nil), nil, nil); len(results) != 0 {
+	if results := ReviewUnits(context.Background(), client, quality.New("", nil, false), nil, nil); len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
 	}
 }
@@ -131,7 +131,7 @@ func TestReviewUnits_EmptyList(t *testing.T) {
 func TestReviewUnits_RequestFromMode(t *testing.T) {
 	client := &fakeClient{reply: lgtm}
 	pc := &collect.ProjectContext{Description: "A web app"}
-	mode := quality.New("some-model", []string{"No globals"})
+	mode := quality.New("some-model", []string{"No globals"}, false)
 
 	ReviewUnits(context.Background(), client, mode, []collect.ReviewUnit{goUnit("hello")}, pc)
 
@@ -162,7 +162,7 @@ func (failingParseMode) Parse(llm.Response, collect.ReviewUnit) ([]findings.Find
 
 func TestReviewUnits_ParseError(t *testing.T) {
 	client := &fakeClient{reply: lgtm}
-	mode := failingParseMode{quality.New("", nil)}
+	mode := failingParseMode{quality.New("", nil, false)}
 
 	results := ReviewUnits(context.Background(), client, mode, []collect.ReviewUnit{goUnit("hello")}, nil)
 
@@ -192,11 +192,11 @@ func TestReviewUnits_ParallelKeepsOrderAndBoundsConcurrency(t *testing.T) {
 		// Later units finish first, to prove the order does not come from completion order
 		time.Sleep(time.Duration(20-call) * time.Millisecond)
 		running.Add(-1)
-		return `{"issues":[{"line":2,"description":"issue","suggestion":""}]}`, nil
+		return `{"issues":[{"line":2,"end_line":2,"description":"issue","suggestion":""}]}`, nil
 	}}
 	units := manyUnits(12)
 
-	results := ReviewUnits(context.Background(), client, quality.New("", nil), units, nil)
+	results := ReviewUnits(context.Background(), client, quality.New("", nil, false), units, nil)
 
 	for i, r := range results {
 		if r.Unit.Name != units[i].Name || len(r.Findings) != 1 || r.Err != nil {
@@ -220,7 +220,7 @@ func TestReviewUnits_FirstUnitRunsAlone(t *testing.T) {
 		return `{"issues":[]}`, nil
 	}}
 
-	ReviewUnits(context.Background(), client, quality.New("", nil), manyUnits(6), nil)
+	ReviewUnits(context.Background(), client, quality.New("", nil, false), manyUnits(6), nil)
 
 	if violated.Load() {
 		t.Error("the first call must complete before the others start, so that they can read its cache")
@@ -229,7 +229,7 @@ func TestReviewUnits_FirstUnitRunsAlone(t *testing.T) {
 
 func TestReviewUnits_NoUnits(t *testing.T) {
 	client := &fakeClient{reply: lgtm}
-	if results := ReviewUnits(context.Background(), client, quality.New("", nil), nil, nil); len(results) != 0 || len(client.requests) != 0 {
+	if results := ReviewUnits(context.Background(), client, quality.New("", nil, false), nil, nil); len(results) != 0 || len(client.requests) != 0 {
 		t.Errorf("nothing to review, got %d results and %d requests", len(results), len(client.requests))
 	}
 }
@@ -238,7 +238,7 @@ func TestReviewUnits_BudgetSkipsTheRemainingUnits(t *testing.T) {
 	inner := &fakeClient{reply: lgtm, usage: llm.Usage{Input: 100, Output: 10}}
 	client := llm.WithBudget(inner, 50, nil, nil)
 
-	results := ReviewUnits(context.Background(), client, quality.New("", nil), manyUnits(5), nil)
+	results := ReviewUnits(context.Background(), client, quality.New("", nil, false), manyUnits(5), nil)
 
 	if results[0].Err != nil || results[0].Skipped {
 		t.Errorf("the first unit fits the budget, got %+v", results[0])
@@ -255,7 +255,7 @@ func TestReviewUnits_BudgetSkipsTheRemainingUnits(t *testing.T) {
 
 func TestReviewUnits_ResultsCarryHashAndModel(t *testing.T) {
 	client := &fakeClient{reply: lgtm}
-	mode := quality.New("", []string{"rule"})
+	mode := quality.New("", []string{"rule"}, false)
 	unit := goUnit("hello")
 
 	results := ReviewUnits(context.Background(), client, mode, []collect.ReviewUnit{unit}, nil)

@@ -70,7 +70,7 @@ func TestLive_QualityRequest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	mode := quality.New("claude-sonnet-5-5", nil)
+	mode := quality.New("claude-sonnet-5-5", nil, false)
 	client := New(key, "claude-sonnet-5-5")
 	var last llm.Response
 	for i := 0; i < 2; i++ {

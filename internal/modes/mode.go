@@ -2,6 +2,7 @@ package modes
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/collect/related/presets"
@@ -41,7 +42,7 @@ func Enabled(names []string, cfg *config.Config) ([]Mode, error) {
 
 		switch name {
 		case "quality":
-			result = append(result, quality.New(cfg.Modes.Quality.Model, cfg.QualityRules()))
+			result = append(result, quality.New(cfg.Modes.Quality.Model, cfg.QualityRules(), slices.Contains(names, "security")))
 		case "security":
 			mode, err := newSecurity(cfg)
 			if err != nil {

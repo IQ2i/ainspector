@@ -1,5 +1,5 @@
 {
   "greet": "{\"issues\": []}",
-  "divide": "{\"issues\": [{\"line\": 10, \"description\": \"Division by zero is not checked.\", \"suggestion\": \"\\tif b == 0 {\\n\\t\\treturn 0\\n\\t}\\n\\treturn a / b\"}]}",
-  "printAll": "{\"issues\": [{\"line\": 14, \"description\": \"Off-by-one: the loop reads past the end of the slice.\", \"suggestion\": \"\"}]}"
+  "divide": "{\"issues\": [{\"line\": 10, \"end_line\": 10, \"description\": \"Division by zero is not checked.\", \"suggestion\": \"\\tif b == 0 {\\n\\t\\treturn 0\\n\\t}\\n\\treturn a / b\"}]}",
+  "printAll": "{\"issues\": [{\"line\": 14, \"end_line\": 14, \"description\": \"Off-by-one: the loop reads past the end of the slice.\", \"suggestion\": \"\"}]}"
 }
