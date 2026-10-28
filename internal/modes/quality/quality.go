@@ -26,7 +26,7 @@ func (m *Mode) Name() string { return "quality" }
 
 func (m *Mode) Scope() collect.Scope { return collect.ScopeFunction }
 
-func (m *Mode) Version() string { return "quality/4" }
+func (m *Mode) Version() string { return "quality/5" }
 
 func (m *Mode) Rules() []string { return m.rules }
 

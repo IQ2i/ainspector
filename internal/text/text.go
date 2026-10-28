@@ -3,6 +3,8 @@
 package text
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -50,4 +52,22 @@ func CutAtRune(s string, n int) string {
 		n--
 	}
 	return s[:n]
+}
+
+// Numbered prefixes each line of s with its number, the first one being first, right-aligned on
+// the widest number and followed by "| "
+func Numbered(s string, first int) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	width := len(strconv.Itoa(first + len(lines) - 1))
+	var sb strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		fmt.Fprintf(&sb, "%*d| %s", width, first+i, line)
+	}
+	return sb.String()
 }

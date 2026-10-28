@@ -135,9 +135,9 @@ func TestPromptChecksums(t *testing.T) {
 }
 
 // checksumsVersion is the mode version the checksums below belong to
-const checksumsVersion = "quality/4"
+const checksumsVersion = "quality/5"
 
-const wantBaseChecksum = "a9b80560bcdfc66d3fa495996c0638d8a011fd2ce9dc80e32b9a630bff288877"
+const wantBaseChecksum = "9893a49222455389899eb136c05179bd798299c4e6583bba77bd0b93be6c752a"
 
 var wantRuleChecksums = map[string]string{
 	"bash":       "a9e9d437de8091fdca22c69b77f39babd3b8ff7aa82db4af5fc92783d25e5d5a",
