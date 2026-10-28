@@ -298,7 +298,7 @@ What it reviews, beyond the functions with added lines:
 - Functions whose only change is a deletion: a removed `#[IsGranted]`, authorization check or escaping is a signal.
 - Changes outside any function (class attributes, imports, properties).
 - Files without functions (`twig`, `yaml`, `yml`, `vue`, `env` by default): the changed lines with a few lines of context.
-- With `function+class` and above, the header of the enclosing class: imports, class attributes, properties, constructor and the signature of the other methods, which a controller cannot be judged without. This is available for PHP, TypeScript, JavaScript, Python, Java, C# and Ruby. Go, Rust, C, C++ and Bash have no class header and stay at the `function` scope. A file that was deleted is not reviewed.
+- With `function+class` and above, the header of the enclosing class: imports, class attributes, properties, constructor and the signature of the other methods, which a controller cannot be judged without. This is available for PHP, TypeScript, JavaScript, Python, Java, C# and Ruby. Go, Rust, C, C++ and Bash have no class header and stay at the `function` scope, and so does a Java enum (only classes, interfaces and records have one). A file that was deleted is not reviewed.
 - With `function+class+related`, the files related to the unit, which tell whether an access check really protects it. They are found by naming conventions and text search in the checkout of the job, never by static analysis:
 
   | Changed file | Files joined |
