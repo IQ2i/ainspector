@@ -303,3 +303,50 @@ func TestGitLab_GetModifiedFiles_FlagsFilesWithoutPatch(t *testing.T) {
 		t.Errorf("only an empty diff of a modified or added file is flagged: %v", got)
 	}
 }
+
+func TestGitLab_CreateReview_PositionsContextLinesWithTheirOldLine(t *testing.T) {
+	var positions []map[string]any
+	posted := 0
+	p := newTestGitLab(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			if strings.HasSuffix(r.URL.Path, "/diffs") {
+				_, _ = w.Write([]byte(`[{"old_path":"old/a.go","new_path":"a.go","diff":"@@ -3,3 +3,3 @@\n context3\n-removed\n+added4\n context5"}]`))
+				return
+			}
+			_, _ = w.Write([]byte(gitlabMR))
+			return
+		}
+		posted++
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		positions = append(positions, body["position"].(map[string]any))
+		_, _ = w.Write([]byte(`{"id":"d1","notes":[]}`))
+	})
+
+	results, err := p.CreateReview(context.Background(), 1, []ReviewComment{
+		{Path: "a.go", Line: 3, Body: "context"},
+		{Path: "a.go", Line: 4, Body: "added"},
+		{Path: "a.go", Line: 40, Body: "outside the hunks"},
+		{Path: "other.go", Line: 1, Body: "file the diff does not list"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if results[0].Err != nil || results[1].Err != nil || results[2].Err == nil || results[3].Err != nil {
+		t.Fatalf("only the line outside the hunks must fail: %v %v %v %v", results[0].Err, results[1].Err, results[2].Err, results[3].Err)
+	}
+	if posted != 3 {
+		t.Errorf("a line no hunk shows must not be sent, %d requests", posted)
+	}
+	if positions[0]["new_line"] != float64(3) || positions[0]["old_line"] != float64(3) || positions[0]["old_path"] != "old/a.go" {
+		t.Errorf("a context line needs its old line and the old path: %v", positions[0])
+	}
+	if _, ok := positions[1]["old_line"]; ok || positions[1]["new_line"] != float64(4) {
+		t.Errorf("an added line has no old line: %v", positions[1])
+	}
+	if _, ok := positions[2]["old_line"]; ok {
+		t.Errorf("a file the diff does not list keeps the previous behavior: %v", positions[2])
+	}
+}

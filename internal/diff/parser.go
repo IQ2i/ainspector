@@ -146,3 +146,45 @@ func ExtractDiffForRange(patch string, startLine, endLine int) string {
 
 	return strings.TrimSpace(result.String())
 }
+
+// OldLine tells where a line of the new file stands in a patch. found is false for a line that
+// no hunk shows; added is true for a line the change adds, which has no counterpart in the old
+// file, and otherwise old is the number of the same line in the old file.
+func OldLine(patch string, newLine int) (old int, added, found bool) {
+	if patch == "" {
+		return 0, false, false
+	}
+	if !strings.HasPrefix(patch, "---") {
+		patch = "--- a/file\n+++ b/file\n" + patch
+	}
+	fileDiffs, err := diff.ParseMultiFileDiff([]byte(patch))
+	if err != nil {
+		return 0, false, false
+	}
+	for _, fd := range fileDiffs {
+		for _, hunk := range fd.Hunks {
+			oldLine, curNew := int(hunk.OrigStartLine), int(hunk.NewStartLine)
+			for _, line := range strings.Split(string(hunk.Body), "\n") {
+				if line == "" {
+					continue
+				}
+				switch line[0] {
+				case '+':
+					if curNew == newLine {
+						return 0, true, true
+					}
+					curNew++
+				case '-':
+					oldLine++
+				default:
+					if curNew == newLine {
+						return oldLine, false, true
+					}
+					curNew++
+					oldLine++
+				}
+			}
+		}
+	}
+	return 0, false, false
+}
