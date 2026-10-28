@@ -13,12 +13,9 @@ import (
 	tree_sitter_csharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	tree_sitter_c "github.com/tree-sitter/tree-sitter-c/bindings/go"
 	tree_sitter_cpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
-	tree_sitter_css "github.com/tree-sitter/tree-sitter-css/bindings/go"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
-	tree_sitter_html "github.com/tree-sitter/tree-sitter-html/bindings/go"
 	tree_sitter_java "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	tree_sitter_javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
-	tree_sitter_json "github.com/tree-sitter/tree-sitter-json/bindings/go"
 	tree_sitter_php "github.com/tree-sitter/tree-sitter-php/bindings/go"
 	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	tree_sitter_ruby "github.com/tree-sitter/tree-sitter-ruby/bindings/go"
@@ -335,29 +332,6 @@ func init() {
 			FunctionQuery: `
 				(function_definition name: (word) @name) @function
 			`,
-		},
-		// JSON (no functions, but can parse)
-		".json": {
-			Name:          "json",
-			Language:      tree_sitter_json.Language(),
-			FunctionQuery: ``,
-		},
-		// HTML (no functions, but can parse)
-		".html": {
-			Name:          "html",
-			Language:      tree_sitter_html.Language(),
-			FunctionQuery: ``,
-		},
-		".htm": {
-			Name:          "html",
-			Language:      tree_sitter_html.Language(),
-			FunctionQuery: ``,
-		},
-		// CSS (no functions, but can parse)
-		".css": {
-			Name:          "css",
-			Language:      tree_sitter_css.Language(),
-			FunctionQuery: ``,
 		},
 	}
 }

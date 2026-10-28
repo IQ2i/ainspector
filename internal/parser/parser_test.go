@@ -29,9 +29,9 @@ func TestGetConfig(t *testing.T) {
 		{path: "app.rb", expectedName: "ruby", shouldExist: true},
 		{path: "script.sh", expectedName: "bash", shouldExist: true},
 		{path: "script.bash", expectedName: "bash", shouldExist: true},
-		{path: "data.json", expectedName: "json", shouldExist: true},
-		{path: "index.html", expectedName: "html", shouldExist: true},
-		{path: "style.css", expectedName: "css", shouldExist: true},
+		{path: "data.json", expectedName: "", shouldExist: false},
+		{path: "index.html", expectedName: "", shouldExist: false},
+		{path: "style.css", expectedName: "", shouldExist: false},
 		{path: "unknown.xyz", expectedName: "", shouldExist: false},
 		{path: "noext", expectedName: "", shouldExist: false},
 	}
@@ -586,23 +586,14 @@ func TestParser_EmptyFile(t *testing.T) {
 	}
 }
 
-func TestParser_NoFunctionLanguage(t *testing.T) {
+func TestParser_RejectsLanguagesWithoutFunctions(t *testing.T) {
 	p := NewParser()
 	defer p.Close()
 
-	content := []byte(`{"key": "value"}`)
-
-	functions, lang, err := p.Parse("data.json", content)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if lang != "json" {
-		t.Errorf("expected language 'json', got %s", lang)
-	}
-
-	if len(functions) != 0 {
-		t.Errorf("expected 0 functions for JSON, got %d", len(functions))
+	for _, path := range []string{"data.json", "index.html", "index.htm", "style.css"} {
+		if _, _, err := p.Parse(path, []byte("x")); err == nil {
+			t.Errorf("%s has no grammar, Parse must refuse it", path)
+		}
 	}
 }
 
