@@ -26,11 +26,11 @@ const (
 // skippedDirs are never listed nor read: dependencies, caches, version control and build output
 var skippedDirs = map[string]bool{".git": true, "vendor": true, "node_modules": true, "var": true, "dist": true}
 
-// skippedPrefixes are folders that hold secrets or compiled assets
-var skippedPrefixes = []string{"config/secrets/", "public/build/"}
+// skippedPrefixes are folders of compiled assets
+var skippedPrefixes = []string{"public/build/"}
 
-// skippedFiles are the names, or name patterns, of files that hold secrets or are generated
-var skippedFiles = []string{"*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ed25519*", "auth.json", ".npmrc", "*.min.js", "*.map"}
+// skippedFiles are the names, or name patterns, of generated files
+var skippedFiles = []string{"*.min.js", "*.map"}
 
 type dirRepo struct {
 	root         string
@@ -71,15 +71,12 @@ func (r *dirRepo) excluded(rel string) bool {
 		}
 	}
 	base := segments[len(segments)-1]
-	if base == ".env" || strings.HasPrefix(base, ".env.") {
-		return true
-	}
 	for _, pattern := range skippedFiles {
 		if ok, _ := path.Match(pattern, base); ok {
 			return true
 		}
 	}
-	return r.ignore != nil && r.ignore(rel)
+	return config.IsSensitivePath(rel) || (r.ignore != nil && r.ignore(rel))
 }
 
 func (r *dirRepo) list() []string {

@@ -21,6 +21,9 @@ func TestNewLLMClient(t *testing.T) {
 		{"explicit anthropic", "anthropic", map[string]string{"ANTHROPIC_API_KEY": "a"}, "anthropic", ""},
 		{"explicit anthropic without key", "anthropic", map[string]string{"LLM_API_KEY": "b"}, "", "ANTHROPIC_API_KEY"},
 		{"no key at all", "", nil, "", "LLM_API_KEY"},
+		{"model name with a newline", "", map[string]string{"LLM_API_KEY": "b", "LLM_MODEL": "gpt\n/close"}, "", "LLM_MODEL"},
+		{"model name with spaces", "", map[string]string{"LLM_API_KEY": "b", "LLM_MODEL": "my model"}, "", "LLM_MODEL"},
+		{"local model name", "", map[string]string{"LLM_API_KEY": "b", "LLM_MODEL": "llama3.1:8b"}, "openai", ""},
 	}
 
 	for _, tt := range tests {

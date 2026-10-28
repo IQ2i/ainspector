@@ -231,7 +231,7 @@ func TestIndex_FilterUnreviewed_UnitHashMarker(t *testing.T) {
 func TestIndex_FilterUnreviewed_StateBlock(t *testing.T) {
 	reviewed, fresh := unit("Func1"), unit("Func2")
 	block := FormatStateBlock("quality", StateBlock{Ver: "quality/1", Units: []string{UnitHash(quality, reviewed, "d")}})
-	ix := LoadIndex([]provider.ExistingComment{comment("Summary\n\n" + block)}, "")
+	ix := LoadIndex([]provider.ExistingComment{comment(SummaryMarker("quality") + "\n\n" + block)}, "")
 
 	got := ix.FilterUnreviewed(quality, "d", []collect.ReviewUnit{reviewed, fresh})
 	if len(got) != 1 || got[0].Name != "Func2" {
@@ -424,7 +424,7 @@ func TestIndex_ReportedFindings(t *testing.T) {
 	})
 	ix := LoadIndex([]provider.ExistingComment{
 		{Author: "bot", Positioned: true, Body: "x\n" + FormatFindingMarker("aaaaaaaaaaaa")},
-		{Author: "bot", Body: "summary\n" + block},
+		{Author: "bot", Body: SummaryMarker("security") + "\n" + block},
 		{Author: "intruder", Body: FormatFindingMarker("cccccccccccc")},
 	}, "bot")
 
@@ -499,7 +499,7 @@ func TestIndex_OpenFindingsFollowTheirUnit(t *testing.T) {
 			{Fingerprint: "old", Unit: "u1", Line: 12},
 		},
 	})
-	ix := LoadIndex([]provider.ExistingComment{{Author: "bot", Body: block}}, "bot")
+	ix := LoadIndex([]provider.ExistingComment{{Author: "bot", Body: SummaryMarker("security") + "\n" + block}}, "bot")
 
 	got := ix.OpenFindings(sec, map[string]int{"u1": 40})
 	if len(got) != 2 || got[0].Line != 42 || got[0].EndLine != 44 || got[0].UnitLine != 40 {
@@ -517,7 +517,7 @@ func TestIndex_OpenFindings(t *testing.T) {
 		Open: []findings.Reported{{Fingerprint: "a", Unit: "u1"}, {Fingerprint: "b", Unit: "u2"}},
 	})
 	ix := LoadIndex([]provider.ExistingComment{
-		{Author: "bot", Body: "summary\n" + block},
+		{Author: "bot", Body: SummaryMarker("security") + "\n" + block},
 		{Author: "intruder", Body: FormatStateBlock("quality", StateBlock{Scope: "function", Ver: "quality/2", Open: []findings.Reported{{Fingerprint: "z", Unit: "u1"}}})},
 	}, "bot")
 
@@ -568,5 +568,25 @@ func TestOwnInlineComments_KeepsTheMostRecent(t *testing.T) {
 	got := OwnInlineComments(comments, "bot")
 	if len(got) != MaxFeedbackComments || got[0].ID != "5" {
 		t.Errorf("got %d comments starting at %s", len(got), got[0].ID)
+	}
+}
+
+func TestLoadIndex_StateBlockOnlyCountsInTheSummaryOfItsMode(t *testing.T) {
+	reviewed := unit("Reviewed")
+	block := FormatStateBlock("quality", StateBlock{Ver: "quality/1", Units: []string{UnitHash(quality, reviewed, "d")}})
+	units := []collect.ReviewUnit{reviewed}
+
+	for name, body := range map[string]string{
+		"an inline comment":           "Looks fine\n" + block,
+		"a notice":                    "<!-- ainspector:notice -->\n" + block,
+		"the summary of another mode": SummaryMarker("security") + "\n" + block,
+		"a marker past the start":     "text\n" + SummaryMarker("quality") + "\n" + block,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ix := LoadIndex([]provider.ExistingComment{{Author: "github-actions[bot]", Body: body}}, "github-actions[bot]")
+			if got := ix.FilterUnreviewed(quality, "d", units); len(got) != 1 {
+				t.Errorf("a state block outside the summary of its mode must be ignored, got %+v", got)
+			}
+		})
 	}
 }

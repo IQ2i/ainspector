@@ -54,6 +54,9 @@ const (
 // maxHeaderBytes caps the class header sent with a unit
 const maxHeaderBytes = 12000
 
+// maxFunctionBytes caps the content and the diff of a function unit
+const maxFunctionBytes = 64 << 10
+
 // ReviewUnit is a piece of modified code sent to the LLM for review
 type ReviewUnit struct {
 	Kind       UnitKind `json:"kind"`
@@ -225,6 +228,11 @@ func (e *Collector) extractFromFile(ctx context.Context, file provider.ModifiedF
 			Language:    language,
 			ChangeType:  changeType,
 			DeletedOnly: !added,
+		}
+		if len(unit.Content) > maxFunctionBytes || len(unit.Diff) > maxFunctionBytes {
+			unit.Content = cutAtLine(unit.Content, maxFunctionBytes)
+			unit.Diff = cutAtLine(unit.Diff, maxFunctionBytes)
+			unit.Notes = append(unit.Notes, fmt.Sprintf("Function %s in %s was truncated to %d bytes", fn.Name, file.Path, maxFunctionBytes))
 		}
 		if req.Scope >= ScopeFunctionClass && fn.Enclosing != nil {
 			unit.Enclosing = e.classHeader(file.Path, content, fn.Enclosing, headers)

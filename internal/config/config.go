@@ -48,12 +48,18 @@ type Price struct {
 	CacheWrite float64 `yaml:"cache_write"`
 }
 
-// TokenBudget returns the token cap of a run
-func (c LLMConfig) TokenBudget() int {
-	if c.MaxTokensPerRun > 0 {
-		return c.MaxTokensPerRun
+// TokenBudget returns the token cap of a run. The cap comes from the environment of the job
+// (envCap, zero when unset) or from DefaultMaxTokensPerRun, and the configuration, which comes
+// from the change under review, can only lower it.
+func (c LLMConfig) TokenBudget(envCap int) int {
+	limit := DefaultMaxTokensPerRun
+	if envCap > 0 {
+		limit = envCap
 	}
-	return DefaultMaxTokensPerRun
+	if c.MaxTokensPerRun > 0 {
+		limit = min(limit, c.MaxTokensPerRun)
+	}
+	return limit
 }
 
 const (
@@ -96,6 +102,26 @@ const (
 	DefaultRelatedMaxFiles     = 6
 	DefaultRelatedMaxBytes     = 40000
 )
+
+// Hard bounds of the settings that grow the prompt: the file comes from the change under review
+const (
+	MaxContextBytes     = 256 << 10
+	MaxRelatedBytes     = 200000
+	MaxRelatedFiles     = 20
+	MaxHunkLines        = 50
+	MaxSecurityFindings = 50
+)
+
+// modelNamePattern is what a model name may look like: it ends up in comments written by the bot
+var modelNamePattern = regexp.MustCompile(`^[\w.:/-]{1,128}$`)
+
+// CheckModelName rejects a model name that could not be one
+func CheckModelName(name string) error {
+	if !modelNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid model name %q (expected 1 to 128 letters, digits or . : / _ -)", name)
+	}
+	return nil
+}
 
 // KnownRelatedPresets are the resolvers of related files that can be named in the configuration
 var KnownRelatedPresets = []string{"symfony", "vue"}
@@ -177,11 +203,14 @@ func IsConfigFile(path string) bool {
 	return slices.Contains(configFileNames, filepath.ToSlash(path))
 }
 
-// Load reads the configuration from ainspector.yaml or ainspector.yml
+// maxConfigBytes caps the size of the configuration file
+const maxConfigBytes = 1 << 20
+
+// Load reads the configuration from ainspector.yaml or ainspector.yml in the project root
 // Returns an empty config (not an error) if no config file exists
-func Load() (*Config, error) {
+func Load(root string) (*Config, error) {
 	for _, filename := range configFileNames {
-		data, err := os.ReadFile(filename)
+		data, err := ReadProjectFile(root, filename, maxConfigBytes)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -234,9 +263,15 @@ func parse(source string, data []byte) (*Config, error) {
 	if sec := cfg.Modes.Security; sec.MaxFindings < 0 || sec.Hunks.Before < 0 || sec.Hunks.After < 0 {
 		return nil, fmt.Errorf("%s: modes.security.max_findings and modes.security.hunks must not be negative", source)
 	}
+	if sec := cfg.Modes.Security; sec.MaxFindings > MaxSecurityFindings || sec.Hunks.Before > MaxHunkLines || sec.Hunks.After > MaxHunkLines {
+		return nil, fmt.Errorf("%s: modes.security.max_findings must not exceed %d and modes.security.hunks %d", source, MaxSecurityFindings, MaxHunkLines)
+	}
 	rel := cfg.Modes.Security.Related
 	if rel.MaxFiles < 0 || rel.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: modes.security.related.max_files and max_bytes must not be negative", source)
+	}
+	if rel.MaxFiles > MaxRelatedFiles || rel.MaxBytes > MaxRelatedBytes {
+		return nil, fmt.Errorf("%s: modes.security.related.max_files must not exceed %d and max_bytes %d", source, MaxRelatedFiles, MaxRelatedBytes)
 	}
 	for _, preset := range rel.Presets {
 		if !slices.Contains(KnownRelatedPresets, preset) {
@@ -256,6 +291,31 @@ func parse(source string, data []byte) (*Config, error) {
 	}
 	if cfg.LLM.MaxTokensPerRun < 0 || cfg.Context.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: llm.max_tokens_per_run and context.max_bytes must not be negative", source)
+	}
+	for _, pattern := range append(slices.Clone(cfg.Context.Include), cfg.Context.Exclude...) {
+		if err := CheckContextPattern(pattern); err != nil {
+			return nil, fmt.Errorf("%s: invalid context pattern: %w", source, err)
+		}
+	}
+	if cfg.Context.MaxBytes > MaxContextBytes {
+		return nil, fmt.Errorf("%s: context.max_bytes must not exceed %d", source, MaxContextBytes)
+	}
+	for name, model := range map[string]string{
+		"modes.quality.model":                 cfg.Modes.Quality.Model,
+		"modes.security.model":                cfg.Modes.Security.Model,
+		"modes.security.false_positive.model": cfg.Modes.Security.FalsePositive.Model,
+	} {
+		if model == "" {
+			continue
+		}
+		if err := CheckModelName(model); err != nil {
+			return nil, fmt.Errorf("%s: %s: %w", source, name, err)
+		}
+	}
+	for model := range cfg.LLM.Prices {
+		if err := CheckModelName(model); err != nil {
+			return nil, fmt.Errorf("%s: llm.prices: %w", source, err)
+		}
 	}
 	for model, p := range cfg.LLM.Prices {
 		if p.Input < 0 || p.Output < 0 || p.CacheRead < 0 || p.CacheWrite < 0 {

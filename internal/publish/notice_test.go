@@ -50,3 +50,15 @@ func TestNoticeBody_NeutralizesTheReason(t *testing.T) {
 		t.Errorf("a quick action survived: %q", body)
 	}
 }
+
+func TestOwnNote_MarkerMustOpenTheComment(t *testing.T) {
+	marker := SummaryMarker("quality")
+	existing := []provider.ExistingComment{
+		{ID: "1", Author: "bot", Body: "another workflow quotes " + marker + " in a sentence"},
+		{ID: "2", Author: "bot", Body: "\n" + marker + "\nreal summary"},
+	}
+	c, ok := ownNote(existing, "bot", marker)
+	if !ok || c.ID != "2" {
+		t.Errorf("only a comment opening with the marker is the summary, got %+v %v", c, ok)
+	}
+}

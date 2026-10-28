@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -115,17 +114,18 @@ func (p *GitHubProvider) GetFileContent(ctx context.Context, path string) (strin
 		return "", fmt.Errorf("failed to get file content: %w", err)
 	}
 
-	if content == nil {
-		return "", fmt.Errorf("file not found: %s", path)
+	// A directory comes back without a content, and a symbolic link or a submodule added by the
+	// PR as an entry without one
+	if content == nil || content.GetType() != "file" {
+		return "", fmt.Errorf("not a regular file: %s", path)
 	}
 
-	// Content is base64 encoded
-	decoded, err := base64.StdEncoding.DecodeString(*content.Content)
+	text, err := content.GetContent()
 	if err != nil {
 		return "", fmt.Errorf("failed to decode content: %w", err)
 	}
 
-	return string(decoded), nil
+	return text, nil
 }
 
 // PostComment posts a comment on the pull request and returns its ID

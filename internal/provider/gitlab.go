@@ -191,6 +191,14 @@ func (p *GitLabProvider) CreateReview(ctx context.Context, number int, comments 
 	}
 
 	results := make([]CommentResult, 0, len(comments))
+	if info.BaseSHA == "" || info.StartSHA == "" || info.HeadSHA == "" {
+		// GitLab has not computed the diff of the merge request yet: a position needs its SHAs
+		fmt.Printf("Warning: merge request !%d has no diff_refs yet, its comments cannot be positioned\n", number)
+		for _, c := range comments {
+			results = append(results, CommentResult{Comment: c, Err: errors.New("the merge request has no diff_refs yet")})
+		}
+		return results, nil
+	}
 	for _, c := range comments {
 		body := c.Body
 		if c.Suggestion != "" {

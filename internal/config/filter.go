@@ -98,7 +98,7 @@ func (c *Config) HasChangeFilters() bool {
 func (c *Config) ShouldIgnoreChange(author, title string, labels []string) (bool, string) {
 	for _, a := range c.Ignore.Authors {
 		if strings.EqualFold(a, author) {
-			return true, fmt.Sprintf("author %s is ignored", author)
+			return true, fmt.Sprintf("author %q is ignored", author)
 		}
 	}
 
@@ -112,7 +112,7 @@ func (c *Config) ShouldIgnoreChange(author, title string, labels []string) (bool
 	for _, ignored := range c.Ignore.Labels {
 		for _, l := range labels {
 			if strings.EqualFold(ignored, l) {
-				return true, fmt.Sprintf("label %s is ignored", l)
+				return true, fmt.Sprintf("label %q is ignored", l)
 			}
 		}
 	}

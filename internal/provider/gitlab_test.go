@@ -255,3 +255,24 @@ func TestGitLab_ListReactions(t *testing.T) {
 		t.Errorf("unexpected counts: %+v", got)
 	}
 }
+
+func TestGitLab_CreateReview_WithoutDiffRefsReportsEveryComment(t *testing.T) {
+	posted := 0
+	p := newTestGitLab(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posted++
+		}
+		_, _ = w.Write([]byte(`{"iid":1,"title":"t","diff_refs":{"base_sha":"","start_sha":"","head_sha":""}}`))
+	})
+
+	results, err := p.CreateReview(context.Background(), 1, []ReviewComment{{Path: "a.go", Line: 3, Body: "x"}, {Path: "b.go", Line: 4, Body: "y"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if posted != 0 {
+		t.Errorf("no discussion can be positioned without diff_refs, %d were posted", posted)
+	}
+	if len(results) != 2 || results[0].Err == nil || results[1].Err == nil || results[1].Comment.Path != "b.go" {
+		t.Errorf("every comment must come back with an error so it is posted as a general note: %+v", results)
+	}
+}

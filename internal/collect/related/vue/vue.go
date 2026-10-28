@@ -70,10 +70,15 @@ func resolveImport(dir, spec string) string {
 	case strings.HasPrefix(spec, "./"), strings.HasPrefix(spec, "../"):
 		p = path.Join(dir, spec)
 	case strings.HasPrefix(spec, "@/"), strings.HasPrefix(spec, "~/"):
-		p = "src/" + spec[2:]
+		p = path.Clean("src/" + spec[2:])
+		// The alias stands for src/: a ".." must not climb out of it
+		if !strings.HasPrefix(p, "src/") {
+			return ""
+		}
 	default:
 		return ""
 	}
+	p = path.Clean(p)
 	if p == ".." || strings.HasPrefix(p, "../") {
 		return ""
 	}

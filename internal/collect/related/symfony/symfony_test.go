@@ -188,6 +188,15 @@ func TestController_AccessRulesKeepTheOrderAndDropSecrets(t *testing.T) {
                 lifetime: 60
         api:
             stateless: true
+            access_token:
+                token_handler: app.handler
+                api_key: abc123
+        ldap:
+            http_basic_ldap:
+                service: Symfony\Component\Ldap\Ldap
+                search_dn: cn=admin
+                search_password: ldap-admin-pass
+                signing_key: k3y
     access_control:
         - { path: ^/admin, roles: ROLE_ADMIN }
         - { path: ^/, roles: PUBLIC_ACCESS }
@@ -200,6 +209,14 @@ func TestController_AccessRulesKeepTheOrderAndDropSecrets(t *testing.T) {
 	}
 	if strings.Index(rules, "ROLE_ADMIN") > strings.Index(rules, "PUBLIC_ACCESS") {
 		t.Errorf("the access_control rules must stay in order:\n%s", rules)
+	}
+	for _, leaked := range []string{"ldap-admin-pass", "abc123", "k3y"} {
+		if strings.Contains(rules, leaked) {
+			t.Errorf("%s must be dropped:\n%s", leaked, rules)
+		}
+	}
+	if !strings.Contains(rules, "token_handler: app.handler") || !strings.Contains(rules, "search_dn") {
+		t.Errorf("sections and plain settings must stay:\n%s", rules)
 	}
 	if strings.Contains(rules, "kernel.secret") || strings.Contains(rules, "password_hashers") || !strings.Contains(rules, "lifetime") {
 		t.Errorf("secrets and unrelated sections must go, the rest stay:\n%s", rules)

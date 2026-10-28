@@ -101,8 +101,8 @@ func findContextFiles(projectRoot string, limit int) ([]contextFile, []string, e
 	add := func(relPath string) {
 		content, err := config.ReadProjectFile(projectRoot, relPath, limit)
 		if err != nil {
-			if errors.Is(err, config.ErrOutsideRoot) {
-				warnings = append(warnings, fmt.Sprintf("context file ignored: %v", err))
+			if errors.Is(err, config.ErrOutsideRoot) || errors.Is(err, config.ErrSensitive) {
+				warnings = append(warnings, fmt.Sprintf("context file ignored, it resolves outside the project or to a secret: %q", relPath))
 			}
 			return
 		}
