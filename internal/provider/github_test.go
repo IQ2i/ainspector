@@ -284,3 +284,34 @@ func TestGitHub_ListReactions(t *testing.T) {
 		t.Errorf("unexpected counts: %+v", got)
 	}
 }
+
+func TestGitHub_GetFileContent(t *testing.T) {
+	responses := map[string]string{
+		"/repos/owner/repo/contents/src/a.go":   `{"type":"file","encoding":"base64","content":"cGFja2FnZSBhCg=="}`,
+		"/repos/owner/repo/contents/link":       `{"type":"symlink","target":"/etc/passwd"}`,
+		"/repos/owner/repo/contents/vendor/sub": `{"type":"submodule","submodule_git_url":"https://example.com/x.git"}`,
+		"/repos/owner/repo/contents/src":        `[{"type":"file","name":"a.go"}]`,
+	}
+	p := newTestGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("ref") != "headsha" {
+			t.Errorf("the file must be read at the head of the PR, got %s", r.URL.RawQuery)
+		}
+		body, ok := responses[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	})
+
+	got, err := p.GetFileContent(context.Background(), "src/a.go")
+	if err != nil || got != "package a\n" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+
+	for _, path := range []string{"link", "vendor/sub", "src", "missing"} {
+		if _, err := p.GetFileContent(context.Background(), path); err == nil {
+			t.Errorf("%s must be refused with an error, not read or panic", path)
+		}
+	}
+}
