@@ -276,3 +276,30 @@ func TestGitLab_CreateReview_WithoutDiffRefsReportsEveryComment(t *testing.T) {
 		t.Errorf("every comment must come back with an error so it is posted as a general note: %+v", results)
 	}
 }
+
+func TestGitLab_GetModifiedFiles_FlagsFilesWithoutPatch(t *testing.T) {
+	p := newTestGitLab(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/diffs") {
+			_, _ = w.Write([]byte(`[
+				{"new_path":"a.go","old_path":"a.go","diff":"@@ -1 +1 @@\n-a\n+b"},
+				{"new_path":"huge.go","old_path":"huge.go","diff":""},
+				{"new_path":"new.go","old_path":"old.go","diff":"","renamed_file":true},
+				{"new_path":"gone.go","old_path":"gone.go","diff":"","deleted_file":true}
+			]`))
+			return
+		}
+		_, _ = w.Write([]byte(gitlabMR))
+	})
+
+	files, err := p.GetModifiedFiles(context.Background(), 1)
+	if err != nil || len(files) != 4 {
+		t.Fatalf("files %d, err %v", len(files), err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[f.Path] = f.NoPatch
+	}
+	if got["a.go"] || !got["huge.go"] || got["new.go"] || got["gone.go"] {
+		t.Errorf("only an empty diff of a modified or added file is flagged: %v", got)
+	}
+}

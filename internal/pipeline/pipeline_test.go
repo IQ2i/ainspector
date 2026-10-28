@@ -33,6 +33,7 @@ type mrFixture struct {
 		OldPath string `json:"old_path"`
 		Status  string `json:"status"`
 		Patch   string `json:"patch"`
+		NoPatch bool   `json:"no_patch"`
 	} `json:"files"`
 	ExistingComments []struct {
 		Path string `json:"path"`
@@ -72,6 +73,8 @@ type fakeProvider struct {
 	notes   []string
 	self    string
 	postErr error
+	// changedFiles is the count of files the platform announces for the change
+	changedFiles int
 	// reactions are the thumbs of the comments by ID, reactionErr is returned with them
 	reactions   map[string]provider.ReactionCount
 	reactionErr error
@@ -90,7 +93,7 @@ func (f *fakeProvider) ListReactions(ctx context.Context, number int, ids []stri
 func (f *fakeProvider) GetModifiedFiles(ctx context.Context, number int) ([]provider.ModifiedFile, error) {
 	var out []provider.ModifiedFile
 	for _, file := range f.mr.Files {
-		out = append(out, provider.ModifiedFile{Path: file.Path, OldPath: file.OldPath, Status: file.Status, Patch: file.Patch})
+		out = append(out, provider.ModifiedFile{Path: file.Path, OldPath: file.OldPath, Status: file.Status, Patch: file.Patch, NoPatch: file.NoPatch})
 	}
 	return out, nil
 }
@@ -102,7 +105,7 @@ func (f *fakeProvider) GetFileContent(ctx context.Context, path string) (string,
 
 func (f *fakeProvider) GetChangeInfo(ctx context.Context, number int) (provider.ChangeInfo, error) {
 	c := f.mr.Change
-	return provider.ChangeInfo{Number: number, Author: c.Author, Title: c.Title, Labels: c.Labels}, nil
+	return provider.ChangeInfo{Number: number, Author: c.Author, Title: c.Title, Labels: c.Labels, ChangedFiles: f.changedFiles}, nil
 }
 
 func (f *fakeProvider) CurrentUser(ctx context.Context) (string, error) {
@@ -885,7 +888,7 @@ func TestRun_FilesKeptOutOfReviewAreListedInTheSummary(t *testing.T) {
 	if len(notes) != 1 {
 		t.Fatalf("expected the summary, got %v", notes)
 	}
-	for _, want := range []string{"src/Foo/vendor/x.go", "web/node_modules/x/index.go", "1 file skipped, the name holds control characters"} {
+	for _, want := range []string{"src/Foo/vendor/x.go", "web/node_modules/x/index.go", "1 file skipped, the name holds control characters", "2 files are never reviewed (vendor, generated)"} {
 		if !strings.Contains(notes[0], want) {
 			t.Errorf("the summary should mention %q:\n%s", want, notes[0])
 		}
@@ -911,18 +914,115 @@ func TestRun_ChangeThatOnlyTouchesNestedVendorDirectoriesIsNoticed(t *testing.T)
 	}
 }
 
-func TestHiddenNote_CapsTheList(t *testing.T) {
+func noneIgnored(string) bool { return false }
+
+func TestHiddenNotes(t *testing.T) {
 	var files []provider.ModifiedFile
 	for i := range 25 {
 		files = append(files, provider.ModifiedFile{Path: fmt.Sprintf("a/vendor/f%d.go", i)})
 	}
 	files = append(files, provider.ModifiedFile{Path: "vendor/root.go"}, provider.ModifiedFile{Path: "a/node_modules/gone.js", Status: "deleted"})
 
-	note := hiddenNote(files)
-	if !strings.Contains(note, "(and 5 more)") || strings.Contains(note, "root.go") || strings.Contains(note, "gone.js") {
-		t.Errorf("note = %q", note)
+	notes, counted := hiddenNotes(files, nil, noneIgnored)
+	if len(notes) != 1 || !strings.Contains(notes[0], "(and 5 more)") || strings.Contains(notes[0], "root.go") || strings.Contains(notes[0], "gone.js") {
+		t.Errorf("notes = %q", notes)
 	}
-	if hiddenNote(files[25:]) != "" {
-		t.Error("the vendor directory of the root and deleted files are not worth a note")
+	if counted != "1 file is never reviewed (vendor, generated)" {
+		t.Errorf("counted = %q", counted)
+	}
+
+	notes, counted = hiddenNotes(files[25:], nil, noneIgnored)
+	if len(notes) != 0 || counted == "" {
+		t.Errorf("a root vendor directory is counted, not listed, and a deleted file is ignored: %q %q", notes, counted)
+	}
+}
+
+func TestHiddenNotes_FilesWithoutPatch(t *testing.T) {
+	files := []provider.ModifiedFile{
+		{Path: "src/Big.php", NoPatch: true},
+		{Path: "templates/big.twig", NoPatch: true},
+		{Path: "logo.png", NoPatch: true},
+		{Path: "src/Small.php"},
+		{Path: "web/app.min.js", NoPatch: true},
+		{Path: "web/app.min.css"},
+		{Path: "public/app.map"},
+	}
+	notes, counted := hiddenNotes(files, []string{"twig"}, noneIgnored)
+	if len(notes) != 1 || !strings.Contains(notes[0], "src/Big.php") || !strings.Contains(notes[0], "templates/big.twig") {
+		t.Fatalf("notes = %q", notes)
+	}
+	if strings.Contains(notes[0], "logo.png") || strings.Contains(notes[0], "Small.php") || strings.Contains(notes[0], "app.min.js") {
+		t.Errorf("only reviewable files without a patch are listed: %q", notes[0])
+	}
+	if counted != "3 files are never reviewed (vendor, generated)" {
+		t.Errorf("counted = %q", counted)
+	}
+}
+
+func TestRun_FilesWithoutPatchAndTruncatedListAreReported(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	extra := h.fake.mr.Files[0]
+	extra.Path = "internal/huge.go"
+	extra.Patch = ""
+	extra.NoPatch = true
+	h.fake.mr.Files = append(h.fake.mr.Files, extra)
+	h.fake.changedFiles = len(h.fake.mr.Files) + 40
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	notes := h.fake.noteBodies()
+	if len(notes) != 1 {
+		t.Fatalf("expected the summary, got %v", notes)
+	}
+	for _, want := range []string{"internal/huge.go", "never reviewed", "changed files, the others are never reviewed"} {
+		if !strings.Contains(notes[0], want) {
+			t.Errorf("the summary should mention %q:\n%s", want, notes[0])
+		}
+	}
+}
+
+func TestHiddenNotes_IgnoredFilesWithoutPatchAreNotReported(t *testing.T) {
+	files := []provider.ModifiedFile{{Path: "api/big.pb.go", NoPatch: true}, {Path: "src/Big.php", NoPatch: true}}
+	notes, _ := hiddenNotes(files, nil, func(p string) bool { return strings.HasSuffix(p, ".pb.go") })
+	if len(notes) != 1 || strings.Contains(notes[0], "pb.go") || !strings.Contains(notes[0], "src/Big.php") {
+		t.Errorf("a file the project ignores on purpose is not a finding: %q", notes)
+	}
+}
+
+func TestRun_CompleteFileListIsNotReportedAsTruncated(t *testing.T) {
+	for name, announced := range map[string]func(n int) int{
+		"unknown count": func(int) int { return 0 },
+		"exact count":   func(n int) int { return n },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+			h.fake.changedFiles = announced(len(h.fake.mr.Files))
+			if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range h.fake.noteBodies() {
+				if strings.Contains(n, "changed files, the others") {
+					t.Errorf("no truncation note expected:\n%s", n)
+				}
+			}
+		})
+	}
+}
+
+func TestRun_UnsafeNamesCountAsListedFiles(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	extra := h.fake.mr.Files[0]
+	extra.Path = "evil\n::error::x.go"
+	h.fake.mr.Files = append(h.fake.mr.Files, extra)
+	h.fake.changedFiles = len(h.fake.mr.Files)
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range h.fake.noteBodies() {
+		if strings.Contains(n, "changed files, the others") {
+			t.Errorf("a file dropped for its name was listed by the platform:\n%s", n)
+		}
 	}
 }

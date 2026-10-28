@@ -172,7 +172,7 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/3\",\"units\":[\"872f1779f0fa\",\"4c9331bf8373\",\"7bdae222279f\"],\"findings\":[],\"open\":[{\"fp\":\"888a8eb36629\",\"file\":\"main.go\",\"line\":10,\"title\":\"Division by zero is not checked.\",\"end\":10,\"unit\":\"4c9331bf8373\",\"ul\":9},{\"fp\":\"8a36724d86db\",\"file\":\"main.go\",\"line\":14,\"title\":\"Off-by-one: the loop reads past the end of the slice.\",\"end\":14,\"unit\":\"7bdae222279f\",\"ul\":13}]} --\u003e\n"
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 3 functions, 2 issues reported.\n\nModel: `test-model`\n\nTokens: 300 in, 30 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\nNotes:\n- 1 file is never reviewed (vendor, generated)\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/3\",\"units\":[\"872f1779f0fa\",\"4c9331bf8373\",\"7bdae222279f\"],\"findings\":[],\"open\":[{\"fp\":\"888a8eb36629\",\"file\":\"main.go\",\"line\":10,\"title\":\"Division by zero is not checked.\",\"end\":10,\"unit\":\"4c9331bf8373\",\"ul\":9},{\"fp\":\"8a36724d86db\",\"file\":\"main.go\",\"line\":14,\"title\":\"Off-by-one: the loop reads past the end of the slice.\",\"end\":14,\"unit\":\"7bdae222279f\",\"ul\":13}]} --\u003e\n"
   ],
   "code_quality": [
     {
@@ -278,7 +278,9 @@
         },
         "cost": 0,
         "cost_incomplete": true,
-        "notes": []
+        "notes": [
+          "1 file is never reviewed (vendor, generated)"
+        ]
       }
     ]
   }

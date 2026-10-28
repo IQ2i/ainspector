@@ -113,6 +113,8 @@ func (p *GitLabProvider) GetModifiedFiles(ctx context.Context, number int) ([]Mo
 			OldPath: diff.OldPath,
 			Status:  status,
 			Patch:   diff.Diff,
+			// Too large and collapsed diffs come back empty, as binary files and mode changes do
+			NoPatch: diff.Diff == "" && status != "deleted" && status != "renamed",
 		}
 		result = append(result, mf)
 	}

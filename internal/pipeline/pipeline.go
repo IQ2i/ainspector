@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -13,6 +14,7 @@ import (
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/modes"
+	"github.com/iq2i/ainspector/internal/parser"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/iq2i/ainspector/internal/publish"
 	"github.com/iq2i/ainspector/internal/state"
@@ -107,15 +109,24 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	if unsafe > 0 {
 		changeNotes = append(changeNotes, fmt.Sprintf("%d %s skipped, the name holds control characters", unsafe, plural(unsafe, "file")))
 	}
-	if note := hiddenNote(files); note != "" {
+	req := collectRequest(files, enabled)
+	hidden, counted := hiddenNotes(files, req.Hunks.Extensions, cfg.ShouldIgnore)
+	if info, err := changeInfo(); err != nil {
+		fmt.Printf("Warning: could not check that the platform lists every changed file: %v\n", err)
+	} else if info.ChangedFiles > len(files)+unsafe {
+		hidden = append(hidden, fmt.Sprintf("The platform lists %d of the %d changed files, the others are never reviewed", len(files)+unsafe, info.ChangedFiles))
+	}
+	for _, note := range hidden {
 		fmt.Printf("Warning: %s\n", note)
-		changeNotes = append(changeNotes, note)
+	}
+	changeNotes = append(changeNotes, hidden...)
+	if counted != "" {
+		changeNotes = append(changeNotes, counted)
 	}
 	fmt.Printf("Found %d modified files\n", len(files))
 
 	collector := collect.New(deps.Provider, cfg)
 	defer collector.Close()
-	req := collectRequest(files, enabled)
 	units, err := collector.Collect(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to extract functions: %w", err)
@@ -125,10 +136,6 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 
 	if len(units) == 0 {
 		fmt.Println("No code to review")
-		var hidden []string
-		if note := hiddenNote(files); note != "" {
-			hidden = append(hidden, note)
-		}
 		return errors.Join(out.write(), stopped(ctx, deps, opts, files, "no file of the change is left to review", hidden...))
 	}
 
@@ -575,25 +582,55 @@ func dropUnsafePaths(files []provider.ModifiedFile) ([]provider.ModifiedFile, in
 // maxHiddenListed caps the paths named in the note about vendored files
 const maxHiddenListed = 20
 
-// hiddenNote lists the files that are never reviewed because they sit below a vendor or
-// node_modules directory that is not at the root of the project. Nothing in the configuration
-// can bring them back, so the change could hide code there: the participants must be told.
-func hiddenNote(files []provider.ModifiedFile) string {
-	var paths []string
+// hiddenNotes tells which files of the change escape the review without any setting to bring
+// them back, as the change could hide code there: the files below a vendor or node_modules
+// directory that is not at the root of the project, the files of a reviewable kind the platform
+// sent without a patch, and the vendored or generated files at the root, which are only counted.
+func hiddenNotes(files []provider.ModifiedFile, hunkExtensions []string, ignored func(string) bool) (notes []string, counted string) {
+	var nested, noPatch []string
+	rooted := 0
 	for _, f := range files {
-		if f.Status != "deleted" && config.IsNestedVendoredPath(f.Path) {
-			paths = append(paths, f.Path)
+		if f.Status == "deleted" {
+			continue
+		}
+		switch {
+		case config.IsNestedVendoredPath(f.Path):
+			nested = append(nested, f.Path)
+		case config.IsGeneratedPath(f.Path) || config.IsVendoredPath(f.Path):
+			rooted++
+		case f.NoPatch && reviewable(f.Path, hunkExtensions) && !ignored(f.Path):
+			noPatch = append(noPatch, f.Path)
 		}
 	}
-	if len(paths) == 0 {
-		return ""
+
+	if len(nested) > 0 {
+		notes = append(notes, "Not reviewed, below a nested vendor or node_modules directory: "+listPaths(nested))
 	}
+	if len(noPatch) > 0 {
+		notes = append(notes, "Not reviewed, the platform sent no diff for them (too large, collapsed or empty): "+listPaths(noPatch))
+	}
+	if rooted > 0 {
+		verb := "is"
+		if rooted > 1 {
+			verb = "are"
+		}
+		counted = fmt.Sprintf("%d %s %s never reviewed (vendor, generated)", rooted, plural(rooted, "file"), verb)
+	}
+	return notes, counted
+}
+
+// reviewable tells whether a file would have been reviewed had its patch been given
+func reviewable(path string, hunkExtensions []string) bool {
+	return parser.IsSupported(path) || slices.Contains(hunkExtensions, strings.TrimPrefix(filepath.Ext(path), "."))
+}
+
+func listPaths(paths []string) string {
 	listed := paths[:min(len(paths), maxHiddenListed)]
-	note := "Not reviewed, below a nested vendor or node_modules directory: " + strings.Join(listed, ", ")
+	list := strings.Join(listed, ", ")
 	if more := len(paths) - len(listed); more > 0 {
-		note += fmt.Sprintf(" (and %d more)", more)
+		list += fmt.Sprintf(" (and %d more)", more)
 	}
-	return note
+	return list
 }
 
 func plural(n int, word string) string {
