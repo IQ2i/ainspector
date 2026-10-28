@@ -174,14 +174,34 @@ func mappingValue(n *yaml.Node, key string) *yaml.Node {
 	return nil
 }
 
-// dropSecrets removes the "secret" entries of a tree, e.g. the one of remember_me
+// secretKeyWords are what makes a setting look like a credential, e.g. remember_me.secret or
+// the search_password of an LDAP provider
+var secretKeyWords = []string{"password", "secret", "key", "token"}
+
+func isSecretKey(name string) bool {
+	name = strings.ToLower(name)
+	// A service id that tells how the token is checked, which a security review needs
+	if name == "token_handler" {
+		return false
+	}
+	for _, w := range secretKeyWords {
+		if strings.Contains(name, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropSecrets removes the entries of a tree that hold a credential: a key named after one, with a
+// value that is not a section (access_token and password_hashers are sections to keep)
 func dropSecrets(n *yaml.Node) {
 	if n.Kind == yaml.MappingNode {
 		kept := n.Content[:0]
 		for i := 0; i+1 < len(n.Content); i += 2 {
-			if n.Content[i].Value != "secret" {
-				kept = append(kept, n.Content[i], n.Content[i+1])
+			if isSecretKey(n.Content[i].Value) && n.Content[i+1].Kind != yaml.MappingNode {
+				continue
 			}
+			kept = append(kept, n.Content[i], n.Content[i+1])
 		}
 		n.Content = kept
 	}

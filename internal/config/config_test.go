@@ -563,12 +563,12 @@ func TestParse_SecurityRelatedInvalid(t *testing.T) {
 }
 
 func TestCheckOutputPath(t *testing.T) {
-	for _, ok := range []string{"report.json", "reports/gl-code-quality.json", "./report.json", "a..b/c.json"} {
+	for _, ok := range []string{"report.json", "reports/gl-code-quality.json", "./report.json", "a..b/c.json", ".github/report.json", "x.git/y.json"} {
 		if err := CheckOutputPath(ok); err != nil {
 			t.Errorf("%q should be accepted: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"", "/etc/passwd", `\evil`, "../x.json", "a/../../x.json", `a\..\x.json`, "a/.."} {
+	for _, bad := range []string{"", "/etc/passwd", `\evil`, "../x.json", "a/../../x.json", `a\..\x.json`, "a/..", ".git/info/x", "a/.git/hooks/pre-commit", ".GIT/config", `.git\hooks\x`} {
 		if err := CheckOutputPath(bad); err == nil {
 			t.Errorf("%q should be refused", bad)
 		}

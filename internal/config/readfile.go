@@ -63,6 +63,9 @@ func CheckOutputPath(p string) error {
 		if segment == ".." {
 			return fmt.Errorf("%s: must not contain a parent directory segment", p)
 		}
+		if strings.EqualFold(segment, ".git") {
+			return fmt.Errorf("%s: must not point into the .git folder", p)
+		}
 	}
 	return nil
 }
