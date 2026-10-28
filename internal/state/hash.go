@@ -67,8 +67,8 @@ func RulesDigest(rules []string) string {
 	return shortHash(rules...)
 }
 
-// LegacyFunctionHash is the hash written before unit hashes existed. It is only read
-// to recognize old comments, and is still the one written by the quality mode.
+// LegacyFunctionHash is the hash written by releases before unit hashes existed. It is only read,
+// to recognize the comments of those releases, and is to be removed in 0.3.0.
 func LegacyFunctionHash(u collect.ReviewUnit) string {
 	data := u.FilePath + ":" + u.Name + ":" + u.Content + ":" + u.Diff
 	sum := sha256.Sum256([]byte(data))
