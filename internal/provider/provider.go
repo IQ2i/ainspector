@@ -7,10 +7,13 @@ import (
 
 // ModifiedFile represents a file that was modified in a PR/MR
 type ModifiedFile struct {
-	Path       string // Current file path
-	OldPath    string // Previous path (for renames)
-	Status     string // added, modified, deleted, renamed
-	Patch      string // Unified diff patch
+	Path    string // Current file path
+	OldPath string // Previous path (for renames)
+	Status  string // added, modified, deleted, renamed
+	Patch   string // Unified diff patch
+	// NoPatch is set when the platform sent no patch for a file whose content changed: the diff
+	// is too large, or collapsed
+	NoPatch    bool
 	RawContent string // Full file content (populated lazily)
 }
 
@@ -39,6 +42,9 @@ type ChangeInfo struct {
 	BaseSHA  string
 	StartSHA string
 	HeadSHA  string
+	// ChangedFiles is the number of files of the change as the platform counts them, zero when
+	// it does not tell
+	ChangedFiles int
 }
 
 // CommentResult is the outcome of posting one review comment

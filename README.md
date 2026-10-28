@@ -237,7 +237,7 @@ rules:
 
 ### Configuration Options
 
-**ignore.paths** - Glob patterns for files to skip during review, such as test files. Files under `vendor/` or `node_modules/` (at any depth), lock files, minified assets and source maps are never reviewed, whatever the list says. The summary lists the files that sit below a `vendor/` or `node_modules/` directory that is not at the root, since a change could put code there to keep it out of review; if they are all there is, a notice comment says so.
+**ignore.paths** - Glob patterns for files to skip during review, such as test files. Files under `vendor/` or `node_modules/` (at any depth), lock files, minified assets and source maps are never reviewed, whatever the list says. The summary lists the files that sit below a `vendor/` or `node_modules/` directory that is not at the root, since a change could put code there to keep it out of review; if they are all there is, a notice comment says so. It also lists the source files the platform sent without a diff (too large or collapsed), says when GitHub lists fewer files than the change holds, and counts the vendored or generated files at the root.
 
 **ignore.authors**, **ignore.title_patterns**, **ignore.labels** - Skip the whole merge request when its author or one of its labels matches (case-insensitive), or when its title matches one of the regular expressions. Handy for dependency bots.
 

@@ -315,3 +315,38 @@ func TestGitHub_GetFileContent(t *testing.T) {
 		}
 	}
 }
+
+func TestGitHub_GetModifiedFiles_FlagsFilesWithoutPatch(t *testing.T) {
+	p := newTestGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/pulls/1":
+			_, _ = w.Write([]byte(`{"number":1,"changed_files":3500,"head":{"sha":"h"},"base":{"sha":"b"}}`))
+		case "/repos/owner/repo/pulls/1/files":
+			_, _ = w.Write([]byte(`[
+				{"filename":"a.go","status":"modified","changes":2,"patch":"@@ -1 +1 @@\n-a\n+b"},
+				{"filename":"huge.go","status":"modified","changes":9000},
+				{"filename":"logo.png","status":"added","changes":0},
+				{"filename":"new.go","previous_filename":"old.go","status":"renamed","changes":0}
+			]`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	})
+
+	files, err := p.GetModifiedFiles(context.Background(), 1)
+	if err != nil || len(files) != 4 {
+		t.Fatalf("files %d, err %v", len(files), err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[f.Path] = f.NoPatch
+	}
+	if got["a.go"] || !got["huge.go"] || got["logo.png"] || got["new.go"] {
+		t.Errorf("only a changed file without patch is flagged: %v", got)
+	}
+
+	info, err := p.GetChangeInfo(context.Background(), 1)
+	if err != nil || info.ChangedFiles != 3500 {
+		t.Errorf("the platform count must be kept: %+v, %v", info, err)
+	}
+}

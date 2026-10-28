@@ -59,6 +59,8 @@ func (p *GitHubProvider) GetChangeInfo(ctx context.Context, number int) (ChangeI
 		Labels:  labels,
 		BaseSHA: pr.GetBase().GetSHA(),
 		HeadSHA: pr.GetHead().GetSHA(),
+
+		ChangedFiles: pr.GetChangedFiles(),
 	}, nil
 }
 
@@ -96,6 +98,8 @@ func (p *GitHubProvider) GetModifiedFiles(ctx context.Context, number int) ([]Mo
 			OldPath: f.GetPreviousFilename(),
 			Status:  f.GetStatus(),
 			Patch:   f.GetPatch(),
+			// Binary files and renames without edits have no lines changed
+			NoPatch: f.GetPatch() == "" && f.GetChanges() > 0,
 		}
 		result = append(result, mf)
 	}
