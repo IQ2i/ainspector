@@ -46,6 +46,20 @@ TMP_DIR=$(mktemp -d)
 trap "rm -rf ${TMP_DIR}" EXIT
 
 curl -fsSL "${DOWNLOAD_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
+
+# Check the archive against the checksums published with the release
+curl -fsSL "https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt" -o "${TMP_DIR}/checksums.txt"
+EXPECTED=$(grep " ${ARCHIVE_NAME}\$" "${TMP_DIR}/checksums.txt" | awk '{print $1}')
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL=$(sha256sum "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
+else
+    ACTUAL=$(shasum -a 256 "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
+fi
+if [ -z "${EXPECTED}" ] || [ "${EXPECTED}" != "${ACTUAL}" ]; then
+    echo "Error: checksum mismatch for ${ARCHIVE_NAME}"
+    exit 1
+fi
+
 tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "${TMP_DIR}"
 chmod +x "${TMP_DIR}/${BINARY_NAME}"
 
