@@ -62,7 +62,7 @@
     }
   ],
   "notes": [
-    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 1 function, 1 issue reported.\n\nModel: `test-model`\n\nTokens: 100 in, 10 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/3\",\"units\":[\"2e34a142e200\"],\"findings\":[],\"open\":[{\"fp\":\"e72d2e90a41f\",\"file\":\"app.py\",\"line\":6,\"title\":\"Underflow is not handled.\",\"end\":6,\"unit\":\"2e34a142e200\",\"ul\":5}]} --\u003e\n"
+    "\u003c!-- ainspector:summary:quality --\u003e\n### ainspector: quality review\n\nReviewed 1 function (1 unchanged since an earlier review), 1 issue reported.\n\nModel: `test-model`\n\nTokens: 100 in, 10 out, 0 read from cache, 0 written to cache\nEstimated cost: unknown, the model has no known price\n\n\u003c!-- ainspector:state:quality {\"v\":1,\"scope\":\"function\",\"ver\":\"quality/3\",\"units\":[\"2e34a142e200\"],\"findings\":[],\"open\":[{\"fp\":\"e72d2e90a41f\",\"file\":\"app.py\",\"line\":6,\"title\":\"Underflow is not handled.\",\"end\":6,\"unit\":\"2e34a142e200\",\"ul\":5}]} --\u003e\n"
   ],
   "code_quality": [
     {
