@@ -110,8 +110,10 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		changeNotes = append(changeNotes, fmt.Sprintf("%d %s skipped, the name holds control characters", unsafe, plural(unsafe, "file")))
 	}
 	req := collectRequest(files, enabled)
-	hidden, counted := hiddenNotes(files, req.Hunks.Extensions)
-	if info, err := changeInfo(); err == nil && info.ChangedFiles > len(files)+unsafe {
+	hidden, counted := hiddenNotes(files, req.Hunks.Extensions, cfg.ShouldIgnore)
+	if info, err := changeInfo(); err != nil {
+		fmt.Printf("Warning: could not check that the platform lists every changed file: %v\n", err)
+	} else if info.ChangedFiles > len(files)+unsafe {
 		hidden = append(hidden, fmt.Sprintf("The platform lists %d of the %d changed files, the others are never reviewed", len(files)+unsafe, info.ChangedFiles))
 	}
 	for _, note := range hidden {
@@ -584,7 +586,7 @@ const maxHiddenListed = 20
 // them back, as the change could hide code there: the files below a vendor or node_modules
 // directory that is not at the root of the project, the files of a reviewable kind the platform
 // sent without a patch, and the vendored or generated files at the root, which are only counted.
-func hiddenNotes(files []provider.ModifiedFile, hunkExtensions []string) (notes []string, counted string) {
+func hiddenNotes(files []provider.ModifiedFile, hunkExtensions []string, ignored func(string) bool) (notes []string, counted string) {
 	var nested, noPatch []string
 	rooted := 0
 	for _, f := range files {
@@ -596,7 +598,7 @@ func hiddenNotes(files []provider.ModifiedFile, hunkExtensions []string) (notes 
 			nested = append(nested, f.Path)
 		case config.IsGeneratedPath(f.Path) || config.IsVendoredPath(f.Path):
 			rooted++
-		case f.NoPatch && reviewable(f.Path, hunkExtensions):
+		case f.NoPatch && reviewable(f.Path, hunkExtensions) && !ignored(f.Path):
 			noPatch = append(noPatch, f.Path)
 		}
 	}
@@ -605,7 +607,7 @@ func hiddenNotes(files []provider.ModifiedFile, hunkExtensions []string) (notes 
 		notes = append(notes, "Not reviewed, below a nested vendor or node_modules directory: "+listPaths(nested))
 	}
 	if len(noPatch) > 0 {
-		notes = append(notes, "Not reviewed, the platform sent no diff for them (too large or collapsed): "+listPaths(noPatch))
+		notes = append(notes, "Not reviewed, the platform sent no diff for them (too large, collapsed or empty): "+listPaths(noPatch))
 	}
 	if rooted > 0 {
 		verb := "is"

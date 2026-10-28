@@ -914,6 +914,8 @@ func TestRun_ChangeThatOnlyTouchesNestedVendorDirectoriesIsNoticed(t *testing.T)
 	}
 }
 
+func noneIgnored(string) bool { return false }
+
 func TestHiddenNotes(t *testing.T) {
 	var files []provider.ModifiedFile
 	for i := range 25 {
@@ -921,7 +923,7 @@ func TestHiddenNotes(t *testing.T) {
 	}
 	files = append(files, provider.ModifiedFile{Path: "vendor/root.go"}, provider.ModifiedFile{Path: "a/node_modules/gone.js", Status: "deleted"})
 
-	notes, counted := hiddenNotes(files, nil)
+	notes, counted := hiddenNotes(files, nil, noneIgnored)
 	if len(notes) != 1 || !strings.Contains(notes[0], "(and 5 more)") || strings.Contains(notes[0], "root.go") || strings.Contains(notes[0], "gone.js") {
 		t.Errorf("notes = %q", notes)
 	}
@@ -929,7 +931,7 @@ func TestHiddenNotes(t *testing.T) {
 		t.Errorf("counted = %q", counted)
 	}
 
-	notes, counted = hiddenNotes(files[25:], nil)
+	notes, counted = hiddenNotes(files[25:], nil, noneIgnored)
 	if len(notes) != 0 || counted == "" {
 		t.Errorf("a root vendor directory is counted, not listed, and a deleted file is ignored: %q %q", notes, counted)
 	}
@@ -945,7 +947,7 @@ func TestHiddenNotes_FilesWithoutPatch(t *testing.T) {
 		{Path: "web/app.min.css"},
 		{Path: "public/app.map"},
 	}
-	notes, counted := hiddenNotes(files, []string{"twig"})
+	notes, counted := hiddenNotes(files, []string{"twig"}, noneIgnored)
 	if len(notes) != 1 || !strings.Contains(notes[0], "src/Big.php") || !strings.Contains(notes[0], "templates/big.twig") {
 		t.Fatalf("notes = %q", notes)
 	}
@@ -977,6 +979,50 @@ func TestRun_FilesWithoutPatchAndTruncatedListAreReported(t *testing.T) {
 	for _, want := range []string{"internal/huge.go", "never reviewed", "changed files, the others are never reviewed"} {
 		if !strings.Contains(notes[0], want) {
 			t.Errorf("the summary should mention %q:\n%s", want, notes[0])
+		}
+	}
+}
+
+func TestHiddenNotes_IgnoredFilesWithoutPatchAreNotReported(t *testing.T) {
+	files := []provider.ModifiedFile{{Path: "api/big.pb.go", NoPatch: true}, {Path: "src/Big.php", NoPatch: true}}
+	notes, _ := hiddenNotes(files, nil, func(p string) bool { return strings.HasSuffix(p, ".pb.go") })
+	if len(notes) != 1 || strings.Contains(notes[0], "pb.go") || !strings.Contains(notes[0], "src/Big.php") {
+		t.Errorf("a file the project ignores on purpose is not a finding: %q", notes)
+	}
+}
+
+func TestRun_CompleteFileListIsNotReportedAsTruncated(t *testing.T) {
+	for name, announced := range map[string]func(n int) int{
+		"unknown count": func(int) int { return 0 },
+		"exact count":   func(n int) int { return n },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+			h.fake.changedFiles = announced(len(h.fake.mr.Files))
+			if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range h.fake.noteBodies() {
+				if strings.Contains(n, "changed files, the others") {
+					t.Errorf("no truncation note expected:\n%s", n)
+				}
+			}
+		})
+	}
+}
+
+func TestRun_UnsafeNamesCountAsListedFiles(t *testing.T) {
+	h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", "go-basic"))
+	extra := h.fake.mr.Files[0]
+	extra.Path = "evil\n::error::x.go"
+	h.fake.mr.Files = append(h.fake.mr.Files, extra)
+	h.fake.changedFiles = len(h.fake.mr.Files)
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range h.fake.noteBodies() {
+		if strings.Contains(n, "changed files, the others") {
+			t.Errorf("a file dropped for its name was listed by the platform:\n%s", n)
 		}
 	}
 }
