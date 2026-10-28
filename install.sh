@@ -48,7 +48,10 @@ trap "rm -rf ${TMP_DIR}" EXIT
 curl -fsSL "${DOWNLOAD_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
 
 # Check the archive against the checksums published with the release
-curl -fsSL "https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt" -o "${TMP_DIR}/checksums.txt"
+if ! curl -fsSL "https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt" -o "${TMP_DIR}/checksums.txt"; then
+    echo "Error: no checksums.txt published with ${VERSION}, refusing to install an unverified archive"
+    exit 1
+fi
 EXPECTED=$(grep " ${ARCHIVE_NAME}\$" "${TMP_DIR}/checksums.txt" | awk '{print $1}')
 if command -v sha256sum >/dev/null 2>&1; then
     ACTUAL=$(sha256sum "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
