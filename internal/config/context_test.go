@@ -435,21 +435,55 @@ func TestCollectContextFiles_SkipsSensitiveFiles(t *testing.T) {
 
 func TestCollectContextFiles_DoesNotFollowDirectoryLinks(t *testing.T) {
 	root := t.TempDir()
-	outside := t.TempDir()
-	createTestFile(t, outside, "secret.txt", "outside")
-	createTestFile(t, root, "docs/guide.md", "guide")
-	if err := os.Symlink(outside, filepath.Join(root, "docs", "link")); err != nil {
+	createTestFile(t, root, "docs/real/guide.md", "guide")
+	if err := os.Symlink(filepath.Join(root, "docs", "real"), filepath.Join(root, "docs", "link")); err != nil {
 		t.Skip("symlinks unavailable")
 	}
 
-	cfg := &ContextConfig{Include: []string{"docs/**/*.txt", "docs/**"}}
-	files, _, err := cfg.CollectContextFiles(root)
+	files, _, err := (&ContextConfig{Include: []string{"docs/**/*.md"}}).CollectContextFiles(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for p := range files {
-		if filepath.Base(p) == "secret.txt" {
-			t.Errorf("a linked directory was followed: %v", files)
+	if len(files) != 1 || files["docs/real/guide.md"] == "" {
+		t.Errorf("a linked directory must not be walked a second time, got %v", files)
+	}
+}
+
+func TestCollectContextFiles_RefusesLinksToSecrets(t *testing.T) {
+	root := t.TempDir()
+	createTestFile(t, root, ".env", "SECRET=1")
+	createTestFile(t, root, ".git/config", "url = https://token@host/x.git")
+	createTestFile(t, root, "docs/guide.md", "guide")
+	for name, target := range map[string]string{"notes.md": ".env", "docs/git.md": ".git/config"} {
+		if err := os.Symlink(filepath.Join(root, target), filepath.Join(root, name)); err != nil {
+			t.Skip("symlinks unavailable")
+		}
+	}
+
+	files, warnings, err := (&ContextConfig{Include: []string{"notes.md", "docs"}}).CollectContextFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files["docs/guide.md"] == "" || len(warnings) != 2 {
+		t.Errorf("a link to a secret must not be read, got %v, warnings %v", files, warnings)
+	}
+	if _, err := ReadProjectFile(root, "notes.md", 100); !errors.Is(err, ErrSensitive) {
+		t.Errorf("ReadProjectFile must refuse a link to a secret, got %v", err)
+	}
+}
+
+func TestCollectFromPattern_StopsWalkingPastTheCap(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < maxContextFiles+50; i++ {
+		createTestFile(t, root, filepath.Join("docs", fmt.Sprintf("f%03d.md", i)), "x")
+	}
+	for _, pattern := range []string{"docs", "docs/*.md"} {
+		files, err := collectFromPattern(root, pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(files) != maxContextFiles+1 {
+			t.Errorf("%s: the walk must stop one file past the cap, got %d", pattern, len(files))
 		}
 	}
 }

@@ -32,6 +32,7 @@ func sanitizeText(s string) string {
 	s = strings.ReplaceAll(s, "<!--", "&lt;!--")
 	// A numeric character reference such as &#64; would be decoded into an @ after the check below
 	s = strings.ReplaceAll(s, "&#", "&amp;#")
+	s = strings.ReplaceAll(s, "&commat;", "&amp;commat;")
 	return mentionRegex.ReplaceAllString(s, "$1@"+zeroWidthSpace+"$2")
 }
 

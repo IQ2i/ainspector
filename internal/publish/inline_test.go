@@ -234,6 +234,7 @@ func TestSanitizeText(t *testing.T) {
 		{"unicode space before a quick action", "ok\n\u00a0\u2003/close", "ok\n\\/close"},
 		{"invisible character before a quick action", "ok\n\u200b/close", "ok\n\\/close"},
 		{"vertical tab before a quick action", "ok\n\v/close", "ok\n\\/close"},
+		{"named reference to an at sign", "cc &commat;admin", "cc &amp;commat;admin"},
 		{"numeric reference to an at sign", "cc &#64;admin &#x40;bob", "cc &amp;#64;admin &amp;#x40;bob"},
 	}
 	for _, tt := range tests {

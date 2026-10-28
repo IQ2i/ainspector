@@ -12,10 +12,11 @@ import (
 const NoticeMarker = "<!-- ainspector:notice -->"
 
 // ownNote returns the general comment that self wrote and that carries marker. Only the
-// comments of self are trusted: anyone could plant the marker in their own.
+// comments of self are trusted: anyone could plant the marker in their own. The marker must open
+// the comment, as LoadIndex requires for the state block.
 func ownNote(existing []provider.ExistingComment, self, marker string) (provider.ExistingComment, bool) {
 	for _, c := range existing {
-		if !c.Positioned && strings.EqualFold(c.Author, self) && strings.Contains(c.Body, marker) {
+		if !c.Positioned && strings.EqualFold(c.Author, self) && strings.HasPrefix(strings.TrimSpace(c.Body), marker) {
 			return c, true
 		}
 	}

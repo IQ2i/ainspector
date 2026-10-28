@@ -180,8 +180,9 @@ var secretKeyWords = []string{"password", "secret", "key", "token"}
 
 func isSecretKey(name string) bool {
 	name = strings.ToLower(name)
-	// A service id that tells how the token is checked, which a security review needs
-	if name == "token_handler" {
+	// Names of services and options that tell how a token is checked, which a security review needs
+	switch name {
+	case "token_handler", "token_extractors", "csrf_token_id", "csrf_token_generator", "csrf_token_manager":
 		return false
 	}
 	for _, w := range secretKeyWords {

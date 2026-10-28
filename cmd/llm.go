@@ -53,7 +53,7 @@ func newLLMClient(cfg config.LLMConfig) (llm.Client, error) {
 }
 
 // tokenCapFromEnv reads AINSPECTOR_MAX_TOKENS_PER_RUN, a cap that ainspector.yaml can only lower:
-// the file comes from the change under review. Zero means no cap.
+// the file comes from the change under review. Zero means the default cap applies.
 func tokenCapFromEnv() (int, error) {
 	raw := os.Getenv("AINSPECTOR_MAX_TOKENS_PER_RUN")
 	if raw == "" {
