@@ -182,9 +182,15 @@ type Index struct {
 	blocks   map[string]StateBlock
 }
 
+// SummaryMarker identifies the summary comment of a mode, the only one that holds its state block
+func SummaryMarker(mode string) string {
+	return "<!-- ainspector:summary:" + mode + " -->"
+}
+
 // LoadIndex reads inline markers and state blocks from existing comments. When self is
 // set, only the comments it wrote count: anyone else on the PR/MR could forge a marker
-// to prevent a unit from being reviewed.
+// to prevent a unit from being reviewed. A state block only counts in the summary comment of
+// its mode: on GitHub self may be an identity shared with other workflows.
 func LoadIndex(comments []provider.ExistingComment, self string) *Index {
 	ix := &Index{markers: make(map[string]bool), findings: make(map[string]bool), blocks: make(map[string]StateBlock)}
 	for _, c := range comments {
@@ -198,6 +204,9 @@ func LoadIndex(comments []provider.ExistingComment, self string) *Index {
 			ix.findings[fp] = true
 		}
 		for _, m := range stateRegex.FindAllStringSubmatch(c.Body, -1) {
+			if !strings.HasPrefix(strings.TrimSpace(c.Body), SummaryMarker(m[1])) {
+				continue
+			}
 			if b, ok := ParseStateBlock(m[1], c.Body); ok {
 				ix.blocks[m[1]] = b
 			}

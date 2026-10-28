@@ -20,7 +20,7 @@ type summary struct {
 
 // SummaryMarker identifies the summary comment of a mode
 func SummaryMarker(mode string) string {
-	return "<!-- ainspector:summary:" + mode + " -->"
+	return state.SummaryMarker(mode)
 }
 
 // NewSummary maintains one comment per mode: created by the first run, updated by the next
