@@ -48,19 +48,16 @@ func (m *Mode) BuildRequest(u collect.ReviewUnit, pc *collect.ProjectContext) ll
 }
 
 func (m *Mode) Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Finding, error) {
-	var issues []Suggestion
 	if resp.JSON == nil {
-		issues = parseReviewResponse(resp.Text)
-	} else {
-		var doc ReviewResponse
-		if err := json.Unmarshal(resp.JSON, &doc); err != nil {
-			return nil, fmt.Errorf("invalid review document: %w", err)
-		}
-		issues = doc.Issues
+		return nil, fmt.Errorf("the reply holds no structured output")
+	}
+	var doc ReviewResponse
+	if err := json.Unmarshal(resp.JSON, &doc); err != nil {
+		return nil, fmt.Errorf("invalid review document: %w", err)
 	}
 
 	var result []findings.Finding
-	for _, s := range issues {
+	for _, s := range doc.Issues {
 		result = append(result, findings.Finding{
 			Mode:        m.Name(),
 			File:        u.FilePath,

@@ -80,17 +80,13 @@ func TestMode_ParseIgnoresUnknownFields(t *testing.T) {
 	}
 }
 
-func TestMode_ParseTextFallback(t *testing.T) {
+func TestMode_ParseRequiresStructuredOutput(t *testing.T) {
 	m := New("", nil)
 
-	got, err := m.Parse(llm.Response{Text: " LGTM\n"}, collect.ReviewUnit{})
-	if err != nil || len(got) != 0 {
-		t.Errorf("expected no findings for LGTM, got %v / %v", got, err)
-	}
-
-	got, err = m.Parse(llm.Response{Text: "Review:\n{\"issues\":[{\"line\":3,\"description\":\"Bug\",\"suggestion\":\"\"}]}"}, collect.ReviewUnit{FilePath: "a.go"})
-	if err != nil || len(got) != 1 || got[0].StartLine != 3 {
-		t.Errorf("expected the issue to be salvaged from text, got %v / %v", got, err)
+	for _, text := range []string{"LGTM", "Review:\n{\"issues\":[{\"line\":3,\"description\":\"Bug\",\"suggestion\":\"\"}]}"} {
+		if got, err := m.Parse(llm.Response{Text: text}, collect.ReviewUnit{}); err == nil || len(got) != 0 {
+			t.Errorf("a reply without structured output must be an error, got %v / %v", got, err)
+		}
 	}
 }
 

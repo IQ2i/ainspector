@@ -9,9 +9,6 @@ import (
 	"github.com/iq2i/ainspector/internal/llm"
 )
 
-// LGTMMarker is how a reply without structured output says there are no issues to report.
-const LGTMMarker = "LGTM"
-
 const baseSystemPrompt = `You are an expert code reviewer. You will receive a function along with the diff showing only the modified lines.
 
 IMPORTANT: Focus your review ONLY on the changes shown in the diff. The full function is provided for context only - do not review unchanged code.
@@ -228,37 +225,6 @@ type Suggestion struct {
 // ReviewResponse is the structured response from the LLM.
 type ReviewResponse struct {
 	Issues []Suggestion `json:"issues"`
-}
-
-// parseReviewResponse parses a free-text reply into structured suggestions. It is the fallback
-// for backends that returned no structured output.
-func parseReviewResponse(response string) []Suggestion {
-	trimmed := strings.TrimSpace(response)
-
-	// Check for LGTM response
-	if trimmed == LGTMMarker {
-		return nil
-	}
-
-	// Try to parse as JSON
-	var reviewResp ReviewResponse
-	if err := json.Unmarshal([]byte(trimmed), &reviewResp); err != nil {
-		// If JSON parsing fails, try to extract JSON from the response
-		// (LLM might add extra text before/after the JSON)
-		startIdx := strings.Index(trimmed, "{")
-		endIdx := strings.LastIndex(trimmed, "}")
-		if startIdx >= 0 && endIdx > startIdx {
-			jsonStr := trimmed[startIdx : endIdx+1]
-			if err := json.Unmarshal([]byte(jsonStr), &reviewResp); err != nil {
-				// If still failing, return empty (treat as no issues)
-				return nil
-			}
-		} else {
-			return nil
-		}
-	}
-
-	return reviewResp.Issues
 }
 
 func buildUserPrompt(fn *collect.ReviewUnit) string {

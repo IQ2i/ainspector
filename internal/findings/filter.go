@@ -75,9 +75,6 @@ func FilterFalsePositives(ctx context.Context, c llm.Client, cfg FPConfig, units
 	if err != nil {
 		return nil, nil, fmt.Errorf("false positive filter: %w", err)
 	}
-	if resp.JSON == nil {
-		return nil, nil, fmt.Errorf("false positive filter: the reply holds no structured output")
-	}
 	var doc struct {
 		Verdicts []Verdict `json:"verdicts"`
 	}
