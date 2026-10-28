@@ -321,3 +321,27 @@ func settle(ctx context.Context, client llm.Client, mode modes.Mode, results []U
 	settleFindings(ctx, client, defaultFP, mode, results, index, &run)
 	return run
 }
+
+func TestRun_UsageOfAModeIncludesTheFalsePositiveFilter(t *testing.T) {
+	h := securityHarness(t, "security-idor")
+	h.responses[falsePositiveKey] = `{"verdicts":[{"id":0,"keep":true,"reason":"real"}]}`
+
+	if err := Run(context.Background(), h.deps, Options{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	var doc struct {
+		Modes []struct {
+			Usage struct {
+				Input int `json:"input"`
+			} `json:"usage"`
+		} `json:"modes"`
+	}
+	if err := json.Unmarshal(h.report("ainspector-report.json"), &doc); err != nil || len(doc.Modes) != 1 {
+		t.Fatalf("unreadable artifact: %v", err)
+	}
+	// The scripted backend bills 100 input tokens per call, the filter's call included
+	if want := 100 * len(h.requests); doc.Modes[0].Usage.Input != want {
+		t.Errorf("%d requests were made, the usage of the mode holds %d input tokens, want %d", len(h.requests), doc.Modes[0].Usage.Input, want)
+	}
+}
