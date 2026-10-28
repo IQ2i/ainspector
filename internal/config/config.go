@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -123,9 +122,6 @@ func CheckModelName(name string) error {
 	return nil
 }
 
-// KnownRelatedPresets are the resolvers of related files that can be named in the configuration
-var KnownRelatedPresets = []string{"symfony", "vue"}
-
 // DefaultHunkExtensions are the files without functions that the security mode reviews as hunks
 var DefaultHunkExtensions = []string{"twig", "yaml", "yml", "vue", "env"}
 
@@ -146,7 +142,7 @@ type SecurityConfig struct {
 // RelatedConfig tells which files related to a unit are given with it, with the scope
 // function+class+related. Zero values select the defaults.
 type RelatedConfig struct {
-	// Presets defaults to all of KnownRelatedPresets
+	// Presets names the resolvers of related files, empty selects all of them
 	Presets []string `yaml:"presets"`
 	// MaxFiles and MaxBytes cap the related files of one unit
 	MaxFiles int `yaml:"max_files"`
@@ -260,11 +256,6 @@ func parse(source string, data []byte) (*Config, error) {
 	if rel.MaxFiles > MaxRelatedFiles || rel.MaxBytes > MaxRelatedBytes {
 		return nil, fmt.Errorf("%s: modes.security.related.max_files must not exceed %d and max_bytes %d", source, MaxRelatedFiles, MaxRelatedBytes)
 	}
-	for _, preset := range rel.Presets {
-		if !slices.Contains(KnownRelatedPresets, preset) {
-			return nil, fmt.Errorf("%s: unknown modes.security.related.presets entry %q (expected one of %s)", source, preset, strings.Join(KnownRelatedPresets, ", "))
-		}
-	}
 	for name, path := range map[string]*string{"code_quality": cfg.Publish.CodeQuality, "artifact": cfg.Publish.Artifact} {
 		if path == nil || *path == "" {
 			continue
@@ -362,9 +353,6 @@ func (h HunksConfig) Resolved() HunksConfig {
 
 // Resolved returns the related files settings with their defaults applied
 func (r RelatedConfig) Resolved() RelatedConfig {
-	if len(r.Presets) == 0 {
-		r.Presets = KnownRelatedPresets
-	}
 	if r.MaxFiles == 0 {
 		r.MaxFiles = DefaultRelatedMaxFiles
 	}

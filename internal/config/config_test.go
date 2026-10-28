@@ -336,7 +336,7 @@ func TestParse_SecurityDefaults(t *testing.T) {
 	if cfg.SecurityEnabled() || sec.ScopeName() != "function+class+related" || sec.Findings() != 5 {
 		t.Errorf("unexpected defaults: %+v", sec)
 	}
-	if r := sec.Related.Resolved(); len(r.Presets) != 2 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
+	if r := sec.Related.Resolved(); len(r.Presets) != 0 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
 		t.Errorf("unexpected related defaults: %+v", r)
 	}
 	h := sec.Hunks.Resolved()
@@ -521,7 +521,6 @@ func TestParse_SecurityRelated(t *testing.T) {
 
 func TestParse_SecurityRelatedInvalid(t *testing.T) {
 	for name, doc := range map[string]string{
-		"unknown preset":     "modes:\n  security:\n    related: {presets: [laravel]}\n",
 		"negative max files": "modes:\n  security:\n    related: {max_files: -1}\n",
 		"negative max bytes": "modes:\n  security:\n    related: {max_bytes: -1}\n",
 	} {

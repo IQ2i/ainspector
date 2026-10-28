@@ -146,16 +146,6 @@ func TestRun_ChangedRelatedFileReviewsTheUnitAgain(t *testing.T) {
 	}
 }
 
-func TestResolversFor(t *testing.T) {
-	got, err := resolversFor([]string{"symfony", "vue"})
-	if err != nil || len(got) == 0 {
-		t.Errorf("got %v, %v", got, err)
-	}
-	if _, err := resolversFor([]string{"laravel"}); err == nil {
-		t.Error("an unknown preset must fail")
-	}
-}
-
 func TestMergeRelated(t *testing.T) {
 	a := collect.RelatedPolicy{Presets: []string{"symfony"}, MaxFiles: 6, MaxBytes: 100}
 	b := collect.RelatedPolicy{Presets: []string{"symfony", "vue"}, MaxFiles: 3, MaxBytes: 500}

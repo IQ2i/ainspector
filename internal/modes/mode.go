@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/iq2i/ainspector/internal/collect"
+	"github.com/iq2i/ainspector/internal/collect/related/presets"
 	"github.com/iq2i/ainspector/internal/config"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
@@ -64,6 +65,12 @@ func newSecurity(cfg *config.Config) (*security.Mode, error) {
 
 	hunks := sec.Hunks.Resolved()
 	related := sec.Related.Resolved()
+	if len(related.Presets) == 0 {
+		related.Presets = presets.Names()
+	}
+	if err := presets.Check(related.Presets); err != nil {
+		return nil, fmt.Errorf("modes.security.related.presets: %w", err)
+	}
 	return security.New(security.Config{
 		Model:       sec.Model,
 		Scope:       scope,

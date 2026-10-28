@@ -1,6 +1,7 @@
 package modes
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/iq2i/ainspector/internal/collect"
@@ -111,5 +112,18 @@ func TestEnabled_SecurityDefaults(t *testing.T) {
 	r := got[0].Needs().Related
 	if len(r.Presets) != 2 || r.MaxFiles != 6 || r.MaxBytes != 40000 {
 		t.Errorf("unexpected defaults %+v", r)
+	}
+}
+
+func TestEnabled_SecurityUnknownPreset(t *testing.T) {
+	cfg := &config.Config{Modes: config.ModesConfig{Security: config.SecurityConfig{
+		Related: config.RelatedConfig{Presets: []string{"symfony", "laravel"}},
+	}}}
+	_, err := Enabled([]string{"security"}, cfg)
+	if err == nil || !strings.Contains(err.Error(), "laravel") {
+		t.Errorf("an unknown preset must be refused and named, got %v", err)
+	}
+	if _, err := Enabled([]string{"quality"}, cfg); err != nil {
+		t.Errorf("the quality mode does not use presets, got %v", err)
 	}
 }
