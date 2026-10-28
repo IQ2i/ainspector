@@ -415,3 +415,21 @@ func TestArtifact_RecordsFeedbackOnlyWhenThereIsSome(t *testing.T) {
 		t.Errorf("the key must be left out when there is no feedback, got %s", data)
 	}
 }
+
+func TestLogText(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"plain text unchanged", "Nil deref\n\tsee a/b", "Nil deref\n\tsee a/b"},
+		{"terminal escape dropped", "ok \x1b[2J\x07done", "ok [2Jdone"},
+		{"workflow command", "fine\n::set-output name=x::y\n  ::error::boom", "fine\n> ::set-output name=x::y\n> ::error::boom"},
+		{"azure command", "##vso[task.setvariable variable=x]y", "> ##vso[task.setvariable variable=x]y"},
+		{"carriage return starts a line", "a\r::warning::x", "a\n> ::warning::x"},
+		{"colons inside a line", "a :: b", "a :: b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := LogText(tt.in); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

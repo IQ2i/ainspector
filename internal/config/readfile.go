@@ -28,7 +28,7 @@ func ReadProjectFile(root, rel string, limit int) ([]byte, error) {
 
 	inside, err := filepath.Rel(resolvedRoot, resolved)
 	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
-		return nil, fmt.Errorf("%s: %w", rel, ErrOutsideRoot)
+		return nil, fmt.Errorf("%q: %w", rel, ErrOutsideRoot)
 	}
 
 	// Before opening: opening a named pipe would block until something writes to it
@@ -37,7 +37,7 @@ func ReadProjectFile(root, rel string, limit int) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%s: not a regular file", rel)
+		return nil, fmt.Errorf("%q: not a regular file", rel)
 	}
 
 	f, err := os.Open(resolved)

@@ -315,10 +315,10 @@ func publishRun(ctx context.Context, p provider.Provider, opts Options, self str
 
 	if opts.DryRun {
 		for _, f := range run.Published {
-			fmt.Printf("Dry run: would comment on %s:%d\n%s\n", f.File, f.StartLine, publish.BodyFor(f))
+			fmt.Printf("Dry run: would comment on %q:%d\n%s\n", f.File, f.StartLine, publish.LogText(publish.BodyFor(f)))
 		}
 		if policy.Summary {
-			fmt.Printf("Dry run: would publish the summary:\n%s\n", publish.SummaryBody(run, nil))
+			fmt.Printf("Dry run: would publish the summary:\n%s\n", publish.LogText(publish.SummaryBody(run, nil)))
 		}
 		return nil
 	}
