@@ -2,7 +2,6 @@ package publish
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -12,56 +11,22 @@ import (
 	"github.com/iq2i/ainspector/internal/state"
 )
 
-type summary struct {
-	provider provider.Provider
-	number   int
-	self     string
-}
-
 // SummaryMarker identifies the summary comment of a mode
 func SummaryMarker(mode string) string {
 	return state.SummaryMarker(mode)
 }
 
-// NewSummary maintains one comment per mode: created by the first run, updated by the next
+// Summary maintains one comment per mode: created by the first run, updated by the next
 // ones. It also stores the state block that lets later runs skip the units already reviewed,
 // which is why only a comment written by self is trusted.
-func NewSummary(p provider.Provider, number int, self string) Publisher {
-	return &summary{provider: p, number: number, self: self}
-}
-
-func (s *summary) Publish(ctx context.Context, run Run) error {
-	// Without an identity any participant could plant a comment carrying the marker and have
-	// the tool edit it or take its forged state for granted
-	if s.self == "" {
-		return errors.New("cannot publish the summary: the token owner is unknown")
-	}
-
-	existing, err := s.provider.ListComments(ctx, s.number)
-	if err != nil {
-		return fmt.Errorf("failed to list comments: %w", err)
-	}
-
-	var id string
-	var previous *state.StateBlock
-	if c, ok := ownNote(existing, s.self, SummaryMarker(run.Mode)); ok {
-		id = c.ID
-		if b, ok := state.ParseStateBlock(run.Mode, c.Body); ok {
+func Summary(ctx context.Context, p provider.Provider, number int, self string, run Run) error {
+	return upsertNote(ctx, p, number, self, SummaryMarker(run.Mode), "summary", func(existing provider.ExistingComment) string {
+		var previous *state.StateBlock
+		if b, ok := state.ParseStateBlock(run.Mode, existing.Body); ok {
 			previous = &b
 		}
-	}
-
-	body := SummaryBody(run, previous)
-	if id == "" {
-		if _, err := s.provider.PostComment(ctx, s.number, body); err != nil {
-			return fmt.Errorf("failed to post the summary: %w", err)
-		}
-		return nil
-	}
-	if err := s.provider.UpdateComment(ctx, s.number, id, body); err != nil {
-		return fmt.Errorf("failed to update the summary: %w", err)
-	}
-	return nil
+		return SummaryBody(run, previous)
+	})
 }
 
 // SummaryBody renders the summary comment of a run. previous is the state block of the comment

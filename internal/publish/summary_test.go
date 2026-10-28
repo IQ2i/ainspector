@@ -42,7 +42,7 @@ func stateOf(t *testing.T, body string) state.StateBlock {
 func TestSummary_CreatesTheNote(t *testing.T) {
 	p := &fakeProvider{}
 
-	if err := NewSummary(p, 7, "bot").Publish(context.Background(), baseRun()); err != nil {
+	if err := Summary(context.Background(), p, 7, "bot", baseRun()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestSummary_UpdatesItsOwnNoteAndKeepsPreviousUnits(t *testing.T) {
 		{ID: "11", Author: "Bot", Body: previous},
 	}}
 
-	if err := NewSummary(p, 7, "bot").Publish(context.Background(), baseRun()); err != nil {
+	if err := Summary(context.Background(), p, 7, "bot", baseRun()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func TestSummary_DropsHashesOfAnotherVersionOrScope(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := &fakeProvider{existing: []provider.ExistingComment{{ID: "11", Author: "bot", Body: SummaryBody(prev, nil)}}}
 
-			if err := NewSummary(p, 7, "bot").Publish(context.Background(), baseRun()); err != nil {
+			if err := Summary(context.Background(), p, 7, "bot", baseRun()); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if units := stateOf(t, p.updates["11"]).Units; len(units) != 3 {
@@ -113,7 +113,7 @@ func TestSummary_IgnoresNotesItDoesNotOwn(t *testing.T) {
 		{ID: "2", Author: "bot", Positioned: true, Path: "a.go", Line: 1, Body: forged},
 	}}
 
-	if err := NewSummary(p, 7, "bot").Publish(context.Background(), baseRun()); err != nil {
+	if err := Summary(context.Background(), p, 7, "bot", baseRun()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -130,7 +130,7 @@ func TestSummary_IgnoresNotesItDoesNotOwn(t *testing.T) {
 func TestSummary_RequiresAnIdentity(t *testing.T) {
 	p := &fakeProvider{existing: []provider.ExistingComment{{ID: "1", Author: "anyone", Body: SummaryMarker("quality")}}}
 
-	err := NewSummary(p, 7, "").Publish(context.Background(), baseRun())
+	err := Summary(context.Background(), p, 7, "", baseRun())
 	if err == nil || !strings.Contains(err.Error(), "token owner") {
 		t.Fatalf("expected an identity error, got %v", err)
 	}
@@ -147,7 +147,7 @@ func TestSummary_ProviderErrors(t *testing.T) {
 	}
 	for name, p := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := NewSummary(p, 7, "bot").Publish(context.Background(), baseRun()); err == nil {
+			if err := Summary(context.Background(), p, 7, "bot", baseRun()); err == nil {
 				t.Error("expected the provider error to be returned")
 			}
 		})

@@ -1,7 +1,6 @@
 package publish
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -75,10 +74,6 @@ type Run struct {
 	Notes          []string
 	// Feedback holds the reactions to the comments of earlier runs
 	Feedback []Feedback
-}
-
-type Publisher interface {
-	Publish(ctx context.Context, run Run) error
 }
 
 // BodyFor renders a finding as a comment body, with the marker that prevents reviewing its unit

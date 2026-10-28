@@ -1,7 +1,6 @@
 package publish
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -38,7 +37,7 @@ func readQuality(t *testing.T, dir, name string) []map[string]any {
 
 func TestCodeQuality_EmptyReportIsAnArray(t *testing.T) {
 	dir := t.TempDir()
-	if err := NewCodeQuality(dir, "gl-code-quality-report.json").Write(); err != nil {
+	if err := WriteCodeQuality(dir, "gl-code-quality-report.json", nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "gl-code-quality-report.json"))
@@ -49,7 +48,6 @@ func TestCodeQuality_EmptyReportIsAnArray(t *testing.T) {
 
 func TestCodeQuality_EntriesAndSeverities(t *testing.T) {
 	dir := t.TempDir()
-	r := NewCodeQuality(dir, "report.json")
 	run := Run{
 		Mode: "security",
 		Published: []findings.Finding{
@@ -60,10 +58,7 @@ func TestCodeQuality_EntriesAndSeverities(t *testing.T) {
 			openFinding("src/E.php", 4, findings.SeverityInfo, "t", "eeeeeeeeeeee"),
 		},
 	}
-	if err := r.Publish(context.Background(), run); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.Write(); err != nil {
+	if err := WriteCodeQuality(dir, "report.json", []Run{run}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -95,12 +90,10 @@ func TestCodeQuality_EntriesAndSeverities(t *testing.T) {
 
 func TestCodeQuality_QualityFindingsAreMinor(t *testing.T) {
 	dir := t.TempDir()
-	r := NewCodeQuality(dir, "report.json")
 	f := finding("a.go", 3, "Nil pointer when the map is empty", "u1", "")
-	if err := r.Publish(context.Background(), Run{Mode: "quality", Published: []findings.Finding{f}}); err != nil {
+	if err := WriteCodeQuality(dir, "report.json", []Run{{Mode: "quality", Published: []findings.Finding{f}}}); err != nil {
 		t.Fatal(err)
 	}
-	_ = r.Write()
 
 	got := readQuality(t, dir, "report.json")
 	if len(got) != 1 || got[0]["severity"] != "minor" || got[0]["check_name"] != "ainspector/quality" || got[0]["fingerprint"] != findings.CodeFingerprint(f, 0, "") {
@@ -120,7 +113,6 @@ func TestCodeQuality_QualityFindingsAreMinor(t *testing.T) {
 
 func TestCodeQuality_GathersEveryKindOfOpenFinding(t *testing.T) {
 	dir := t.TempDir()
-	r := NewCodeQuality(dir, "report.json")
 	run := Run{
 		Mode:      "security",
 		Published: []findings.Finding{openFinding("a.php", 1, findings.SeverityHigh, "published", "aaaaaaaaaaaa")},
@@ -132,8 +124,7 @@ func TestCodeQuality_GathersEveryKindOfOpenFinding(t *testing.T) {
 		},
 		Carried: []findings.Reported{{Fingerprint: "dddddddddddd", File: "d.php", Line: 5, Category: "idor", Title: "carried", Severity: findings.SeverityMedium}},
 	}
-	_ = r.Publish(context.Background(), run)
-	_ = r.Write()
+	_ = WriteCodeQuality(dir, "report.json", []Run{run})
 
 	got := readQuality(t, dir, "report.json")
 	var titles []string
@@ -147,9 +138,7 @@ func TestCodeQuality_GathersEveryKindOfOpenFinding(t *testing.T) {
 
 func TestCodeQuality_DescriptionIsBounded(t *testing.T) {
 	dir := t.TempDir()
-	r := NewCodeQuality(dir, "report.json")
-	_ = r.Publish(context.Background(), Run{Mode: "security", Published: []findings.Finding{openFinding("a.php", 0, findings.SeverityLow, strings.Repeat("é", 2000), "aaaaaaaaaaaa")}})
-	_ = r.Write()
+	_ = WriteCodeQuality(dir, "report.json", []Run{{Mode: "security", Published: []findings.Finding{openFinding("a.php", 0, findings.SeverityLow, strings.Repeat("é", 2000), "aaaaaaaaaaaa")}}})
 
 	e := readQuality(t, dir, "report.json")[0]
 	if n := len([]rune(e["description"].(string))); n != maxQualityDescription {
@@ -163,7 +152,7 @@ func TestCodeQuality_DescriptionIsBounded(t *testing.T) {
 func TestCodeQuality_RefusesPathsOutsideTheDirectory(t *testing.T) {
 	dir := t.TempDir()
 	for _, p := range []string{"../report.json", "/tmp/report.json", "a/../../report.json"} {
-		if err := NewCodeQuality(dir, p).Write(); err == nil {
+		if err := WriteCodeQuality(dir, p, nil); err == nil {
 			t.Errorf("%q should be refused", p)
 		}
 	}
@@ -171,7 +160,6 @@ func TestCodeQuality_RefusesPathsOutsideTheDirectory(t *testing.T) {
 
 func TestArtifact_HoldsNoCode(t *testing.T) {
 	dir := t.TempDir()
-	a := NewArtifact(dir, "ainspector-report.json", Change{Number: 7, CheckoutSHA: "abc"})
 	run := Run{
 		Mode: "security", Scope: "function+class+related", Version: "security/2", Model: "m",
 		Units: []collect.ReviewUnit{{
@@ -189,10 +177,7 @@ func TestArtifact_HoldsNoCode(t *testing.T) {
 		Usage:           llm.Usage{Input: 10, Output: 5, CacheRead: 3, CacheWrite: 1},
 		Cost:            0.5,
 	}
-	if err := a.Publish(context.Background(), run); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Write(); err != nil {
+	if err := WriteArtifact(dir, "ainspector-report.json", Change{Number: 7, CheckoutSHA: "abc"}, []Run{run}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -245,10 +230,7 @@ func TestArtifact_HoldsNoCode(t *testing.T) {
 
 func TestArtifact_GathersEveryMode(t *testing.T) {
 	dir := t.TempDir()
-	a := NewArtifact(dir, "report.json", Change{Number: 1})
-	_ = a.Publish(context.Background(), Run{Mode: "quality"})
-	_ = a.Publish(context.Background(), Run{Mode: "security"})
-	_ = a.Write()
+	_ = WriteArtifact(dir, "report.json", Change{Number: 1}, []Run{{Mode: "quality"}, {Mode: "security"}})
 
 	data, _ := os.ReadFile(filepath.Join(dir, "report.json"))
 	var doc struct{ Modes []struct{ Mode string } }
@@ -259,7 +241,7 @@ func TestArtifact_GathersEveryMode(t *testing.T) {
 
 func TestArtifact_EmptyRun(t *testing.T) {
 	dir := t.TempDir()
-	if err := NewArtifact(dir, "report.json", Change{Number: 1}).Write(); err != nil {
+	if err := WriteArtifact(dir, "report.json", Change{Number: 1}, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "report.json"))
@@ -353,7 +335,6 @@ func TestSummary_StateKeepsTheOpenFindings(t *testing.T) {
 func TestCodeQuality_QualityFindingFollowsItsMovedUnit(t *testing.T) {
 	report := func(start, line int) string {
 		dir := t.TempDir()
-		r := NewCodeQuality(dir, "report.json")
 		f := findings.Finding{Mode: "quality", File: "a.go", StartLine: line, Explanation: "Nil pointer", UnitHash: "u1"}
 		run := Run{
 			Mode:      "quality",
@@ -361,8 +342,7 @@ func TestCodeQuality_QualityFindingFollowsItsMovedUnit(t *testing.T) {
 			Statuses:  []UnitStatus{{Hash: "u1", Status: StatusReviewed}},
 			Published: []findings.Finding{f},
 		}
-		_ = r.Publish(context.Background(), run)
-		_ = r.Write()
+		_ = WriteCodeQuality(dir, "report.json", []Run{run})
 		return readQuality(t, dir, "report.json")[0]["fingerprint"].(string)
 	}
 	if report(10, 13) != report(30, 33) {
@@ -392,10 +372,10 @@ func TestSummary_OpenStateRemembersTheStartOfTheUnit(t *testing.T) {
 
 func TestArtifact_RecordsFeedbackOnlyWhenThereIsSome(t *testing.T) {
 	dir := t.TempDir()
-	a := NewArtifact(dir, "report.json", Change{Number: 1})
-	_ = a.Publish(context.Background(), Run{Mode: "quality"})
-	_ = a.Publish(context.Background(), Run{Mode: "security", Feedback: []Feedback{{File: "a.php", Line: 4, Fingerprint: "cccccccccccc", Up: 2, Down: 1}}})
-	if err := a.Write(); err != nil {
+	if err := WriteArtifact(dir, "report.json", Change{Number: 1}, []Run{
+		{Mode: "quality"},
+		{Mode: "security", Feedback: []Feedback{{File: "a.php", Line: 4, Fingerprint: "cccccccccccc", Up: 2, Down: 1}}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 

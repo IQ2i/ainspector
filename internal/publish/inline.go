@@ -10,18 +10,9 @@ import (
 	"github.com/iq2i/ainspector/internal/provider"
 )
 
-type inline struct {
-	provider provider.Provider
-	number   int
-}
-
-// NewInline posts findings as inline comments, falling back to a general comment
+// Inline posts findings as inline comments, falling back to a general comment
 // for those the provider rejects (typically a line outside the diff).
-func NewInline(p provider.Provider, number int) Publisher {
-	return &inline{provider: p, number: number}
-}
-
-func (i *inline) Publish(ctx context.Context, run Run) error {
+func Inline(ctx context.Context, p provider.Provider, number int, run Run) error {
 	if len(run.Published) == 0 {
 		return nil
 	}
@@ -52,7 +43,7 @@ func (i *inline) Publish(ctx context.Context, run Run) error {
 	}
 
 	if len(inlineComments) > 0 {
-		results, err := i.provider.CreateReview(ctx, i.number, inlineComments)
+		results, err := p.CreateReview(ctx, number, inlineComments)
 		if err != nil {
 			results = make([]provider.CommentResult, len(inlineComments))
 			for n, c := range inlineComments {
@@ -69,7 +60,7 @@ func (i *inline) Publish(ctx context.Context, run Run) error {
 
 	failed := 0
 	for _, c := range general {
-		if _, err := i.provider.PostComment(ctx, i.number, fallbackBody(c)); err != nil {
+		if _, err := p.PostComment(ctx, number, fallbackBody(c)); err != nil {
 			fmt.Printf("Warning: could not post general comment for %s:%d: %v\n", c.Path, c.Line, err)
 			failed++
 		}

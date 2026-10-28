@@ -191,9 +191,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		if len(toReview) == 0 {
 			fmt.Printf("Nothing left to review for %s\n", mode.Name())
 			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(changeNotes), Feedback: feedback[mode.Name()]}
-			if err := out.add(ctx, run); err != nil {
-				errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
-			}
+			out.add(run)
 			continue
 		}
 
@@ -230,9 +228,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			fmt.Printf("Warning: mode %s: %v\n", mode.Name(), err)
 			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 		}
-		if err := out.add(ctx, run); err != nil {
-			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
-		}
+		out.add(run)
 	}
 
 	if budget != nil {
@@ -330,7 +326,7 @@ func publishRun(ctx context.Context, p provider.Provider, opts Options, self str
 
 	if len(run.Published) > 0 {
 		fmt.Println("Posting review with inline suggestions...")
-		if err := publish.NewInline(p, opts.Number).Publish(ctx, run); err != nil {
+		if err := publish.Inline(ctx, p, opts.Number, run); err != nil {
 			errs = append(errs, fmt.Errorf("failed to create review: %w", err))
 		} else {
 			fmt.Println("Review posted successfully!")
@@ -341,7 +337,7 @@ func publishRun(ctx context.Context, p provider.Provider, opts Options, self str
 	// it could not tell its own comment from a forged one. Not worth failing the job over.
 	if self == "" {
 		fmt.Printf("Warning: summary of %s skipped, the token owner is unknown\n", mode.Name())
-	} else if err := publish.NewSummary(p, opts.Number, self).Publish(ctx, run); err != nil {
+	} else if err := publish.Summary(ctx, p, opts.Number, self, run); err != nil {
 		errs = append(errs, fmt.Errorf("failed to publish the summary: %w", err))
 	}
 

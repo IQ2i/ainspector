@@ -1,9 +1,7 @@
 package publish
 
 import (
-	"context"
 	"encoding/json"
-	"sync"
 
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
@@ -77,25 +75,22 @@ type artifactRelated struct {
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
-type artifact struct {
-	dir, path string
-	change    Change
-
-	mu    sync.Mutex
-	modes []artifactMode
-}
-
-// NewArtifact builds the JSON document that describes a whole run, for archiving: the units,
+// WriteArtifact writes the JSON document that describes a whole run, for archiving: the units,
 // the findings (published, left out by the cap, repeated, carried), the verdicts of the false
 // positive filter, the tokens and the estimated cost, for every mode.
-func NewArtifact(dir, path string, change Change) Report {
-	return &artifact{dir: dir, path: path, change: change}
+func WriteArtifact(dir, path string, change Change, runs []Run) error {
+	doc := artifactDoc{Version: artifactVersion, Change: change, Modes: make([]artifactMode, 0, len(runs))}
+	for _, run := range runs {
+		doc.Modes = append(doc.Modes, newArtifactMode(run))
+	}
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFile(dir, path, append(data, '\n'))
 }
 
-func (a *artifact) Publish(_ context.Context, run Run) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
+func newArtifactMode(run Run) artifactMode {
 	m := artifactMode{
 		Mode:            run.Mode,
 		Scope:           run.Scope,
@@ -135,23 +130,7 @@ func (a *artifact) Publish(_ context.Context, run Run) error {
 		}
 		m.Units = append(m.Units, au)
 	}
-	a.modes = append(a.modes, m)
-	return nil
-}
-
-func (a *artifact) Write() error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	doc := artifactDoc{Version: artifactVersion, Change: a.change, Modes: a.modes}
-	if doc.Modes == nil {
-		doc.Modes = []artifactMode{}
-	}
-	data, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return err
-	}
-	return writeFile(a.dir, a.path, append(data, '\n'))
+	return m
 }
 
 // withoutSuggestions copies the findings without the code they suggest, which comes from the

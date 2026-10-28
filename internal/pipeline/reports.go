@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -9,44 +8,32 @@ import (
 	"github.com/iq2i/ainspector/internal/publish"
 )
 
-// reports are the files written once at the end of a run, fed by every mode. A nil report is
-// one the configuration disabled.
+// reports gathers what every mode produced, for the files written once at the end of a run.
+// A report whose path the configuration emptied is not written.
 type reports struct {
-	codeQuality, artifact publish.Report
+	dir    string
+	cfg    *config.Config
+	change publish.Change
+	runs   []publish.Run
 }
 
-func newReports(dir string, cfg *config.Config, change publish.Change) reports {
-	var r reports
-	if path := cfg.CodeQualityPath(); path != "" {
-		r.codeQuality = publish.NewCodeQuality(dir, path)
-	}
-	if path := cfg.ArtifactPath(); path != "" {
-		r.artifact = publish.NewArtifact(dir, path, change)
-	}
-	return r
+func newReports(dir string, cfg *config.Config, change publish.Change) *reports {
+	return &reports{dir: dir, cfg: cfg, change: change}
 }
 
-// add hands what a mode produced to the reports
-func (r reports) add(ctx context.Context, run publish.Run) error {
+func (r *reports) add(run publish.Run) {
+	r.runs = append(r.runs, run)
+}
+
+func (r *reports) write() error {
 	var errs []error
-	if r.codeQuality != nil {
-		errs = append(errs, r.codeQuality.Publish(ctx, run))
-	}
-	if r.artifact != nil {
-		errs = append(errs, r.artifact.Publish(ctx, run))
-	}
-	return errors.Join(errs...)
-}
-
-func (r reports) write() error {
-	var errs []error
-	if r.codeQuality != nil {
-		if err := r.codeQuality.Write(); err != nil {
+	if path := r.cfg.CodeQualityPath(); path != "" {
+		if err := publish.WriteCodeQuality(r.dir, path, r.runs); err != nil {
 			errs = append(errs, fmt.Errorf("failed to write the Code Quality report: %w", err))
 		}
 	}
-	if r.artifact != nil {
-		if err := r.artifact.Write(); err != nil {
+	if path := r.cfg.ArtifactPath(); path != "" {
+		if err := publish.WriteArtifact(r.dir, path, r.change, r.runs); err != nil {
 			errs = append(errs, fmt.Errorf("failed to write the artifact: %w", err))
 		}
 	}

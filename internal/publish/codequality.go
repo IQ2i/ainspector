@@ -1,19 +1,11 @@
 package publish
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
-	"sync"
 
 	"github.com/iq2i/ainspector/internal/findings"
 )
-
-// Report is a publisher that gathers what every mode produced and writes a file once
-type Report interface {
-	Publisher
-	Write() error
-}
 
 // maxQualityDescription bounds the description of an entry of the Code Quality report
 const maxQualityDescription = 500
@@ -33,51 +25,27 @@ type qualityEntry struct {
 	} `json:"location"`
 }
 
-type codeQuality struct {
-	dir, path string
-
-	mu      sync.Mutex
-	entries []qualityEntry
-	seen    map[string]bool
-}
-
-// NewCodeQuality builds the report that the GitLab Code Quality widget of a merge request reads:
-// a JSON array with one entry per open finding of every mode that was published to it. Besides
-// the findings of the run, it repeats those that an earlier run reported and that still hold,
-// since the widget shows the report of the last pipeline only.
-func NewCodeQuality(dir, path string) Report {
-	return &codeQuality{dir: dir, path: path, seen: make(map[string]bool)}
-}
-
-func (c *codeQuality) Publish(_ context.Context, run Run) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	open := append(run.openFindings(), run.Carried...)
-
-	for _, r := range open {
-		if r.Fingerprint == "" || c.seen[r.Fingerprint] {
-			continue
+// WriteCodeQuality writes the report that the GitLab Code Quality widget of a merge request
+// reads: a JSON array with one entry per open finding of every mode that was published to it.
+// Besides the findings of the run, it repeats those that an earlier run reported and that still
+// hold, since the widget shows the report of the last pipeline only.
+func WriteCodeQuality(dir, path string, runs []Run) error {
+	entries := []qualityEntry{}
+	seen := make(map[string]bool)
+	for _, run := range runs {
+		for _, r := range append(run.openFindings(), run.Carried...) {
+			if r.Fingerprint == "" || seen[r.Fingerprint] {
+				continue
+			}
+			seen[r.Fingerprint] = true
+			entries = append(entries, newQualityEntry(run.Mode, r))
 		}
-		c.seen[r.Fingerprint] = true
-		c.entries = append(c.entries, newQualityEntry(run.Mode, r))
-	}
-	return nil
-}
-
-func (c *codeQuality) Write() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	entries := c.entries
-	if entries == nil {
-		entries = []qualityEntry{}
 	}
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return err
 	}
-	return writeFile(c.dir, c.path, append(data, '\n'))
+	return writeFile(dir, path, append(data, '\n'))
 }
 
 func newQualityEntry(mode string, r findings.Reported) qualityEntry {
