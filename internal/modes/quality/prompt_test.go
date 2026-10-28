@@ -313,7 +313,6 @@ func TestBuildSystemPrompt_RulesPlacement(t *testing.T) {
 func TestBuildSystemPrompt_WithProjectContext(t *testing.T) {
 	projectContext := &collect.ProjectContext{
 		Description: "A web application using React and TypeScript",
-		Languages:   []string{"javascript", "typescript"},
 	}
 
 	prompt := buildSystemPrompt("javascript", projectContext, nil)
@@ -360,7 +359,6 @@ func TestBuildSystemPrompt_WithoutProjectContext(t *testing.T) {
 func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 	projectContext := &collect.ProjectContext{
 		Description: "",
-		Languages:   []string{"go"},
 	}
 
 	prompt := buildSystemPrompt("go", projectContext, nil)
@@ -372,7 +370,7 @@ func TestBuildSystemPrompt_WithEmptyProjectContext(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_ContextHeader(t *testing.T) {
-	pc := &collect.ProjectContext{Description: "=== README.md ===\nContent", Languages: []string{"go"}}
+	pc := &collect.ProjectContext{Description: "=== README.md ===\nContent"}
 
 	prompt := buildSystemPrompt("go", pc, nil)
 

@@ -225,19 +225,6 @@ func Load(root string) (*Config, error) {
 	return &Config{}, nil
 }
 
-// LoadFromPath reads the configuration from a specific path
-func LoadFromPath(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &Config{}, nil
-		}
-		return nil, err
-	}
-
-	return parse(path, data)
-}
-
 func parse(source string, data []byte) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {

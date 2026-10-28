@@ -73,7 +73,7 @@ func TestBudget_AccumulatesAndForwards(t *testing.T) {
 	}
 
 	totals := b.Totals()
-	if totals.Calls != 2 || totals.Usage != (Usage{Input: 200, Output: 100, CacheRead: 1800, CacheWrite: 20}) {
+	if totals.Usage != (Usage{Input: 200, Output: 100, CacheRead: 1800, CacheWrite: 20}) {
 		t.Errorf("unexpected totals %+v", totals)
 	}
 	wantCost := 2 * (100*2.0 + 50*10.0 + 900*0.20 + 10*2.50) / 1e6
@@ -132,7 +132,7 @@ func TestBudget_BackendErrorIsNotCounted(t *testing.T) {
 	if _, err := b.Complete(context.Background(), Request{}); !errors.Is(err, boom) {
 		t.Fatalf("expected the backend error, got %v", err)
 	}
-	if got := b.Totals(); got.Calls != 0 {
+	if got := b.Totals(); got.Usage != (Usage{}) {
 		t.Errorf("a failed call must not be counted, got %+v", got)
 	}
 }
@@ -159,7 +159,7 @@ func TestBudget_Concurrent(t *testing.T) {
 	}
 	wg.Wait()
 
-	if got := b.Totals(); got.Calls != 50 || got.Usage.Input != 50 {
+	if got := b.Totals(); got.Usage.Input != 50 {
 		t.Errorf("unexpected totals %+v", got)
 	}
 }
@@ -177,7 +177,7 @@ func TestBudget_BilledFailuresExhaustTheBudget(t *testing.T) {
 	if _, err := b.Complete(context.Background(), Request{}); !errors.Is(err, ErrBudgetExceeded) {
 		t.Errorf("failed but billed calls must count against the budget, got %v", err)
 	}
-	if got := b.Totals(); got.Calls != 2 || got.Usage.Output != 80 || got.Cost == 0 {
+	if got := b.Totals(); got.Usage.Output != 80 || got.Cost == 0 {
 		t.Errorf("expected the billed failures in the totals, got %+v", got)
 	}
 }
@@ -198,19 +198,19 @@ func TestBudget_PricesEachAttempt(t *testing.T) {
 	}
 
 	got := b.Totals()
-	if !near(got.Cost, 2+4) || got.UnpricedCalls != 1 || got.Calls != 1 {
+	if !near(got.Cost, 2+4) || got.UnpricedCalls != 1 {
 		t.Errorf("expected each attempt at the price of its model, got %+v", got)
 	}
 }
 
 func TestTotals_Sub(t *testing.T) {
-	later := Totals{Usage: Usage{Input: 10, Output: 5, CacheRead: 8, CacheWrite: 3}, Calls: 4, Cost: 0.5, UnpricedCalls: 2}
-	earlier := Totals{Usage: Usage{Input: 4, Output: 1, CacheRead: 2, CacheWrite: 3}, Calls: 1, Cost: 0.2, UnpricedCalls: 1}
+	later := Totals{Usage: Usage{Input: 10, Output: 5, CacheRead: 8, CacheWrite: 3}, Cost: 0.5, UnpricedCalls: 2}
+	earlier := Totals{Usage: Usage{Input: 4, Output: 1, CacheRead: 2, CacheWrite: 3}, Cost: 0.2, UnpricedCalls: 1}
 
 	got := later.Sub(earlier)
 
-	want := Totals{Usage: Usage{Input: 6, Output: 4, CacheRead: 6}, Calls: 3, Cost: 0.3, UnpricedCalls: 1}
-	if got.Usage != want.Usage || got.Calls != want.Calls || got.UnpricedCalls != want.UnpricedCalls || !near(got.Cost, want.Cost) {
+	want := Totals{Usage: Usage{Input: 6, Output: 4, CacheRead: 6}, Cost: 0.3, UnpricedCalls: 1}
+	if got.Usage != want.Usage || got.UnpricedCalls != want.UnpricedCalls || !near(got.Cost, want.Cost) {
 		t.Errorf("expected %+v, got %+v", want, got)
 	}
 }

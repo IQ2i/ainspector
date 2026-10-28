@@ -96,30 +96,16 @@ func TestIsSupported(t *testing.T) {
 	}
 }
 
-func TestSupportedExtensions(t *testing.T) {
-	extensions := SupportedExtensions()
-	if len(extensions) == 0 {
-		t.Fatal("expected at least one supported extension")
-	}
-
-	// Check that common extensions are included
-	expected := []string{".go", ".js", ".py", ".ts", ".java", ".rs", ".c", ".php", ".rb"}
-	extensionSet := make(map[string]bool)
-	for _, ext := range extensions {
-		extensionSet[ext] = true
-	}
-
-	for _, ext := range expected {
-		if !extensionSet[ext] {
-			t.Errorf("expected %s to be in supported extensions", ext)
+func TestIsSupported_ByExtension(t *testing.T) {
+	for _, ext := range []string{".go", ".js", ".py", ".ts", ".java", ".rs", ".c", ".php", ".rb"} {
+		if !IsSupported("file" + ext) {
+			t.Errorf("expected %s to be supported", ext)
 		}
 	}
-
-	// JSON, HTML, CSS should NOT be in supported extensions (no function query)
-	notSupported := []string{".json", ".html", ".css"}
-	for _, ext := range notSupported {
-		if extensionSet[ext] {
-			t.Errorf("expected %s to NOT be in supported extensions", ext)
+	// No function query: the grammar would give nothing
+	for _, ext := range []string{".json", ".html", ".css", ".md"} {
+		if IsSupported("file" + ext) {
+			t.Errorf("expected %s to NOT be supported", ext)
 		}
 	}
 }
@@ -791,8 +777,8 @@ func TestParser_ParsePHPEnclosing(t *testing.T) {
 	if show.Enclosing == nil {
 		t.Fatal("expected an enclosing class for show")
 	}
-	if show.Enclosing.Name != "PostController" || show.Enclosing.Kind != "class" {
-		t.Errorf("expected class PostController, got %s %s", show.Enclosing.Kind, show.Enclosing.Name)
+	if show.Enclosing.Name != "PostController" {
+		t.Errorf("expected class PostController, got %s", show.Enclosing.Name)
 	}
 	if show.Enclosing.StartLine != 9 {
 		t.Errorf("expected class to start at its attribute on line 9, got %d", show.Enclosing.StartLine)
@@ -871,8 +857,8 @@ func main() {}
 				}
 				return
 			}
-			if got == nil || got.Name != tt.wantName || got.Kind != tt.wantKind {
-				t.Fatalf("expected %s %s, got %+v", tt.wantKind, tt.wantName, got)
+			if got == nil || got.Name != tt.wantName {
+				t.Fatalf("expected %s, got %+v", tt.wantName, got)
 			}
 		})
 	}

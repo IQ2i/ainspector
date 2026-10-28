@@ -205,7 +205,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			limit := cfg.LLM.TokenBudget(deps.MaxTokens)
 			client = llm.WithRedaction(client, deps.Secrets...)
 			budget = llm.WithBudget(client, limit, newPricing(cfg), logLine)
-			projectContext = loadProjectContext(deps.ProjectRoot, cfg, units)
+			projectContext = loadProjectContext(deps.ProjectRoot, cfg)
 			projectContext.ChangedFiles = changedPaths(files)
 		}
 
@@ -369,17 +369,8 @@ func logLine(format string, args ...any) {
 }
 
 // loadProjectContext never returns nil: a context that could not be read is an empty one
-func loadProjectContext(root string, cfg *config.Config, units []collect.ReviewUnit) *collect.ProjectContext {
-	languages := make(map[string]bool)
-	var ordered []string
-	for _, u := range units {
-		if !languages[u.Language] {
-			languages[u.Language] = true
-			ordered = append(ordered, u.Language)
-		}
-	}
-
-	pc, err := collect.GenerateProjectContext(root, ordered, &cfg.Context)
+func loadProjectContext(root string, cfg *config.Config) *collect.ProjectContext {
+	pc, err := collect.GenerateProjectContext(root, &cfg.Context)
 	if err != nil {
 		fmt.Printf("Warning: failed to load project context: %v\n", err)
 		return &collect.ProjectContext{}

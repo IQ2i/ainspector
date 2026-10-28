@@ -53,7 +53,6 @@ func (p *GitHubProvider) GetChangeInfo(ctx context.Context, number int) (ChangeI
 	}
 
 	return ChangeInfo{
-		Number:  number,
 		Author:  pr.GetUser().GetLogin(),
 		Title:   pr.GetTitle(),
 		Labels:  labels,

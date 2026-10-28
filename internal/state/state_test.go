@@ -150,19 +150,6 @@ func comment(body string) provider.ExistingComment {
 	return provider.ExistingComment{Body: body}
 }
 
-func TestLoadIndex_CountsMarkers(t *testing.T) {
-	ix := LoadIndex([]provider.ExistingComment{
-		comment("Review 1\n\n" + FormatMarker("abc123def456")),
-		comment("Review 2\n\n" + FormatMarker("fedcba987654")),
-		comment("Same unit again\n\n" + FormatMarker("fedcba987654")),
-		comment("Comment without hash"),
-	}, "")
-
-	if ix.Len() != 2 {
-		t.Errorf("Len = %d, want 2", ix.Len())
-	}
-}
-
 func TestIndex_FilterUnreviewed_LegacyMarker(t *testing.T) {
 	reviewed, fresh := unit("Func1"), unit("Func2")
 	ix := LoadIndex([]provider.ExistingComment{comment("x\n\n" + FormatMarker(LegacyFunctionHash(reviewed)))}, "")
@@ -198,9 +185,6 @@ func TestLoadIndex_OnlyTrustsOwnComments(t *testing.T) {
 	got := ix.FilterUnreviewed(quality, "d", units)
 	if len(got) != 1 || got[0].Name != "Forged" {
 		t.Errorf("expected only the forged unit to be reviewed, got %+v", got)
-	}
-	if _, ok := ix.Block("quality"); ok {
-		t.Error("a state block from another author must be ignored")
 	}
 
 	if got := LoadIndex(comments, "").FilterUnreviewed(quality, "d", units); len(got) != 0 {

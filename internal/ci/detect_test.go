@@ -90,9 +90,6 @@ func TestDetect_GitHub(t *testing.T) {
 	if env.Token != "test-token" {
 		t.Errorf("expected token 'test-token', got %s", env.Token)
 	}
-	if env.ServerHost != "github.com" {
-		t.Errorf("expected server host 'github.com', got %s", env.ServerHost)
-	}
 }
 
 func TestDetect_GitLab(t *testing.T) {
@@ -128,8 +125,8 @@ func TestDetect_GitLab(t *testing.T) {
 	if env.Token != "gitlab-token" {
 		t.Errorf("expected token 'gitlab-token', got %s", env.Token)
 	}
-	if env.ServerHost != "gitlab.example.com" {
-		t.Errorf("expected server host 'gitlab.example.com', got %s", env.ServerHost)
+	if env.APIURL != "https://gitlab.example.com/api/v4" {
+		t.Errorf("expected the API URL built from the server host, got %s", env.APIURL)
 	}
 }
 
@@ -525,19 +522,18 @@ func TestDetectGitLab_DefaultServerHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if env.ServerHost != "gitlab.com" {
-		t.Errorf("expected default server host 'gitlab.com', got %s", env.ServerHost)
+	if env.APIURL != "https://gitlab.com/api/v4" {
+		t.Errorf("expected the default API URL on gitlab.com, got %s", env.APIURL)
 	}
 }
 
 func TestEnvironment_Fields(t *testing.T) {
 	env := Environment{
-		Provider:   "github",
-		Owner:      "test-owner",
-		Repo:       "test-repo",
-		PRNumber:   42,
-		Token:      "secret",
-		ServerHost: "github.com",
+		Provider: "github",
+		Owner:    "test-owner",
+		Repo:     "test-repo",
+		PRNumber: 42,
+		Token:    "secret",
 	}
 
 	if env.Provider != "github" {
@@ -554,9 +550,6 @@ func TestEnvironment_Fields(t *testing.T) {
 	}
 	if env.Token != "secret" {
 		t.Errorf("token mismatch")
-	}
-	if env.ServerHost != "github.com" {
-		t.Errorf("server host mismatch")
 	}
 }
 

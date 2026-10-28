@@ -149,37 +149,6 @@ func TestLoad(t *testing.T) {
 	})
 }
 
-func TestLoadFromPath(t *testing.T) {
-	t.Run("loads from specific path", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		configPath := filepath.Join(tmpDir, "custom-config.yaml")
-
-		content := `ignore:
-  paths:
-    - custom/
-`
-		_ = os.WriteFile(configPath, []byte(content), 0644)
-
-		cfg, err := LoadFromPath(configPath)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if cfg.Ignore.Paths[0] != "custom/" {
-			t.Errorf("expected custom/, got %s", cfg.Ignore.Paths[0])
-		}
-	})
-
-	t.Run("returns empty config for non-existent path", func(t *testing.T) {
-		cfg, err := LoadFromPath("/nonexistent/path.yaml")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(cfg.Ignore.Paths) != 0 {
-			t.Errorf("expected empty paths")
-		}
-	})
-}
-
 func TestShouldIgnore(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -440,11 +409,11 @@ func TestParse_InvalidTitlePattern(t *testing.T) {
 }
 
 func TestLoad_InvalidTitlePattern(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "ainspector.yaml")
-	_ = os.WriteFile(path, []byte("ignore:\n  title_patterns: [\"(\"]\n"), 0644)
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "ainspector.yaml"), []byte("ignore:\n  title_patterns: [\"(\"]\n"), 0644)
 
-	if _, err := LoadFromPath(path); err == nil {
-		t.Error("LoadFromPath must reject an invalid pattern")
+	if _, err := Load(dir); err == nil {
+		t.Error("Load must reject an invalid pattern")
 	}
 }
 

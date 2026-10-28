@@ -15,7 +15,6 @@ type Logger func(format string, args ...any)
 // Totals is what a run consumed
 type Totals struct {
 	Usage Usage
-	Calls int
 	// Cost is the estimate in USD of the calls whose model has a price
 	Cost float64
 	// UnpricedCalls counts the calls whose model has no price: Cost is then incomplete
@@ -31,7 +30,6 @@ func (t Totals) Sub(earlier Totals) Totals {
 			CacheRead:  t.Usage.CacheRead - earlier.Usage.CacheRead,
 			CacheWrite: t.Usage.CacheWrite - earlier.Usage.CacheWrite,
 		},
-		Calls:         t.Calls - earlier.Calls,
 		Cost:          t.Cost - earlier.Cost,
 		UnpricedCalls: t.UnpricedCalls - earlier.UnpricedCalls,
 	}
@@ -104,7 +102,6 @@ func (b *Budget) account(resp Response) {
 
 	b.mu.Lock()
 	b.used += resp.Usage.Input + resp.Usage.Output + resp.Usage.CacheWrite
-	b.totals.Calls++
 	b.totals.Usage.Input += resp.Usage.Input
 	b.totals.Usage.Output += resp.Usage.Output
 	b.totals.Usage.CacheRead += resp.Usage.CacheRead

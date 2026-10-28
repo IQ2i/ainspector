@@ -71,7 +71,7 @@ func TestGenerateProjectContext_WellKnownFiles(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{"README.md": "# Test", "CLAUDE.md": "Keep it small", "go.mod": "module test"})
 
-	pc, err := GenerateProjectContext(dir, []string{"go"}, nil)
+	pc, err := GenerateProjectContext(dir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,13 +80,13 @@ func TestGenerateProjectContext_WellKnownFiles(t *testing.T) {
 	if pc.Description != want {
 		t.Errorf("unexpected description:\n%q", pc.Description)
 	}
-	if len(pc.Languages) != 1 || len(pc.Notes) != 0 {
-		t.Errorf("unexpected languages or notes: %+v", pc)
+	if len(pc.Notes) != 0 {
+		t.Errorf("unexpected notes: %+v", pc)
 	}
 }
 
 func TestGenerateProjectContext_NoFiles(t *testing.T) {
-	pc, err := GenerateProjectContext(t.TempDir(), []string{"go"}, &config.ContextConfig{})
+	pc, err := GenerateProjectContext(t.TempDir(), &config.ContextConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestGenerateProjectContext_WithConfig(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{"README.md": "# Test Project", "docs/guide.md": "# Guide", "CLAUDE.md": "not listed"})
 
-	pc, err := GenerateProjectContext(dir, []string{"go"}, &config.ContextConfig{Include: []string{"README.md", "docs/guide.md"}})
+	pc, err := GenerateProjectContext(dir, &config.ContextConfig{Include: []string{"README.md", "docs/guide.md"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestGenerateProjectContext_MaxBytesCutsAndReports(t *testing.T) {
 		"package.json": "{}",
 	})
 
-	pc, err := GenerateProjectContext(dir, nil, &config.ContextConfig{MaxBytes: 1000})
+	pc, err := GenerateProjectContext(dir, &config.ContextConfig{MaxBytes: 1000})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestGenerateProjectContext_TooLittleRoomLeavesTheFileOut(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{"CLAUDE.md": strings.Repeat("a", 90), "README.md": strings.Repeat("r", 500)})
 
-	pc, err := GenerateProjectContext(dir, nil, &config.ContextConfig{MaxBytes: 200})
+	pc, err := GenerateProjectContext(dir, &config.ContextConfig{MaxBytes: 200})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestGenerateProjectContext_DefaultLimit(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{"README.md": strings.Repeat("r", config.DefaultContextMaxBytes*2)})
 
-	pc, err := GenerateProjectContext(dir, nil, nil)
+	pc, err := GenerateProjectContext(dir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

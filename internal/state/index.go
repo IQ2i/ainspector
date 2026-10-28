@@ -215,12 +215,6 @@ func LoadIndex(comments []provider.ExistingComment, self string) *Index {
 	return ix
 }
 
-// Block returns the state block previously written for a mode
-func (ix *Index) Block(mode string) (StateBlock, bool) {
-	b, ok := ix.blocks[mode]
-	return b, ok
-}
-
 // ReportedFindings returns the fingerprints of the findings a mode already reported, from its
 // inline comments and its state block, and what the block remembers of them
 func (ix *Index) ReportedFindings(mode string) (map[string]bool, []findings.Reported) {
@@ -265,11 +259,6 @@ func (ix *Index) OpenFindings(m ModeKey, skipped map[string]int) []findings.Repo
 		open = append(open, r)
 	}
 	return open
-}
-
-// Len returns the number of distinct inline markers found
-func (ix *Index) Len() int {
-	return len(ix.markers)
 }
 
 // IsReviewed tells whether a unit was already reviewed by a mode, whichever hash formula was used

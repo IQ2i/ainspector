@@ -15,7 +15,6 @@ import (
 type ProjectContext struct {
 	// Description is the content of the files, each one under a "=== path ===" header
 	Description string
-	Languages   []string
 	// Notes tell what the size limit cut, to report in the review summary
 	Notes []string
 	// ChangedFiles lists the files of the PR/MR, for the modes that reason about what changed
@@ -53,7 +52,7 @@ type contextFile struct {
 // GenerateProjectContext reads the project files that describe the project: the ones listed
 // in context.include, or else the well-known instruction, README and manifest files.
 // The result never exceeds context.max_bytes.
-func GenerateProjectContext(projectRoot string, languages []string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
+func GenerateProjectContext(projectRoot string, contextConfig *config.ContextConfig) (*ProjectContext, error) {
 	limit := config.DefaultContextMaxBytes
 	if contextConfig != nil {
 		limit = contextConfig.Limit()
@@ -89,7 +88,7 @@ func GenerateProjectContext(projectRoot string, languages []string, contextConfi
 	}
 
 	description, notes := renderContext(files, limit)
-	return &ProjectContext{Description: description, Languages: languages, Notes: notes}, nil
+	return &ProjectContext{Description: description, Notes: notes}, nil
 }
 
 // findContextFiles returns the well-known project files that exist, in priority order. A file

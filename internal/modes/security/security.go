@@ -39,8 +39,6 @@ func (m *Mode) Name() string { return "security" }
 
 func (m *Mode) Scope() collect.Scope { return m.cfg.Scope }
 
-func (m *Mode) Model() string { return m.cfg.Model }
-
 func (m *Mode) Version() string { return "security/2" }
 
 func (m *Mode) Rules() []string { return nil }

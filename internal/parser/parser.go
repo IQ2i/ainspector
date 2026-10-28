@@ -38,7 +38,6 @@ type Function struct {
 // ClassRef identifies the class-like declaration (class, enum, trait) enclosing a function
 type ClassRef struct {
 	Name      string
-	Kind      string
 	StartLine int
 	EndLine   int
 	StartByte uint
@@ -392,17 +391,6 @@ func IsSupported(path string) bool {
 	return config != nil && config.FunctionQuery != ""
 }
 
-// SupportedExtensions returns all supported file extensions
-func SupportedExtensions() []string {
-	extensions := make([]string, 0, len(languageConfigs))
-	for ext, config := range languageConfigs {
-		if config.FunctionQuery != "" {
-			extensions = append(extensions, ext)
-		}
-	}
-	return extensions
-}
-
 // Parse parses source code and returns all functions
 func (p *Parser) Parse(path string, content []byte) ([]Function, string, error) {
 	config := GetConfig(path)
@@ -494,7 +482,6 @@ func findEnclosing(node *tree_sitter.Node, config *LanguageConfig, content []byt
 			continue
 		}
 		ref := &ClassRef{
-			Kind:      strings.TrimSuffix(n.Kind(), "_declaration"),
 			StartLine: int(n.StartPosition().Row) + 1,
 			EndLine:   int(n.EndPosition().Row) + 1,
 			StartByte: n.StartByte(),

@@ -16,7 +16,6 @@ import (
 type Mode interface {
 	Name() string
 	Scope() collect.Scope
-	Model() string
 	// Version enters the unit hash: any prompt change must bump it
 	Version() string
 	// Rules are the project rules given to the mode, they enter the unit hash

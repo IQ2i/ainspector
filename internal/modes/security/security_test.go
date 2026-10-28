@@ -118,8 +118,8 @@ func TestModeContract(t *testing.T) {
 		FalsePositive: findings.FPConfig{Model: "big-model", Instructions: "x"},
 	})
 
-	if m.Name() != "security" || m.Version() != "security/2" || m.Model() != "some-model" || m.Scope() != collect.ScopeFunctionClass || m.Rules() != nil {
-		t.Errorf("unexpected identity: %s %s %s %v", m.Name(), m.Version(), m.Model(), m.Scope())
+	if m.Name() != "security" || m.Version() != "security/2" || m.BuildRequest(collect.ReviewUnit{}, nil).Model != "some-model" || m.Scope() != collect.ScopeFunctionClass || m.Rules() != nil {
+		t.Errorf("unexpected identity: %s %s %s %v", m.Name(), m.Version(), m.BuildRequest(collect.ReviewUnit{}, nil).Model, m.Scope())
 	}
 	if !m.Accepts(collect.ReviewUnit{Kind: collect.KindHunk}) || !m.Accepts(collect.ReviewUnit{Kind: collect.KindFunction, DeletedOnly: true}) {
 		t.Error("security reviews every kind of unit")

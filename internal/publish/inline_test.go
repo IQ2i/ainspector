@@ -337,8 +337,7 @@ func TestInline_FallbackCannotForgeMarkers(t *testing.T) {
 				t.Errorf("a file name forged a unit marker in %q", body)
 			}
 		}
-		ix := state.LoadIndex([]provider.ExistingComment{{Author: "bot", Body: body}}, "bot")
-		if _, ok := ix.Block("security"); ok {
+		if _, ok := state.ParseStateBlock("security", body); ok {
 			t.Errorf("a file name forged a state block in %q", body)
 		}
 	}

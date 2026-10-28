@@ -46,7 +46,6 @@ func (p *GitLabProvider) GetChangeInfo(ctx context.Context, number int) (ChangeI
 	}
 
 	info := ChangeInfo{
-		Number:   number,
 		Title:    mr.Title,
 		Labels:   []string(mr.Labels),
 		BaseSHA:  mr.DiffRefs.BaseSha,
