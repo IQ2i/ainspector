@@ -9,6 +9,7 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // Categories a finding can have, in the order of the schema
@@ -192,7 +193,7 @@ func listFiles(files []string) string {
 			fmt.Fprintf(&sb, "... and %d more\n", len(files)-i)
 			break
 		}
-		fmt.Fprintf(&sb, "- %s\n", oneLine(f))
+		fmt.Fprintf(&sb, "- %s\n", text.OneLine(f))
 	}
 	return strings.TrimSuffix(sb.String(), "\n")
 }
@@ -200,11 +201,11 @@ func listFiles(files []string) string {
 func buildUserPrompt(u collect.ReviewUnit) string {
 	var sb strings.Builder
 
-	fmt.Fprintf(&sb, "Review the changes in this %s code:\n\nFile: %s\n", oneLine(u.Language), oneLine(u.FilePath))
+	fmt.Fprintf(&sb, "Review the changes in this %s code:\n\nFile: %s\n", text.OneLine(u.Language), text.OneLine(u.FilePath))
 	if u.Kind == collect.KindHunk {
 		fmt.Fprintf(&sb, "Changed lines: %d-%d\n", u.StartLine, u.EndLine)
 	} else {
-		fmt.Fprintf(&sb, "Function: %s (lines %d-%d)\n", oneLine(u.Name), u.StartLine, u.EndLine)
+		fmt.Fprintf(&sb, "Function: %s (lines %d-%d)\n", text.OneLine(u.Name), u.StartLine, u.EndLine)
 	}
 	fmt.Fprintf(&sb, "Change type: %s\n", u.ChangeType)
 	if u.DeletedOnly {
@@ -212,21 +213,16 @@ func buildUserPrompt(u collect.ReviewUnit) string {
 	}
 
 	if u.Enclosing != nil {
-		fmt.Fprintf(&sb, "\n## Enclosing class %s (for context only, its other methods are reduced to their signature):\n%s\n", oneLine(u.Enclosing.Name), provider.Fence(u.Language, u.Enclosing.Rendered))
+		fmt.Fprintf(&sb, "\n## Enclosing class %s (for context only, its other methods are reduced to their signature):\n%s\n", text.OneLine(u.Enclosing.Name), provider.Fence(u.Language, u.Enclosing.Rendered))
 	}
 	for _, f := range u.Related {
-		fmt.Fprintf(&sb, "\n## Related file %s (%s; for context only, not part of the changes):\n%s\n", oneLine(f.Path), oneLine(f.Reason), provider.Fence(strings.TrimPrefix(path.Ext(f.Path), "."), f.Content))
+		fmt.Fprintf(&sb, "\n## Related file %s (%s; for context only, not part of the changes):\n%s\n", text.OneLine(f.Path), text.OneLine(f.Reason), provider.Fence(strings.TrimPrefix(path.Ext(f.Path), "."), f.Content))
 	}
 	if u.Diff != "" {
 		fmt.Fprintf(&sb, "\n## Changes (REVIEW THESE):\n%s\n", provider.Fence("diff", u.Diff))
 	}
 	fmt.Fprintf(&sb, "\n## Full code (for context, review only the changes):\n%s", provider.Fence(u.Language, u.Content))
 	return sb.String()
-}
-
-// oneLine flattens a name taken from the repository, so that it cannot add lines to the prompt
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
 }
 
 func quoted(values []string) string {

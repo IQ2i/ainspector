@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/findings"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // maxQualityDescription bounds the description of an entry of the Code Quality report
@@ -50,7 +51,7 @@ func WriteCodeQuality(dir, path string, runs []Run) error {
 
 func newQualityEntry(mode string, r findings.Reported) qualityEntry {
 	e := qualityEntry{
-		Description: truncateRunes(oneLine(r.Title), maxQualityDescription),
+		Description: truncateRunes(text.OneLine(r.Title), maxQualityDescription),
 		CheckName:   "ainspector/" + mode,
 		Fingerprint: r.Fingerprint,
 		Severity:    qualitySeverity(r.Severity),

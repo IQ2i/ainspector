@@ -9,6 +9,7 @@ import (
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/iq2i/ainspector/internal/state"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // SummaryMarker identifies the summary comment of a mode
@@ -40,7 +41,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 
 	issues := "no issue found"
 	if n := len(run.Published); n > 0 {
-		issues = fmt.Sprintf("%d %s reported", n, plural(n, "issue"))
+		issues = fmt.Sprintf("%d %s reported", n, text.Plural(n, "issue"))
 	}
 	unit := "function"
 	for _, u := range run.Units {
@@ -49,13 +50,13 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 			break
 		}
 	}
-	fmt.Fprintf(&sb, "Reviewed %d %s, %s.\n", len(run.Reviewed), plural(len(run.Reviewed), unit), issues)
+	fmt.Fprintf(&sb, "Reviewed %d %s, %s.\n", len(run.Reviewed), text.Plural(len(run.Reviewed), unit), issues)
 
 	if run.Model != "" {
 		fmt.Fprintf(&sb, "\nModel: `%s`\n", run.Model)
 	}
 	if run.Discarded > 0 {
-		fmt.Fprintf(&sb, "\n%d %s discarded as false %s", run.Discarded, plural(run.Discarded, "finding"), plural(run.Discarded, "positive"))
+		fmt.Fprintf(&sb, "\n%d %s discarded as false %s", run.Discarded, text.Plural(run.Discarded, "finding"), text.Plural(run.Discarded, "positive"))
 		if run.FPModel != "" {
 			fmt.Fprintf(&sb, " by `%s`", run.FPModel)
 		}
@@ -81,7 +82,7 @@ func SummaryBody(run Run, previous *state.StateBlock) string {
 	}
 	var overflow []string
 	for _, f := range append(append([]findings.Finding{}, run.Overflow...), run.Unjudged...) {
-		overflow = append(overflow, fmt.Sprintf("%s:%d [%s] %s", f.File, f.StartLine, f.Severity, oneLine(f.Title)))
+		overflow = append(overflow, fmt.Sprintf("%s:%d [%s] %s", f.File, f.StartLine, f.Severity, text.OneLine(f.Title)))
 	}
 	writeList(fmt.Sprintf("Not commented, only the %d most severe findings are published:", len(run.Published)), overflow)
 	writeList("Not reviewed, the token budget was reached:", run.Skipped)
@@ -130,13 +131,6 @@ func feedbackLine(feedback []Feedback) string {
 		}
 	}
 	return fmt.Sprintf("Reactions to earlier comments: %d useful, %d not useful, %d without a verdict.", useful, useless, len(feedback)-useful-useless)
-}
-
-func plural(n int, word string) string {
-	if n == 1 {
-		return word
-	}
-	return word + "s"
 }
 
 // FormatCost renders an estimated cost, saying when it is incomplete

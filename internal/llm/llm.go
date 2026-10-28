@@ -37,6 +37,16 @@ type Usage struct {
 	Input, Output, CacheRead, CacheWrite int
 }
 
+// Add returns the sum of two usages
+func (u Usage) Add(o Usage) Usage {
+	return Usage{u.Input + o.Input, u.Output + o.Output, u.CacheRead + o.CacheRead, u.CacheWrite + o.CacheWrite}
+}
+
+// Sub returns what u consumed beyond an earlier usage
+func (u Usage) Sub(o Usage) Usage {
+	return Usage{u.Input - o.Input, u.Output - o.Output, u.CacheRead - o.CacheRead, u.CacheWrite - o.CacheWrite}
+}
+
 // Response is a backend-agnostic completion response.
 type Response struct {
 	Text      string

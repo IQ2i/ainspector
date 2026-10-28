@@ -11,6 +11,7 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 //go:embed false_positive.md
@@ -114,7 +115,7 @@ func buildFPPrompt(units map[string]collect.ReviewUnit, previous []Reported, fs 
 		sb.WriteString("none\n")
 	}
 	for _, r := range previous {
-		fmt.Fprintf(&sb, "- %s:%d [%s] %s\n", oneLine(r.File), r.Line, oneLine(r.Category), oneLine(r.Title))
+		fmt.Fprintf(&sb, "- %s:%d [%s] %s\n", text.OneLine(r.File), r.Line, text.OneLine(r.Category), text.OneLine(r.Title))
 	}
 
 	sb.WriteString("\n=== CODE UNDER REVIEW (data) ===\n")
@@ -125,12 +126,12 @@ func buildFPPrompt(units map[string]collect.ReviewUnit, previous []Reported, fs 
 			continue
 		}
 		seen[f.UnitHash] = true
-		fmt.Fprintf(&sb, "\n%s, %s (lines %d-%d)\n", oneLine(u.FilePath), oneLine(u.Name), u.StartLine, u.EndLine)
+		fmt.Fprintf(&sb, "\n%s, %s (lines %d-%d)\n", text.OneLine(u.FilePath), text.OneLine(u.Name), u.StartLine, u.EndLine)
 		if u.Enclosing != nil {
 			sb.WriteString("Class header:\n" + provider.Fence(u.Language, u.Enclosing.Rendered) + "\n")
 		}
 		for _, r := range u.Related {
-			fmt.Fprintf(&sb, "Related file %s (%s):\n%s\n", oneLine(r.Path), oneLine(r.Reason), provider.Fence(strings.TrimPrefix(path.Ext(r.Path), "."), r.Content))
+			fmt.Fprintf(&sb, "Related file %s (%s):\n%s\n", text.OneLine(r.Path), text.OneLine(r.Reason), provider.Fence(strings.TrimPrefix(path.Ext(r.Path), "."), r.Content))
 		}
 		if u.Diff != "" {
 			sb.WriteString("Changes:\n" + provider.Fence("diff", u.Diff) + "\n")
@@ -142,11 +143,7 @@ func buildFPPrompt(units map[string]collect.ReviewUnit, previous []Reported, fs 
 	for i, f := range fs {
 		// The text of a finding derives from the code under review: it is fenced like the code
 		fmt.Fprintf(&sb, "\nid %d: %s:%d, severity %s, category %s, confidence %.2f\nTitle: %s\nScenario:\n%s\nRemediation:\n%s\n",
-			i, oneLine(f.File), f.StartLine, f.Severity, oneLine(f.Category), f.Confidence, oneLine(f.Title), provider.Fence("", f.Scenario), provider.Fence("", f.Remediation))
+			i, text.OneLine(f.File), f.StartLine, f.Severity, text.OneLine(f.Category), f.Confidence, text.OneLine(f.Title), provider.Fence("", f.Scenario), provider.Fence("", f.Remediation))
 	}
 	return sb.String()
-}
-
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/iq2i/ainspector/internal/provider"
 	"github.com/iq2i/ainspector/internal/publish"
 	"github.com/iq2i/ainspector/internal/state"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // Deps are the collaborators of a run
@@ -165,7 +166,7 @@ func prepare(ctx context.Context, deps Deps, opts Options) (*runState, error) {
 		st.changeNotes = append(st.changeNotes, note)
 	}
 	if unsafe > 0 {
-		st.changeNotes = append(st.changeNotes, fmt.Sprintf("%d %s skipped, the name holds control characters", unsafe, plural(unsafe, "file")))
+		st.changeNotes = append(st.changeNotes, fmt.Sprintf("%d %s skipped, the name holds control characters", unsafe, text.Plural(unsafe, "file")))
 	}
 	req := collectRequest(files, enabled)
 	hidden, counted := hiddenNotes(files, req.Hunks.Extensions, cfg.ShouldIgnore)
@@ -431,7 +432,7 @@ func settleFindings(ctx context.Context, client llm.Client, defaultFPModel strin
 		} else {
 			for _, v := range verdicts {
 				if !v.Keep {
-					fmt.Printf("Discarded as a false positive: %s (%s)\n", oneLine(all[v.ID].Title), oneLine(v.Reason))
+					fmt.Printf("Discarded as a false positive: %s (%s)\n", text.OneLine(all[v.ID].Title), text.OneLine(v.Reason))
 				}
 			}
 			run.Verdicts = verdicts
@@ -445,10 +446,6 @@ func settleFindings(ctx context.Context, client llm.Client, defaultFPModel strin
 	if policy.MaxPublished > 0 {
 		run.Published, run.Overflow = findings.Cap(all, policy.MaxPublished)
 	}
-}
-
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
 }
 
 // collectRequest asks for the widest scope and the extra units that the enabled modes need
@@ -583,7 +580,7 @@ func hiddenNotes(files []provider.ModifiedFile, hunkExtensions []string, ignored
 		if rooted > 1 {
 			verb = "are"
 		}
-		counted = fmt.Sprintf("%d %s %s never reviewed (vendor, generated)", rooted, plural(rooted, "file"), verb)
+		counted = fmt.Sprintf("%d %s %s never reviewed (vendor, generated)", rooted, text.Plural(rooted, "file"), verb)
 	}
 	return notes, counted
 }
@@ -600,13 +597,6 @@ func listPaths(paths []string) string {
 		list += fmt.Sprintf(" (and %d more)", more)
 	}
 	return list
-}
-
-func plural(n int, word string) string {
-	if n == 1 {
-		return word
-	}
-	return word + "s"
 }
 
 func changedPaths(files []provider.ModifiedFile) []string {

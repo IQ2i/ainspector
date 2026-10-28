@@ -8,6 +8,7 @@ import (
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
 	"github.com/iq2i/ainspector/internal/state"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // Review status of a unit
@@ -85,7 +86,7 @@ func BodyFor(f findings.Finding) string {
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "**[%s] %s**", f.Severity, oneLine(sanitizeText(f.Title)))
+	fmt.Fprintf(&sb, "**[%s] %s**", f.Severity, text.OneLine(sanitizeText(f.Title)))
 	if f.Category != "" {
 		fmt.Fprintf(&sb, " (%s, confidence %.0f%%)", f.Category, f.Confidence*100)
 	}
@@ -104,10 +105,6 @@ func BodyFor(f findings.Finding) string {
 		sb.WriteString("\n" + state.FormatFindingMarker(f.Fingerprint))
 	}
 	return sb.String()
-}
-
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
 }
 
 // openFindings summarizes the findings of the run that are still true, each with the unit that

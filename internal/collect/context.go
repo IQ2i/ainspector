@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/iq2i/ainspector/internal/config"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // ProjectContext holds the project files given to the LLM with every request
@@ -22,10 +22,8 @@ type ProjectContext struct {
 	ChangedFiles []string
 }
 
-// minPartialBytes is the room a file needs to be worth including truncated
-const minPartialBytes = 200
-
-const truncationMarker = "\n... (truncated)\n"
+// contextTruncation ends a file of the project context that was cut
+const contextTruncation = text.TruncationMarker + "\n"
 
 // Files looked for when the project does not choose its own. Instructions come first as they
 // carry the project rules, then the README, then the dependency manifests: when the size limit
@@ -143,10 +141,10 @@ func renderContext(files []contextFile, limit int) (string, []string) {
 
 		cut := ""
 		omitted := files[i:]
-		if room := limit - sb.Len() - len(header) - len(truncationMarker); room >= minPartialBytes {
+		if room := limit - sb.Len() - len(header) - len(contextTruncation); room >= text.MinPartialBytes {
 			sb.WriteString(header)
-			sb.WriteString(cutAtRune(f.content, room))
-			sb.WriteString(truncationMarker)
+			sb.WriteString(text.CutAtRune(f.content, room))
+			sb.WriteString(contextTruncation)
 			cut = f.path + " truncated"
 			omitted = files[i+1:]
 		}
@@ -166,15 +164,4 @@ func renderContext(files []contextFile, limit int) (string, []string) {
 	}
 
 	return sb.String(), nil
-}
-
-// cutAtRune truncates s to at most n bytes without splitting a multi-byte character
-func cutAtRune(s string, n int) string {
-	if n >= len(s) {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
 }

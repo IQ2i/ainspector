@@ -9,6 +9,7 @@ import (
 	"github.com/iq2i/ainspector/internal/diff"
 	"github.com/iq2i/ainspector/internal/parser"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // Scope is the amount of context gathered around each reviewed unit
@@ -230,8 +231,8 @@ func (e *Collector) extractFromFile(ctx context.Context, file provider.ModifiedF
 			DeletedOnly: !added,
 		}
 		if len(unit.Content) > maxFunctionBytes || len(unit.Diff) > maxFunctionBytes {
-			unit.Content = cutAtLine(unit.Content, maxFunctionBytes)
-			unit.Diff = cutAtLine(unit.Diff, maxFunctionBytes)
+			unit.Content = text.Cut(unit.Content, maxFunctionBytes)
+			unit.Diff = text.Cut(unit.Diff, maxFunctionBytes)
 			unit.Notes = append(unit.Notes, fmt.Sprintf("Function %s in %s was truncated to %d bytes", fn.Name, file.Path, maxFunctionBytes))
 		}
 		if req.Scope >= ScopeFunctionClass && fn.Enclosing != nil {
@@ -268,7 +269,7 @@ func (e *Collector) classHeader(path, content string, ref *parser.ClassRef, cach
 		fmt.Printf("Warning: failed to render the class header of %s in %s: %v\n", ref.Name, path, err)
 	} else {
 		if len(rendered) > maxHeaderBytes {
-			rendered = cutAtLine(rendered, maxHeaderBytes) + headerTruncated
+			rendered = text.Cut(rendered, maxHeaderBytes) + headerTruncated
 		}
 		header = &ClassHeader{Name: ref.Name, StartLine: ref.StartLine, EndLine: ref.EndLine, Rendered: rendered}
 	}

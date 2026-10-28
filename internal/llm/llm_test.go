@@ -212,3 +212,14 @@ func TestTotals_Sub(t *testing.T) {
 		t.Errorf("expected %+v, got %+v", want, got)
 	}
 }
+
+func TestUsage_AddAndSub(t *testing.T) {
+	a := Usage{Input: 10, Output: 5, CacheRead: 8, CacheWrite: 3}
+	b := Usage{Input: 4, Output: 1, CacheRead: 2, CacheWrite: 3}
+	if got := a.Add(b); got != (Usage{Input: 14, Output: 6, CacheRead: 10, CacheWrite: 6}) {
+		t.Errorf("Add = %+v", got)
+	}
+	if got := a.Sub(b); got != (Usage{Input: 6, Output: 4, CacheRead: 6}) {
+		t.Errorf("Sub = %+v", got)
+	}
+}

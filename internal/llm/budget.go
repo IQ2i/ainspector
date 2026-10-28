@@ -24,12 +24,7 @@ type Totals struct {
 // Sub returns what was consumed between an earlier snapshot and t
 func (t Totals) Sub(earlier Totals) Totals {
 	return Totals{
-		Usage: Usage{
-			Input:      t.Usage.Input - earlier.Usage.Input,
-			Output:     t.Usage.Output - earlier.Usage.Output,
-			CacheRead:  t.Usage.CacheRead - earlier.Usage.CacheRead,
-			CacheWrite: t.Usage.CacheWrite - earlier.Usage.CacheWrite,
-		},
+		Usage:         t.Usage.Sub(earlier.Usage),
 		Cost:          t.Cost - earlier.Cost,
 		UnpricedCalls: t.UnpricedCalls - earlier.UnpricedCalls,
 	}
@@ -100,10 +95,7 @@ func (b *Budget) account(resp Response) {
 
 	b.mu.Lock()
 	b.used += resp.Usage.Input + resp.Usage.Output + resp.Usage.CacheWrite
-	b.totals.Usage.Input += resp.Usage.Input
-	b.totals.Usage.Output += resp.Usage.Output
-	b.totals.Usage.CacheRead += resp.Usage.CacheRead
-	b.totals.Usage.CacheWrite += resp.Usage.CacheWrite
+	b.totals.Usage = b.totals.Usage.Add(resp.Usage)
 	b.totals.Cost += cost
 	b.totals.UnpricedCalls += unpriced
 	used := b.used

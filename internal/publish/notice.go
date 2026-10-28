@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // NoticeMarker identifies the comment that tells a review stopped before reviewing anything
@@ -64,14 +65,14 @@ func upsertNote(ctx context.Context, p provider.Provider, number int, self, mark
 func NoticeBody(configFile, reason string, notes []string) string {
 	var sb strings.Builder
 	sb.WriteString(NoticeMarker + "\n### ainspector\n\n")
-	fmt.Fprintf(&sb, "The review stopped before reviewing anything: %s.\n", oneLine(sanitizeText(reason)))
+	fmt.Fprintf(&sb, "The review stopped before reviewing anything: %s.\n", text.OneLine(sanitizeText(reason)))
 	if configFile != "" {
-		fmt.Fprintf(&sb, "\nThis change modifies `%s`, its settings may be the cause.\n", oneLine(sanitizeText(configFile)))
+		fmt.Fprintf(&sb, "\nThis change modifies `%s`, its settings may be the cause.\n", text.OneLine(sanitizeText(configFile)))
 	}
 	if len(notes) > 0 {
 		sb.WriteString("\nNotes:\n")
 		for _, n := range notes {
-			fmt.Fprintf(&sb, "- %s\n", oneLine(sanitizeText(n)))
+			fmt.Fprintf(&sb, "- %s\n", text.OneLine(sanitizeText(n)))
 		}
 	}
 	return sb.String()

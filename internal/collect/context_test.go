@@ -169,21 +169,6 @@ func TestGenerateProjectContext_DefaultLimit(t *testing.T) {
 	}
 }
 
-func TestCutAtRune(t *testing.T) {
-	s := "aé€𝄞"
-	for n := 0; n <= len(s); n++ {
-		got := cutAtRune(s, n)
-		if len(got) > n || !strings.HasPrefix(s, got) {
-			t.Errorf("cutAtRune(%d) = %q", n, got)
-		}
-		for _, r := range got {
-			if r == '�' {
-				t.Errorf("cutAtRune(%d) split a character: %q", n, got)
-			}
-		}
-	}
-}
-
 func TestFindContextFiles_SymlinkOutsideTheProjectIsIgnored(t *testing.T) {
 	outside := t.TempDir()
 	writeFiles(t, outside, map[string]string{"secret": "GITLAB_TOKEN=glpat-secret"})

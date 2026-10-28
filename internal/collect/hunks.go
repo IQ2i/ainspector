@@ -8,6 +8,7 @@ import (
 
 	"github.com/iq2i/ainspector/internal/diff"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/text"
 )
 
 // maxHunkBytes caps the content and the diff of a hunk unit
@@ -111,23 +112,11 @@ func hunkUnits(file provider.ModifiedFile, content, changeType, language string,
 		}
 		// A new file is one hunk from end to end: its diff is as long as its content
 		if len(body) > maxHunkBytes || len(unit.Diff) > maxHunkBytes {
-			unit.Content = cutAtLine(body, maxHunkBytes)
-			unit.Diff = cutAtLine(unit.Diff, maxHunkBytes)
+			unit.Content = text.Cut(body, maxHunkBytes)
+			unit.Diff = text.Cut(unit.Diff, maxHunkBytes)
 			unit.Notes = append(unit.Notes, fmt.Sprintf("%s lines %d-%d were truncated to %d bytes", file.Path, r[0], r[1], maxHunkBytes))
 		}
 		units = append(units, unit)
 	}
 	return units
-}
-
-// cutAtLine shortens s to at most max bytes, on a line boundary when there is one
-func cutAtLine(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	cut := s[:max]
-	if i := strings.LastIndex(cut, "\n"); i > 0 {
-		return cut[:i]
-	}
-	return cut
 }
