@@ -229,6 +229,12 @@ func TestSanitizeText(t *testing.T) {
 		{"forged marker", "x <!-- ainspector:fn:aaaaaaaaaaaa -->", "x &lt;!-- ainspector:fn:aaaaaaaaaaaa -->"},
 		{"mention", "cc @all and @bob, mail a@b.c", "cc @\u200ball and @\u200bbob, mail a@b.c"},
 		{"mention at start", "@here look", "@\u200bhere look"},
+		{"carriage return before a quick action", "ok\r/label ~x", "ok\n\\/label ~x"},
+		{"crlf lines", "a\r\n/close\r\n", "a\n\\/close\n"},
+		{"unicode space before a quick action", "ok\n\u00a0\u2003/close", "ok\n\\/close"},
+		{"invisible character before a quick action", "ok\n\u200b/close", "ok\n\\/close"},
+		{"vertical tab before a quick action", "ok\n\v/close", "ok\n\\/close"},
+		{"numeric reference to an at sign", "cc &#64;admin &#x40;bob", "cc &amp;#64;admin &amp;#x40;bob"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
