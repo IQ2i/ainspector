@@ -38,9 +38,9 @@ security:
 
 ## Full code (for context, review only the changes):
 ```php
-#[Route('/{id}')]
-public function show(Account $account): Response
-{
-    return $this->render('account/show.html.twig', ['account' => $account]);
-}
+14| #[Route('/{id}')]
+15| public function show(Account $account): Response
+16| {
+17|     return $this->render('account/show.html.twig', ['account' => $account]);
+18| }
 ```

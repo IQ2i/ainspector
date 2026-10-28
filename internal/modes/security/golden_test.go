@@ -136,10 +136,10 @@ func TestPromptChecksums(t *testing.T) {
 	}
 }
 
-const checksumsVersion = "security/2"
+const checksumsVersion = "security/3"
 
 const (
-	wantBaseChecksum   = "c8ad80dcb2ac076417c78b053bb80322b847ab3b15f1c8a9253db54a4528ae56"
+	wantBaseChecksum   = "b1bb3c488fe4a845ab3792948ecf861017ebd0968a6f583d2428189b046839a3"
 	wantSchemaChecksum = "7bf0fcd510cb57ff5838562de0f39a572109646828fb06f1d3cb48dd80ba6dc3"
 )
 

@@ -6,7 +6,7 @@ Change type: modified
 
 ## Full function (for context only, DO NOT review unchanged code):
 ```unknown
-handle() {
-  doWork()
-}
+10| handle() {
+11|   doWork()
+12| }
 ```

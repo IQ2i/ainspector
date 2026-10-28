@@ -11,6 +11,6 @@ Change type: modified
 
 ## Full code (for context, review only the changes):
 ```twig
-<h1>{{ account.name }}</h1>
-<div>{{ account.bio|raw }}</div>
+3| <h1>{{ account.name }}</h1>
+4| <div>{{ account.bio|raw }}</div>
 ```

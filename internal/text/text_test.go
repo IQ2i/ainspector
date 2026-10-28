@@ -54,3 +54,21 @@ func TestCutAtRune(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestNumbered(t *testing.T) {
+	tests := []struct {
+		name  string
+		in    string
+		first int
+		want  string
+	}{
+		{"empty", "", 3, ""},
+		{"single line", "x := 1", 7, "7| x := 1"},
+		{"aligned across a width change", "a\n\tb\n\n\tc", 8, " 8| a\n 9| \tb\n10| \n11| \tc"},
+	}
+	for _, tt := range tests {
+		if got := Numbered(tt.in, tt.first); got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

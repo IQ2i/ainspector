@@ -50,9 +50,10 @@ MISSING ACCESS TESTS
 The system prompt ends with the files changed by the merge request. If the changes add or modify a route or action protected by an access control, and no changed test file appears to exercise the denied access for it (a request refused for an unauthenticated or unauthorized user), report one finding with the category "missing-access-test", severity "low", on the first line of the action. Do not report it when the access control itself is missing: that is a finding of its own.
 
 RULES FOR EVERY FINDING
+- Each line of the full code starts with its line number in the file followed by "| ". This prefix is not part of the code: read "line" and "end_line" from it, and never copy it into a suggestion.
 - "line" is a line number of the file located inside the lines of the unit. Findings about the class header or other files cannot be placed: report them on the closest line of the unit.
 - "scenario" is a concrete exploitation scenario: who the attacker is, what they send or do, and what they obtain. Do not report anything you cannot describe this way.
-- "remediation" says how to fix it. "suggestion" holds corrected code replacing the line(s) concerned, or an empty string.
+- "remediation" says how to fix it. "suggestion" holds only code, replacing every line from "line" to "end_line", each line with its indentation as in the file; once applied, the code around it must still be valid. Leave it empty when the fix cannot be written as code.
 - "confidence" is between 0 and 1: how sure you are that it is exploitable in the code shown.
 - Severity: critical for remote exploitation without authentication or full data compromise, high for exploitation by any authenticated user, medium when it needs specific conditions, low for limited impact or hardening, info otherwise.
 - Report each weakness once. Do not report issues in code that was not changed.
@@ -221,7 +222,7 @@ func buildUserPrompt(u collect.ReviewUnit) string {
 	if u.Diff != "" {
 		fmt.Fprintf(&sb, "\n## Changes (REVIEW THESE):\n%s\n", provider.Fence("diff", u.Diff))
 	}
-	fmt.Fprintf(&sb, "\n## Full code (for context, review only the changes):\n%s", provider.Fence(u.Language, u.Content))
+	fmt.Fprintf(&sb, "\n## Full code (for context, review only the changes):\n%s", provider.Fence(u.Language, text.Numbered(u.Content, u.StartLine)))
 	return sb.String()
 }
 
