@@ -26,6 +26,7 @@ func Inline(ctx context.Context, p provider.Provider, number int, run Run) error
 			Suggestion: safeSuggestion(f),
 		}
 		if unit := unitOf(run.Units, f); unit != nil {
+			c.Suggestion = indentLike(c.Suggestion, *unit, f.StartLine)
 			if c.Suggestion != "" && f.EndLine > f.StartLine {
 				if f.EndLine <= unit.EndLine && f.EndLine-f.StartLine < maxSuggestionLines {
 					c.EndLine = f.EndLine
@@ -84,6 +85,22 @@ func unitOf(units []collect.ReviewUnit, f findings.Finding) *collect.ReviewUnit 
 		}
 	}
 	return nil
+}
+
+// indentLike gives the first line of a suggestion the indentation of the line it replaces, which
+// models tend to leave out while they keep it on the next lines. The first line of a unit is not
+// used: the parser trims the leading whitespace of its content.
+func indentLike(suggestion string, unit collect.ReviewUnit, line int) string {
+	if suggestion == "" || strings.TrimLeft(suggestion, " \t") != suggestion {
+		return suggestion
+	}
+	i := line - unit.StartLine
+	lines := strings.Split(unit.Content, "\n")
+	if i <= 0 || i >= len(lines) {
+		return suggestion
+	}
+	original := lines[i]
+	return original[:len(original)-len(strings.TrimLeft(original, " \t"))] + suggestion
 }
 
 // safeSuggestion drops a suggestion that holds an ainspector marker: it is code written by the
