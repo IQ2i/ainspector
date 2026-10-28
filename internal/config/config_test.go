@@ -657,3 +657,15 @@ func TestLoad_RefusesUnsafeConfigFile(t *testing.T) {
 		t.Error("a named pipe must be refused without blocking")
 	}
 }
+
+func TestShouldIgnore_NilConfigStillSkipsVendoredAndGeneratedFiles(t *testing.T) {
+	var cfg *Config
+	for _, p := range []string{"vendor/a.go", "web/node_modules/x.js", "composer.lock", "app.min.js"} {
+		if !cfg.ShouldIgnore(p) {
+			t.Errorf("%s must be ignored without a configuration", p)
+		}
+	}
+	if cfg.ShouldIgnore("src/main.go") {
+		t.Error("an ordinary file is reviewed without a configuration")
+	}
+}

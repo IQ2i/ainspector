@@ -186,10 +186,7 @@ func prepare(ctx context.Context, deps Deps, opts Options) (*runState, error) {
 
 	collector := collect.New(deps.Provider, cfg)
 	defer collector.Close()
-	st.units, err = collector.Collect(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract functions: %w", err)
-	}
+	st.units = collector.Collect(ctx, req)
 
 	fmt.Printf("Extracted %d modified units\n", len(st.units))
 

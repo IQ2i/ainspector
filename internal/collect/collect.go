@@ -147,7 +147,7 @@ func (e *Collector) Close() {
 }
 
 // Collect extracts a review unit for every function that has modified lines
-func (e *Collector) Collect(ctx context.Context, req Request) ([]ReviewUnit, error) {
+func (e *Collector) Collect(ctx context.Context, req Request) []ReviewUnit {
 	var result []ReviewUnit
 
 	for _, file := range req.Files {
@@ -157,7 +157,7 @@ func (e *Collector) Collect(ctx context.Context, req Request) ([]ReviewUnit, err
 		}
 
 		// Vendored and generated files are always skipped, the others by the patterns of the config
-		if config.IsGeneratedPath(file.Path) || config.IsVendoredPath(file.Path) || (e.config != nil && e.config.ShouldIgnore(file.Path)) {
+		if e.config.ShouldIgnore(file.Path) {
 			fmt.Printf("Skipping ignored file: %s\n", file.Path)
 			continue
 		}
@@ -177,7 +177,7 @@ func (e *Collector) Collect(ctx context.Context, req Request) ([]ReviewUnit, err
 		result = append(result, functions...)
 	}
 
-	return result, nil
+	return result
 }
 
 func (e *Collector) extractFromFile(ctx context.Context, file provider.ModifiedFile, req Request, parsed bool) ([]ReviewUnit, error) {
