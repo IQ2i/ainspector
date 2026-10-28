@@ -219,12 +219,6 @@ func TestComplete_NoModel(t *testing.T) {
 	}
 }
 
-func TestBackend(t *testing.T) {
-	if got := New("k", "m").Backend(); got != "anthropic" {
-		t.Errorf("expected backend 'anthropic', got %s", got)
-	}
-}
-
 func TestComplete_FallbackKeepsTheServedAnswerOnly(t *testing.T) {
 	content := `[` +
 		`{"type":"text","text":"{\"issues\":[\"par"},` +

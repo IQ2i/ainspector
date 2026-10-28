@@ -26,8 +26,6 @@ type scriptedClient struct {
 	request *llm.Request
 }
 
-func (c *scriptedClient) Backend() string { return c.backend }
-
 func (c *scriptedClient) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	c.request = &req
 	if c.err != nil {
@@ -314,7 +312,12 @@ func TestRun_QualityAndSecurityShareTheUnits(t *testing.T) {
 
 // settle runs settleFindings on a fresh run and returns it
 func settle(ctx context.Context, client llm.Client, mode modes.Mode, results []UnitResult, index *state.Index) publish.Run {
+	// The anthropic backend is the one that is given a default model for the filter
+	defaultFP := ""
+	if sc, ok := client.(*scriptedClient); ok && sc.backend == "anthropic" {
+		defaultFP = "claude-opus-5-5"
+	}
 	var run publish.Run
-	settleFindings(ctx, client, mode, results, index, &run)
+	settleFindings(ctx, client, defaultFP, mode, results, index, &run)
 	return run
 }

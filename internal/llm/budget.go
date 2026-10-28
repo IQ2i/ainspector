@@ -60,8 +60,6 @@ func WithBudget(c Client, maxTokens int, pricing Pricing, log Logger) *Budget {
 	return &Budget{inner: c, max: maxTokens, pricing: pricing, log: log}
 }
 
-func (b *Budget) Backend() string { return b.inner.Backend() }
-
 // Complete forwards the request unless the budget is spent
 func (b *Budget) Complete(ctx context.Context, req Request) (Response, error) {
 	b.mu.Lock()

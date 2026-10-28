@@ -38,11 +38,6 @@ func New(apiKey, model string, opts ...option.RequestOption) *Client {
 	return &Client{client: sdk.NewClient(opts...), model: model}
 }
 
-// Backend returns the name of the backend.
-func (c *Client) Backend() string {
-	return "anthropic"
-}
-
 // Complete sends a request. A refusal that no fallback model could serve is an error;
 // with a Schema, the reply is valid JSON or an error.
 func (c *Client) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {

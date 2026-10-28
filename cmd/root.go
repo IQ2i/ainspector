@@ -113,13 +113,14 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	secrets := credentials()
 	err = pipeline.Run(ctx, pipeline.Deps{
-		Provider:    p,
-		NewLLM:      func() (llm.Client, error) { return newLLMClient(cfg.LLM) },
-		Config:      cfg,
-		ProjectRoot: projectRoot,
-		MaxTokens:   maxTokens,
-		Secrets:     secrets,
-		ReportDir:   projectRoot,
+		Provider:       p,
+		NewLLM:         func() (llm.Client, error) { return newLLMClient(cfg.LLM) },
+		Config:         cfg,
+		ProjectRoot:    projectRoot,
+		MaxTokens:      maxTokens,
+		DefaultFPModel: defaultFPModel(cfg.LLM),
+		Secrets:        secrets,
+		ReportDir:      projectRoot,
 	}, pipeline.Options{
 		Number:      env.PRNumber,
 		CheckoutSHA: env.CommitSHA,

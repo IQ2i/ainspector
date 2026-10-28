@@ -11,19 +11,36 @@ import (
 	"github.com/iq2i/ainspector/internal/llm/openai"
 )
 
-const defaultAnthropicModel = "claude-sonnet-5-5"
+const (
+	defaultAnthropicModel = "claude-sonnet-5-5"
+	// anthropicFPModel judges the findings on the Anthropic backend, as a stronger model than the
+	// one that produced them
+	anthropicFPModel = "claude-opus-5-5"
+)
+
+// backendName is the backend named by llm.provider, or guessed from the environment
+func backendName(cfg config.LLMConfig) string {
+	if cfg.Provider != "" {
+		return cfg.Provider
+	}
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		return "anthropic"
+	}
+	return "openai"
+}
+
+// defaultFPModel is the model of the false positive filter when the configuration names none.
+// The other backends have their own model names: they keep their default.
+func defaultFPModel(cfg config.LLMConfig) string {
+	if backendName(cfg) == "anthropic" {
+		return anthropicFPModel
+	}
+	return ""
+}
 
 // newLLMClient builds the backend named by llm.provider, or guesses it from the environment
 func newLLMClient(cfg config.LLMConfig) (llm.Client, error) {
-	provider := cfg.Provider
-	if provider == "" {
-		provider = "openai"
-		if os.Getenv("ANTHROPIC_API_KEY") != "" {
-			provider = "anthropic"
-		}
-	}
-
-	if provider == "anthropic" {
+	if backendName(cfg) == "anthropic" {
 		apiKey := os.Getenv("ANTHROPIC_API_KEY")
 		if apiKey == "" {
 			return nil, fmt.Errorf("ANTHROPIC_API_KEY environment variable is required")

@@ -61,5 +61,4 @@ type Client interface {
 	// When the backend answered but the reply was unusable, the Response still carries the Usage
 	// and Model: the tokens were billed.
 	Complete(ctx context.Context, req Request) (Response, error)
-	Backend() string
 }

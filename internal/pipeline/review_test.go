@@ -25,8 +25,6 @@ type fakeClient struct {
 	usage    llm.Usage
 }
 
-func (f *fakeClient) Backend() string { return "fake" }
-
 func (f *fakeClient) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	f.mu.Lock()
 	f.requests = append(f.requests, req)

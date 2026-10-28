@@ -113,11 +113,6 @@ func New(baseURL, apiKey, model string) *Client {
 	}
 }
 
-// Backend returns the name of the backend.
-func (c *Client) Backend() string {
-	return "openai"
-}
-
 // Complete sends a chat completion request and returns the response content.
 // With a Schema, the strictest structured output mode the endpoint accepts is used and
 // Response.JSON holds a document that satisfies the schema.

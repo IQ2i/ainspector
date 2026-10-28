@@ -12,8 +12,6 @@ type failingClient struct{ err error }
 func (f failingClient) Complete(context.Context, Request) (Response, error) {
 	return Response{Usage: Usage{Input: 7}}, f.err
 }
-func (f failingClient) Backend() string { return "fake" }
-
 func TestWithRedaction(t *testing.T) {
 	const key = "sk-secret-0123456789"
 	c := WithRedaction(failingClient{errors.New("401: Incorrect API key provided: " + key)}, key, "", "short")
@@ -22,7 +20,7 @@ func TestWithRedaction(t *testing.T) {
 	if err == nil || strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "[redacted]") {
 		t.Errorf("the key must be hidden, got %v", err)
 	}
-	if resp.Usage.Input != 7 || c.Backend() != "fake" {
+	if resp.Usage.Input != 7 {
 		t.Errorf("the response and the backend must pass through, got %+v", resp)
 	}
 }

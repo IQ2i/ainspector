@@ -403,12 +403,6 @@ func TestClient_Complete_ResponseTooLarge(t *testing.T) {
 	}
 }
 
-func TestClient_Backend(t *testing.T) {
-	if got := New("http://x", "k", "m").Backend(); got != "openai" {
-		t.Errorf("expected backend 'openai', got %s", got)
-	}
-}
-
 func TestClient_WireRequestGolden(t *testing.T) {
 	golden, err := os.ReadFile(filepath.Join("testdata", "golden", "wire", "chat_request.json"))
 	if err != nil {

@@ -37,6 +37,7 @@ func TestLive_SecurityFixtures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(t, filepath.Join("..", "..", "testdata", "mrs", name))
 			h.deps.NewLLM = func() (llm.Client, error) { return anthropic.New(key, "claude-sonnet-5-5"), nil }
+			h.deps.DefaultFPModel = "claude-opus-5-5"
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()

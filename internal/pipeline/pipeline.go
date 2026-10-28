@@ -29,6 +29,9 @@ type Deps struct {
 	// MaxTokens is the token cap set by the environment of the job, zero selects the default cap.
 	// The configuration comes from the checkout of the change and its author could raise its own.
 	MaxTokens int
+	// DefaultFPModel judges the findings when the configuration names no model: a stronger model
+	// than the one that produced them. Empty keeps the default model of the backend.
+	DefaultFPModel string
 	// Secrets are the credentials of the run, hidden from the errors of the LLM backend
 	Secrets []string
 	// ReportDir is where the Code Quality report and the artifact are written, defaults to ProjectRoot
@@ -262,7 +265,7 @@ func (st *runState) reviewMode(ctx context.Context, mode modes.Mode) (publish.Ru
 	before := st.budget.Totals()
 	results := ReviewUnits(ctx, st.budget, mode, toReview, st.projectContext)
 	run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Units: toReview}
-	settleFindings(ctx, st.budget, mode, results, st.index, &run)
+	settleFindings(ctx, st.budget, st.deps.DefaultFPModel, mode, results, st.index, &run)
 	completeRun(&run, results, st.budget.Totals().Sub(before), st.projectContext)
 	run.Carried = carried
 	run.AlreadyReviewed = alreadyReviewed
@@ -381,10 +384,6 @@ func loadProjectContext(root string, cfg *config.Config) *collect.ProjectContext
 	return pc
 }
 
-// defaultFPModel judges the findings on the Anthropic backend, as a stronger model than the one
-// that produced them. Other backends have their own model names: they keep their default.
-const defaultFPModel = "claude-opus-5-5"
-
 // fpInputFactor bounds what the false positive filter receives to this many times the findings
 // a mode may publish, so that it can still discard some and be replaced by others
 const fpInputFactor = 3
@@ -392,7 +391,7 @@ const fpInputFactor = 3
 // settleFindings applies the policy of a mode to what its units reported and records the result
 // in run: thresholds, findings already reported by a previous run, false positive filter, then
 // the cap on what is published
-func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, results []UnitResult, index *state.Index, run *publish.Run) {
+func settleFindings(ctx context.Context, client llm.Client, defaultFPModel string, mode modes.Mode, results []UnitResult, index *state.Index, run *publish.Run) {
 	var all []findings.Finding
 	units := make(map[string]collect.ReviewUnit)
 	for _, r := range results {
@@ -421,7 +420,7 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 
 	if fp := policy.FalsePositive; fp != nil && len(all) > 0 {
 		cfg := *fp
-		if cfg.Model == "" && client.Backend() == "anthropic" {
+		if cfg.Model == "" {
 			cfg.Model = defaultFPModel
 		}
 

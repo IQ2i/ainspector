@@ -23,8 +23,6 @@ func (f *fakeClient) Complete(ctx context.Context, req Request) (Response, error
 	return f.resp, f.err
 }
 
-func (f *fakeClient) Backend() string { return "fake" }
-
 func near(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 
 func TestPricing_Cost(t *testing.T) {
@@ -80,8 +78,8 @@ func TestBudget_AccumulatesAndForwards(t *testing.T) {
 	if !near(totals.Cost, wantCost) || totals.UnpricedCalls != 0 {
 		t.Errorf("expected cost %v, got %+v", wantCost, totals)
 	}
-	if b.Backend() != "fake" || len(logs) != 2 {
-		t.Errorf("unexpected backend or logs: %s %v", b.Backend(), logs)
+	if len(logs) != 2 {
+		t.Errorf("unexpected logs: %v", logs)
 	}
 }
 
