@@ -11,14 +11,6 @@ import (
 	"github.com/iq2i/ainspector/internal/state"
 )
 
-// Policy tells which outputs a mode produces
-type Policy struct {
-	Inline      bool
-	Summary     bool
-	CodeQuality bool
-	Artifact    bool
-}
-
 // Review status of a unit
 const (
 	StatusReviewed = "reviewed"

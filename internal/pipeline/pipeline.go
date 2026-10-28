@@ -191,7 +191,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		if len(toReview) == 0 {
 			fmt.Printf("Nothing left to review for %s\n", mode.Name())
 			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(changeNotes), Feedback: feedback[mode.Name()]}
-			if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
+			if err := out.add(ctx, run); err != nil {
 				errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 			}
 			continue
@@ -230,7 +230,7 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 			fmt.Printf("Warning: mode %s: %v\n", mode.Name(), err)
 			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 		}
-		if err := out.add(ctx, mode.PublishPolicy(), run); err != nil {
+		if err := out.add(ctx, run); err != nil {
 			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
 		}
 	}
@@ -318,21 +318,17 @@ func newRun(mode modes.Mode, units []collect.ReviewUnit, results []UnitResult, o
 }
 
 func publishRun(ctx context.Context, p provider.Provider, opts Options, self string, mode modes.Mode, run publish.Run) error {
-	policy := mode.PublishPolicy()
-
 	if opts.DryRun {
 		for _, f := range run.Published {
 			fmt.Printf("Dry run: would comment on %q:%d\n%s\n", f.File, f.StartLine, publish.LogText(publish.BodyFor(f)))
 		}
-		if policy.Summary {
-			fmt.Printf("Dry run: would publish the summary:\n%s\n", publish.LogText(publish.SummaryBody(run, nil)))
-		}
+		fmt.Printf("Dry run: would publish the summary:\n%s\n", publish.LogText(publish.SummaryBody(run, nil)))
 		return nil
 	}
 
 	var errs []error
 
-	if policy.Inline && len(run.Published) > 0 {
+	if len(run.Published) > 0 {
 		fmt.Println("Posting review with inline suggestions...")
 		if err := publish.NewInline(p, opts.Number).Publish(ctx, run); err != nil {
 			errs = append(errs, fmt.Errorf("failed to create review: %w", err))
@@ -343,14 +339,10 @@ func publishRun(ctx context.Context, p provider.Provider, opts Options, self str
 
 	// The summary carries the state of later runs: without the identity of the token owner
 	// it could not tell its own comment from a forged one. Not worth failing the job over.
-	switch {
-	case !policy.Summary:
-	case self == "":
+	if self == "" {
 		fmt.Printf("Warning: summary of %s skipped, the token owner is unknown\n", mode.Name())
-	default:
-		if err := publish.NewSummary(p, opts.Number, self).Publish(ctx, run); err != nil {
-			errs = append(errs, fmt.Errorf("failed to publish the summary: %w", err))
-		}
+	} else if err := publish.NewSummary(p, opts.Number, self).Publish(ctx, run); err != nil {
+		errs = append(errs, fmt.Errorf("failed to publish the summary: %w", err))
 	}
 
 	return errors.Join(errs...)

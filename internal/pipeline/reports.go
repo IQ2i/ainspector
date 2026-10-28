@@ -26,13 +26,13 @@ func newReports(dir string, cfg *config.Config, change publish.Change) reports {
 	return r
 }
 
-// add hands what a mode produced to the reports its policy feeds
-func (r reports) add(ctx context.Context, policy publish.Policy, run publish.Run) error {
+// add hands what a mode produced to the reports
+func (r reports) add(ctx context.Context, run publish.Run) error {
 	var errs []error
-	if r.codeQuality != nil && policy.CodeQuality {
+	if r.codeQuality != nil {
 		errs = append(errs, r.codeQuality.Publish(ctx, run))
 	}
-	if r.artifact != nil && policy.Artifact {
+	if r.artifact != nil {
 		errs = append(errs, r.artifact.Publish(ctx, run))
 	}
 	return errors.Join(errs...)

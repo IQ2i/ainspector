@@ -137,9 +137,6 @@ func TestModeContract(t *testing.T) {
 	if p.MaxPublished != 3 || p.MinSeverity != findings.SeverityLow || p.MinConfidence != 0.5 || p.FalsePositive == nil || p.FalsePositive.Model != "big-model" {
 		t.Errorf("unexpected policy %+v", p)
 	}
-	if pp := m.PublishPolicy(); !pp.Inline || !pp.Summary || !pp.CodeQuality || !pp.Artifact {
-		t.Errorf("unexpected publish policy %+v", pp)
-	}
 }
 
 func TestBuildRequest(t *testing.T) {

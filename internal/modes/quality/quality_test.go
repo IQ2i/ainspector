@@ -21,9 +21,6 @@ func TestMode_Identity(t *testing.T) {
 	if m.Scope() != collect.ScopeFunction {
 		t.Errorf("expected function scope, got %s", m.Scope())
 	}
-	if pp := m.PublishPolicy(); !pp.Inline || !pp.Summary || !pp.CodeQuality || !pp.Artifact {
-		t.Errorf("unexpected publish policy %+v", pp)
-	}
 	if p := m.FilterPolicy(); p.MaxPublished != 0 || p.MinConfidence != 0 || p.MinSeverity != "" {
 		t.Errorf("quality must not filter findings, got %+v", p)
 	}

@@ -7,7 +7,6 @@ import (
 	"github.com/iq2i/ainspector/internal/collect"
 	"github.com/iq2i/ainspector/internal/findings"
 	"github.com/iq2i/ainspector/internal/llm"
-	"github.com/iq2i/ainspector/internal/publish"
 )
 
 // Mode reviews modified functions for bugs, readability and project rules
@@ -69,7 +68,3 @@ func (m *Mode) Parse(resp llm.Response, u collect.ReviewUnit) ([]findings.Findin
 }
 
 func (m *Mode) FilterPolicy() findings.Policy { return findings.Policy{} }
-
-func (m *Mode) PublishPolicy() publish.Policy {
-	return publish.Policy{Inline: true, Summary: true, CodeQuality: true, Artifact: true}
-}
