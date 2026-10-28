@@ -46,8 +46,58 @@ type Options struct {
 	DryRun bool
 }
 
+// runState is what a run knows once the change is collected, shared by every mode
+type runState struct {
+	deps        Deps
+	opts        Options
+	enabled     []modes.Mode
+	files       []provider.ModifiedFile
+	units       []collect.ReviewUnit
+	changeNotes []string
+	// self is the login of the token owner, empty when it is unknown
+	self     string
+	index    *state.Index
+	feedback map[string][]publish.Feedback
+	out      *reports
+	errs     []error
+
+	// Created on first use: nothing is needed when every unit was already reviewed
+	budget         *llm.Budget
+	projectContext *collect.ProjectContext
+}
+
 // Run reviews a PR/MR with each requested mode
 func Run(ctx context.Context, deps Deps, opts Options) error {
+	st, err := prepare(ctx, deps, opts)
+	if err != nil || st == nil {
+		return err
+	}
+
+	for _, mode := range st.enabled {
+		run, err := st.reviewMode(ctx, mode)
+		if err != nil {
+			return err
+		}
+		st.out.add(run)
+	}
+
+	if st.budget != nil {
+		total := st.budget.Totals()
+		fmt.Printf("Total for the run: %d tokens in, %d out, %d read from cache, %d written to cache, estimated cost %s\n",
+			total.Usage.Input, total.Usage.Output, total.Usage.CacheRead, total.Usage.CacheWrite,
+			publish.FormatCost(total.Cost, total.UnpricedCalls > 0))
+	}
+
+	if err := st.out.write(); err != nil {
+		fmt.Printf("Warning: %v\n", err)
+		st.errs = append(st.errs, err)
+	}
+	return errors.Join(st.errs...)
+}
+
+// prepare collects the units to review and what the run needs to tell them apart. It returns a
+// nil state when the run ends there: nothing to review, or a change that is ignored.
+func prepare(ctx context.Context, deps Deps, opts Options) (*runState, error) {
 	cfg := deps.Config
 
 	names := opts.Modes
@@ -56,11 +106,11 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	}
 	enabled, err := modes.Enabled(names, cfg)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(enabled) == 0 {
 		fmt.Println("No review mode enabled")
-		return stopped(ctx, deps, opts, nil, "no review mode is enabled")
+		return nil, stopped(ctx, deps, opts, nil, "no review mode is enabled")
 	}
 
 	var cached *provider.ChangeInfo
@@ -79,11 +129,11 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	if cfg.HasChangeFilters() {
 		info, err := changeInfo()
 		if err != nil {
-			return fmt.Errorf("failed to get change info: %w", err)
+			return nil, fmt.Errorf("failed to get change info: %w", err)
 		}
 		if ignored, reason := cfg.ShouldIgnoreChange(info.Author, info.Title, info.Labels); ignored {
 			fmt.Printf("Skipping review: %s\n", reason)
-			return stopped(ctx, deps, opts, nil, reason)
+			return nil, stopped(ctx, deps, opts, nil, reason)
 		}
 	}
 
@@ -91,23 +141,28 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	if reportDir == "" {
 		reportDir = deps.ProjectRoot
 	}
-	out := newReports(reportDir, cfg, publish.Change{Number: opts.Number, CheckoutSHA: opts.CheckoutSHA})
+	st := &runState{
+		deps:    deps,
+		opts:    opts,
+		enabled: enabled,
+		out:     newReports(reportDir, cfg, publish.Change{Number: opts.Number, CheckoutSHA: opts.CheckoutSHA}),
+	}
 
 	fmt.Printf("Fetching modified files...\n")
 	files, err := deps.Provider.GetModifiedFiles(ctx, opts.Number)
 	if err != nil {
-		return fmt.Errorf("failed to get modified files: %w", err)
+		return nil, fmt.Errorf("failed to get modified files: %w", err)
 	}
 
 	files, unsafe := dropUnsafePaths(files)
-	var changeNotes []string
+	st.files = files
 	if name := changedConfig(files); name != "" {
 		note := fmt.Sprintf("This change modifies %s: the settings of its new version apply to this review", name)
 		fmt.Printf("Warning: %s\n", note)
-		changeNotes = append(changeNotes, note)
+		st.changeNotes = append(st.changeNotes, note)
 	}
 	if unsafe > 0 {
-		changeNotes = append(changeNotes, fmt.Sprintf("%d %s skipped, the name holds control characters", unsafe, plural(unsafe, "file")))
+		st.changeNotes = append(st.changeNotes, fmt.Sprintf("%d %s skipped, the name holds control characters", unsafe, plural(unsafe, "file")))
 	}
 	req := collectRequest(files, enabled)
 	hidden, counted := hiddenNotes(files, req.Hunks.Extensions, cfg.ShouldIgnore)
@@ -119,40 +174,38 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 	for _, note := range hidden {
 		fmt.Printf("Warning: %s\n", note)
 	}
-	changeNotes = append(changeNotes, hidden...)
+	st.changeNotes = append(st.changeNotes, hidden...)
 	if counted != "" {
-		changeNotes = append(changeNotes, counted)
+		st.changeNotes = append(st.changeNotes, counted)
 	}
 	fmt.Printf("Found %d modified files\n", len(files))
 
 	collector := collect.New(deps.Provider, cfg)
 	defer collector.Close()
-	units, err := collector.Collect(ctx, req)
+	st.units, err = collector.Collect(ctx, req)
 	if err != nil {
-		return fmt.Errorf("failed to extract functions: %w", err)
+		return nil, fmt.Errorf("failed to extract functions: %w", err)
 	}
 
-	fmt.Printf("Extracted %d modified units\n", len(units))
+	fmt.Printf("Extracted %d modified units\n", len(st.units))
 
-	if len(units) == 0 {
+	if len(st.units) == 0 {
 		fmt.Println("No code to review")
-		return errors.Join(out.write(), stopped(ctx, deps, opts, files, "no file of the change is left to review", hidden...))
+		return nil, errors.Join(st.out.write(), stopped(ctx, deps, opts, files, "no file of the change is left to review", hidden...))
 	}
 
 	if len(req.Related.Presets) > 0 {
-		if err := attachRelated(ctx, deps, opts, units, req.Related, changeInfo); err != nil {
-			return err
+		if err := attachRelated(ctx, deps, opts, st.units, req.Related, changeInfo); err != nil {
+			return nil, err
 		}
 	}
 
-	self, err := deps.Provider.CurrentUser(ctx)
+	st.self, err = deps.Provider.CurrentUser(ctx)
 	if err != nil {
 		fmt.Printf("Warning: could not identify the token owner: %v\n", err)
-		self = ""
+		st.self = ""
 	}
 
-	var index *state.Index
-	var feedback map[string][]publish.Feedback
 	if opts.Force {
 		fmt.Println("Force flag set - reviewing all modified units")
 	} else {
@@ -161,129 +214,85 @@ func Run(ctx context.Context, deps Deps, opts Options) error {
 		if err != nil {
 			fmt.Printf("Warning: could not fetch existing comments: %v\n", err)
 		} else {
-			if self == "" {
+			if st.self == "" {
 				fmt.Println("Warning: trusting every existing comment")
 			}
-			index = state.LoadIndex(existing, self)
-			feedback = collectFeedback(ctx, deps.Provider, opts.Number, existing, self)
+			st.index = state.LoadIndex(existing, st.self)
+			st.feedback = collectFeedback(ctx, deps.Provider, opts.Number, existing, st.self)
 		}
 	}
-
-	// Created on first use: nothing is needed when every unit was already reviewed
-	var budget *llm.Budget
-	var projectContext *collect.ProjectContext
-
-	var errs []error
-	for _, mode := range enabled {
-		candidates := unitsFor(mode, units)
-		toReview := candidates
-		var carried []findings.Reported
-		if index != nil {
-			digest := state.RulesDigest(mode.Rules())
-			toReview = index.FilterUnreviewed(mode, digest, candidates)
-			if skipped := len(candidates) - len(toReview); skipped > 0 {
-				fmt.Printf("Skipped %d already reviewed units\n", skipped)
-			}
-			carried = index.OpenFindings(mode, skippedHashes(mode, digest, candidates, toReview))
-		}
-		alreadyReviewed := len(candidates) - len(toReview)
-
-		if len(toReview) == 0 {
-			fmt.Printf("Nothing left to review for %s\n", mode.Name())
-			run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(changeNotes), Feedback: feedback[mode.Name()]}
-			out.add(run)
-			continue
-		}
-
-		if budget == nil {
-			client, err := deps.NewLLM()
-			if err != nil {
-				return err
-			}
-			limit := cfg.LLM.TokenBudget(deps.MaxTokens)
-			client = llm.WithRedaction(client, deps.Secrets...)
-			budget = llm.WithBudget(client, limit, newPricing(cfg), logLine)
-			projectContext = loadProjectContext(deps.ProjectRoot, cfg)
-			projectContext.ChangedFiles = changedPaths(files)
-		}
-
-		fmt.Printf("Reviewing %d units with LLM (%s)...\n", len(toReview), mode.Name())
-		before := budget.Totals()
-		results := ReviewUnits(ctx, budget, mode, toReview, projectContext)
-		outcome := settleFindings(ctx, budget, mode, results, index)
-		run := newRun(mode, toReview, results, outcome, budget.Totals().Sub(before), projectContext)
-		run.Carried = carried
-		run.AlreadyReviewed = alreadyReviewed
-		run.Feedback = feedback[mode.Name()]
-		run.Notes = append(slices.Clone(changeNotes), run.Notes...)
-
-		fmt.Printf("Found %d issues (out of %d units reviewed)\n", len(run.Published), len(run.Reviewed))
-		if n := len(run.Skipped); n > 0 {
-			fmt.Printf("Warning: %d units were not reviewed, the token budget was reached\n", n)
-		}
-		fmt.Printf("Tokens used by %s: %d in, %d out, %d read from cache, %d written to cache\n", mode.Name(),
-			run.Usage.Input, run.Usage.Output, run.Usage.CacheRead, run.Usage.CacheWrite)
-
-		if err := publishRun(ctx, deps.Provider, opts, self, mode, run); err != nil {
-			fmt.Printf("Warning: mode %s: %v\n", mode.Name(), err)
-			errs = append(errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
-		}
-		out.add(run)
-	}
-
-	if budget != nil {
-		total := budget.Totals()
-		fmt.Printf("Total for the run: %d tokens in, %d out, %d read from cache, %d written to cache, estimated cost %s\n",
-			total.Usage.Input, total.Usage.Output, total.Usage.CacheRead, total.Usage.CacheWrite,
-			publish.FormatCost(total.Cost, total.UnpricedCalls > 0))
-	}
-
-	if err := out.write(); err != nil {
-		fmt.Printf("Warning: %v\n", err)
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
+	return st, nil
 }
 
-// skippedHashes returns the candidates that a previous run already reviewed, by hash, with the
-// line where each starts now
-func skippedHashes(mode modes.Mode, digest string, candidates, toReview []collect.ReviewUnit) map[string]int {
-	pending := make(map[string]bool, len(toReview))
-	for _, u := range toReview {
-		pending[state.UnitHash(mode, u, digest)] = true
-	}
-	hashes := make(map[string]int)
-	for _, u := range candidates {
-		if h := state.UnitHash(mode, u, digest); !pending[h] {
-			hashes[h] = u.StartLine
+// reviewMode runs one mode over the units it accepts and publishes the outcome. Only a failure
+// to reach the LLM is returned: publishing errors are kept for the end of the run.
+func (st *runState) reviewMode(ctx context.Context, mode modes.Mode) (publish.Run, error) {
+	cfg := st.deps.Config
+
+	candidates := unitsFor(mode, st.units)
+	toReview := candidates
+	var carried []findings.Reported
+	if st.index != nil {
+		var skipped map[string]int
+		toReview, skipped = st.index.Partition(mode, state.RulesDigest(mode.Rules()), candidates)
+		if n := len(candidates) - len(toReview); n > 0 {
+			fmt.Printf("Skipped %d already reviewed units\n", n)
 		}
+		carried = st.index.OpenFindings(mode, skipped)
 	}
-	return hashes
+	alreadyReviewed := len(candidates) - len(toReview)
+
+	if len(toReview) == 0 {
+		fmt.Printf("Nothing left to review for %s\n", mode.Name())
+		return publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Carried: carried, AlreadyReviewed: alreadyReviewed, Notes: slices.Clone(st.changeNotes), Feedback: st.feedback[mode.Name()]}, nil
+	}
+
+	if st.budget == nil {
+		client, err := st.deps.NewLLM()
+		if err != nil {
+			return publish.Run{}, err
+		}
+		client = llm.WithRedaction(client, st.deps.Secrets...)
+		st.budget = llm.WithBudget(client, cfg.LLM.TokenBudget(st.deps.MaxTokens), newPricing(cfg), logLine)
+		st.projectContext = loadProjectContext(st.deps.ProjectRoot, cfg)
+		st.projectContext.ChangedFiles = changedPaths(st.files)
+	}
+
+	fmt.Printf("Reviewing %d units with LLM (%s)...\n", len(toReview), mode.Name())
+	before := st.budget.Totals()
+	results := ReviewUnits(ctx, st.budget, mode, toReview, st.projectContext)
+	run := publish.Run{Mode: mode.Name(), Scope: mode.Scope().String(), Version: mode.Version(), Units: toReview}
+	settleFindings(ctx, st.budget, mode, results, st.index, &run)
+	completeRun(&run, results, st.budget.Totals().Sub(before), st.projectContext)
+	run.Carried = carried
+	run.AlreadyReviewed = alreadyReviewed
+	run.Feedback = st.feedback[mode.Name()]
+	run.Notes = append(slices.Clone(st.changeNotes), run.Notes...)
+
+	fmt.Printf("Found %d issues (out of %d units reviewed)\n", len(run.Published), len(run.Reviewed))
+	if n := len(run.Skipped); n > 0 {
+		fmt.Printf("Warning: %d units were not reviewed, the token budget was reached\n", n)
+	}
+	fmt.Printf("Tokens used by %s: %d in, %d out, %d read from cache, %d written to cache\n", mode.Name(),
+		run.Usage.Input, run.Usage.Output, run.Usage.CacheRead, run.Usage.CacheWrite)
+
+	if err := publishRun(ctx, st.deps.Provider, st.opts, st.self, mode, run); err != nil {
+		fmt.Printf("Warning: mode %s: %v\n", mode.Name(), err)
+		st.errs = append(st.errs, fmt.Errorf("mode %s: %w", mode.Name(), err))
+	}
+	return run, nil
 }
 
-// newRun gathers what a mode produced and consumed, to publish it
-func newRun(mode modes.Mode, units []collect.ReviewUnit, results []UnitResult, outcome outcome, used llm.Totals, pc *collect.ProjectContext) publish.Run {
-	run := publish.Run{
-		Mode:           mode.Name(),
-		Scope:          mode.Scope().String(),
-		Version:        mode.Version(),
-		Units:          units,
-		Published:      outcome.published,
-		Overflow:       outcome.overflow,
-		Unjudged:       outcome.unjudged,
-		Repeated:       outcome.repeated,
-		Verdicts:       outcome.verdicts,
-		Discarded:      outcome.discarded,
-		FPModel:        outcome.fpModel,
-		Usage:          used.Usage,
-		Cost:           used.Cost,
-		CostIncomplete: used.UnpricedCalls > 0,
-	}
+// completeRun adds to a run what the units cost and how each one ended. The notes come in this
+// order: those of the project context, those of the findings, then those of the units.
+func completeRun(run *publish.Run, results []UnitResult, used llm.Totals, pc *collect.ProjectContext) {
+	run.Usage = used.Usage
+	run.Cost = used.Cost
+	run.CostIncomplete = used.UnpricedCalls > 0
 	if pc != nil {
-		run.Notes = append(run.Notes, pc.Notes...)
+		run.Notes = append(slices.Clone(pc.Notes), run.Notes...)
 	}
-	run.Notes = append(run.Notes, outcome.notes...)
-	for _, u := range units {
+	for _, u := range run.Units {
 		for _, note := range u.Notes {
 			if !slices.Contains(run.Notes, note) {
 				run.Notes = append(run.Notes, note)
@@ -310,7 +319,6 @@ func newRun(mode modes.Mode, units []collect.ReviewUnit, results []UnitResult, o
 		}
 		run.Statuses = append(run.Statuses, publish.UnitStatus{Hash: r.Hash, Status: status})
 	}
-	return run
 }
 
 func publishRun(ctx context.Context, p provider.Provider, opts Options, self string, mode modes.Mode, run publish.Run) error {
@@ -381,22 +389,10 @@ const defaultFPModel = "claude-opus-5-5"
 // a mode may publish, so that it can still discard some and be replaced by others
 const fpInputFactor = 3
 
-// outcome is what remains of the findings of a mode once filtered
-type outcome struct {
-	published, overflow []findings.Finding
-	// unjudged were cut before the false positive filter
-	unjudged []findings.Finding
-	// repeated are the findings of a previous run that are still true
-	repeated  []findings.Finding
-	verdicts  []findings.Verdict
-	discarded int
-	fpModel   string
-	notes     []string
-}
-
-// settleFindings applies the policy of a mode to what its units reported: thresholds, findings
-// already reported by a previous run, false positive filter, then the cap on what is published
-func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, results []UnitResult, index *state.Index) outcome {
+// settleFindings applies the policy of a mode to what its units reported and records the result
+// in run: thresholds, findings already reported by a previous run, false positive filter, then
+// the cap on what is published
+func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, results []UnitResult, index *state.Index, run *publish.Run) {
 	var all []findings.Finding
 	units := make(map[string]collect.ReviewUnit)
 	for _, r := range results {
@@ -415,16 +411,14 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 	if index != nil {
 		seen, previous = index.ReportedFindings(mode.Name())
 	}
-	all, repeated := findings.Dedup(all, seen)
+	all, run.Repeated = findings.Dedup(all, seen)
 
 	// Only the most severe findings are worth a call to the strongest model: the others could
 	// not be published anyway
-	var unjudged []findings.Finding
 	if policy.MaxPublished > 0 {
-		all, unjudged = findings.Cap(all, fpInputFactor*policy.MaxPublished)
+		all, run.Unjudged = findings.Cap(all, fpInputFactor*policy.MaxPublished)
 	}
 
-	var out outcome
 	if fp := policy.FalsePositive; fp != nil && len(all) > 0 {
 		cfg := *fp
 		if cfg.Model == "" && client.Backend() == "anthropic" {
@@ -434,27 +428,24 @@ func settleFindings(ctx context.Context, client llm.Client, mode modes.Mode, res
 		kept, verdicts, err := findings.FilterFalsePositives(ctx, client, cfg, units, previous, all)
 		if err != nil {
 			fmt.Printf("Warning: %v, the findings of %s are published unfiltered\n", err, mode.Name())
-			out.notes = append(out.notes, fmt.Sprintf("The false positive filter failed, the findings were not filtered: %v", err))
+			run.Notes = append(run.Notes, fmt.Sprintf("The false positive filter failed, the findings were not filtered: %v", err))
 		} else {
 			for _, v := range verdicts {
 				if !v.Keep {
 					fmt.Printf("Discarded as a false positive: %s (%s)\n", oneLine(all[v.ID].Title), oneLine(v.Reason))
 				}
 			}
-			out.verdicts = verdicts
-			out.discarded = len(all) - len(kept)
-			out.fpModel = cfg.Model
+			run.Verdicts = verdicts
+			run.Discarded = len(all) - len(kept)
+			run.FPModel = cfg.Model
 			all = kept
 		}
 	}
 
-	out.published = all
+	run.Published = all
 	if policy.MaxPublished > 0 {
-		out.published, out.overflow = findings.Cap(all, policy.MaxPublished)
+		run.Published, run.Overflow = findings.Cap(all, policy.MaxPublished)
 	}
-	out.unjudged = unjudged
-	out.repeated = repeated
-	return out
 }
 
 func oneLine(s string) string {

@@ -15,6 +15,7 @@ import (
 	"github.com/iq2i/ainspector/internal/modes/quality"
 	"github.com/iq2i/ainspector/internal/modes/security"
 	"github.com/iq2i/ainspector/internal/provider"
+	"github.com/iq2i/ainspector/internal/publish"
 	"github.com/iq2i/ainspector/internal/state"
 )
 
@@ -64,16 +65,16 @@ func TestSettleFindings_ThresholdDedupFilterAndCap(t *testing.T) {
 	index := state.LoadIndex([]provider.ExistingComment{{Author: "bot", Body: block}}, "bot")
 	client := &scriptedClient{backend: "anthropic", reply: `{"verdicts":[{"id":0,"keep":true,"reason":"r"},{"id":1,"keep":false,"reason":"generic"},{"id":2,"keep":true,"reason":"r"}]}`}
 
-	got := settleFindings(context.Background(), client, securityMode(1, ""), results, index)
+	got := settle(context.Background(), client, securityMode(1, ""), results, index)
 
-	if len(got.published) != 1 || got.published[0].Fingerprint != "aaaaaaaaaaaa" {
-		t.Errorf("published %+v", got.published)
+	if len(got.Published) != 1 || got.Published[0].Fingerprint != "aaaaaaaaaaaa" {
+		t.Errorf("published %+v", got.Published)
 	}
-	if len(got.overflow) != 1 || got.overflow[0].Fingerprint != "ffffffffffff" {
-		t.Errorf("overflow %+v", got.overflow)
+	if len(got.Overflow) != 1 || got.Overflow[0].Fingerprint != "ffffffffffff" {
+		t.Errorf("overflow %+v", got.Overflow)
 	}
-	if got.discarded != 1 || got.fpModel != "claude-opus-5-5" {
-		t.Errorf("discarded %d by %q", got.discarded, got.fpModel)
+	if got.Discarded != 1 || got.FPModel != "claude-opus-5-5" {
+		t.Errorf("discarded %d by %q", got.Discarded, got.FPModel)
 	}
 	if client.request.Model != "claude-opus-5-5" {
 		t.Errorf("the filter must use the stronger model on the anthropic backend, got %q", client.request.Model)
@@ -94,30 +95,30 @@ func TestSettleFindings_FilterOnlyJudgesTheMostSevere(t *testing.T) {
 	}
 	client := &scriptedClient{backend: "anthropic", reply: `{"verdicts":[{"id":0,"keep":false,"reason":"r"}]}`}
 
-	got := settleFindings(context.Background(), client, securityMode(2, ""), settleResults(fs...), nil)
+	got := settle(context.Background(), client, securityMode(2, ""), settleResults(fs...), nil)
 
 	// 2 published x 3 = 6 judged, the 2 least severe go straight to the overflow
 	prompt := client.request.Messages[0].Content
 	if !strings.Contains(prompt, "id 5:") || strings.Contains(prompt, "id 6:") {
 		t.Errorf("the filter must receive 6 findings:\n%s", prompt)
 	}
-	if len(got.published) != 2 || got.discarded != 1 {
-		t.Errorf("published %d, discarded %d", len(got.published), got.discarded)
+	if len(got.Published) != 2 || got.Discarded != 1 {
+		t.Errorf("published %d, discarded %d", len(got.Published), got.Discarded)
 	}
-	if len(got.overflow) != 3 || len(got.unjudged) != 2 {
-		t.Errorf("3 judged findings left over and 2 never judged, got %d in overflow and %d unjudged", len(got.overflow), len(got.unjudged))
+	if len(got.Overflow) != 3 || len(got.Unjudged) != 2 {
+		t.Errorf("3 judged findings left over and 2 never judged, got %d in overflow and %d unjudged", len(got.Overflow), len(got.Unjudged))
 	}
 }
 
 func TestSettleFindings_FilterModelOnOtherBackends(t *testing.T) {
 	client := &scriptedClient{backend: "openai", reply: `{"verdicts":[]}`}
-	got := settleFindings(context.Background(), client, securityMode(5, ""), settleResults(finding("aaaaaaaaaaaa", findings.SeverityHigh, 0.9)), nil)
-	if client.request.Model != "" || got.fpModel != "" || len(got.published) != 1 {
+	got := settle(context.Background(), client, securityMode(5, ""), settleResults(finding("aaaaaaaaaaaa", findings.SeverityHigh, 0.9)), nil)
+	if client.request.Model != "" || got.FPModel != "" || len(got.Published) != 1 {
 		t.Errorf("an openai-compatible backend keeps its default model, got %q / %+v", client.request.Model, got)
 	}
 
 	client = &scriptedClient{backend: "anthropic", reply: `{"verdicts":[]}`}
-	settleFindings(context.Background(), client, securityMode(5, "my-model"), settleResults(finding("aaaaaaaaaaaa", findings.SeverityHigh, 0.9)), nil)
+	settle(context.Background(), client, securityMode(5, "my-model"), settleResults(finding("aaaaaaaaaaaa", findings.SeverityHigh, 0.9)), nil)
 	if client.request.Model != "my-model" {
 		t.Errorf("the configured model wins, got %q", client.request.Model)
 	}
@@ -127,20 +128,20 @@ func TestSettleFindings_FilterFailureKeepsEverything(t *testing.T) {
 	client := &scriptedClient{backend: "anthropic", err: errors.New("budget")}
 	results := settleResults(finding("aaaaaaaaaaaa", findings.SeverityHigh, 0.9), finding("bbbbbbbbbbbb", findings.SeverityMedium, 0.9), finding("cccccccccccc", findings.SeverityLow, 0.9))
 
-	got := settleFindings(context.Background(), client, securityMode(2, ""), results, nil)
+	got := settle(context.Background(), client, securityMode(2, ""), results, nil)
 
-	if len(got.published) != 2 || len(got.overflow) != 1 || got.discarded != 0 {
+	if len(got.Published) != 2 || len(got.Overflow) != 1 || got.Discarded != 0 {
 		t.Errorf("findings must be kept and still capped: %+v", got)
 	}
-	if len(got.notes) != 1 || !strings.Contains(got.notes[0], "false positive filter failed") {
-		t.Errorf("the summary must say the filter did not run: %v", got.notes)
+	if len(got.Notes) != 1 || !strings.Contains(got.Notes[0], "false positive filter failed") {
+		t.Errorf("the summary must say the filter did not run: %v", got.Notes)
 	}
 }
 
 func TestSettleFindings_NoFilterCallWithoutFindings(t *testing.T) {
 	client := &scriptedClient{backend: "anthropic"}
-	got := settleFindings(context.Background(), client, securityMode(5, ""), settleResults(), nil)
-	if client.request != nil || len(got.published) != 0 {
+	got := settle(context.Background(), client, securityMode(5, ""), settleResults(), nil)
+	if client.request != nil || len(got.Published) != 0 {
 		t.Errorf("no call expected, got %+v", got)
 	}
 }
@@ -153,8 +154,8 @@ func TestSettleFindings_QualityIsLeftUntouched(t *testing.T) {
 	}
 	client := &scriptedClient{backend: "anthropic"}
 
-	got := settleFindings(context.Background(), client, quality.New("", nil), settleResults(fs...), nil)
-	if len(got.published) != 3 || got.published[0].File != "z.go" || got.published[2].File != "m.go" || got.overflow != nil || client.request != nil {
+	got := settle(context.Background(), client, quality.New("", nil), settleResults(fs...), nil)
+	if len(got.Published) != 3 || got.Published[0].File != "z.go" || got.Published[2].File != "m.go" || got.Overflow != nil || client.request != nil {
 		t.Errorf("unexpected outcome %+v", got)
 	}
 }
@@ -309,4 +310,11 @@ func TestRun_QualityAndSecurityShareTheUnits(t *testing.T) {
 	if notes := h.fake.noteBodies(); len(notes) != 2 || !strings.Contains(notes[0], "ainspector:summary:quality") || !strings.Contains(notes[1], "ainspector:summary:security") {
 		t.Errorf("each mode keeps its own summary:\n%v", notes)
 	}
+}
+
+// settle runs settleFindings on a fresh run and returns it
+func settle(ctx context.Context, client llm.Client, mode modes.Mode, results []UnitResult, index *state.Index) publish.Run {
+	var run publish.Run
+	settleFindings(ctx, client, mode, results, index, &run)
+	return run
 }

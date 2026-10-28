@@ -7,9 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/iq2i/ainspector/internal/collect"
-	"github.com/iq2i/ainspector/internal/state"
 )
 
 type qualityEntry struct {
@@ -309,20 +306,5 @@ func TestRun_ReportPathOutsideTheDirectoryFailsTheRunButNotTheReview(t *testing.
 	}
 	if _, statErr := os.Stat(filepath.Join(filepath.Dir(h.reportDir), "cq.json")); statErr == nil {
 		t.Error("nothing may be written outside the directory")
-	}
-}
-
-func TestSkippedHashes_CarryTheCurrentStartLine(t *testing.T) {
-	mode := securityMode(5, "")
-	unit := func(name string, start int) collect.ReviewUnit {
-		return collect.ReviewUnit{Kind: collect.KindFunction, FilePath: "a.php", Name: name, Content: name, StartLine: start}
-	}
-	candidates := []collect.ReviewUnit{unit("show", 40), unit("edit", 70)}
-	toReview := candidates[1:]
-
-	got := skippedHashes(mode, "", candidates, toReview)
-	want := state.UnitHash(mode, candidates[0], "")
-	if len(got) != 1 || got[want] != 40 {
-		t.Errorf("expected the skipped unit at its current line, got %v", got)
 	}
 }

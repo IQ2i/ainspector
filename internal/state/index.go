@@ -281,13 +281,17 @@ func (ix *Index) IsReviewed(m ModeKey, rulesDigest string, u collect.ReviewUnit)
 	return false
 }
 
-// FilterUnreviewed returns only the units that were not reviewed yet
-func (ix *Index) FilterUnreviewed(m ModeKey, rulesDigest string, units []collect.ReviewUnit) []collect.ReviewUnit {
-	var result []collect.ReviewUnit
+// Partition splits the units of a mode into those that were not reviewed yet and those that
+// were. The latter come as a map from their hash to the line where each starts now, which is
+// what OpenFindings needs to follow a unit that moved.
+func (ix *Index) Partition(m ModeKey, rulesDigest string, units []collect.ReviewUnit) (toReview []collect.ReviewUnit, skipped map[string]int) {
+	skipped = make(map[string]int)
 	for _, u := range units {
-		if !ix.IsReviewed(m, rulesDigest, u) {
-			result = append(result, u)
+		if ix.IsReviewed(m, rulesDigest, u) {
+			skipped[UnitHash(m, u, rulesDigest)] = u.StartLine
+		} else {
+			toReview = append(toReview, u)
 		}
 	}
-	return result
+	return toReview, skipped
 }
