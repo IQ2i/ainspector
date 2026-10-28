@@ -329,3 +329,38 @@ func TestParsePatch_BlankDeletionsAreNotSignals(t *testing.T) {
 		t.Errorf("DeletedAt = %v, want only the non-blank removal", m.DeletedAt)
 	}
 }
+
+func TestOldLine(t *testing.T) {
+	patch := "@@ -3,5 +3,5 @@\n context3\n-removed\n+added4\n context5\n context6\n@@ -20,2 +20,3 @@\n context20\n+added21\n context22"
+	tests := []struct {
+		name      string
+		line      int
+		old       int
+		added     bool
+		wantFound bool
+	}{
+		{"context line before the change", 3, 3, false, true},
+		{"added line", 4, 0, true, true},
+		{"context line after the change", 5, 5, false, true},
+		{"last context line of the first hunk", 6, 6, false, true},
+		{"line between the hunks", 10, 0, false, false},
+		{"context line of the second hunk", 20, 20, false, true},
+		{"added line of the second hunk", 21, 0, true, true},
+		{"context line after the second hunk's addition", 22, 21, false, true},
+		{"line past the diff", 30, 0, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old, added, found := OldLine(patch, tt.line)
+			if old != tt.old || added != tt.added || found != tt.wantFound {
+				t.Errorf("OldLine(%d) = %d, %v, %v; want %d, %v, %v", tt.line, old, added, found, tt.old, tt.added, tt.wantFound)
+			}
+		})
+	}
+	if _, _, found := OldLine("", 1); found {
+		t.Error("an empty patch shows no line")
+	}
+	if _, _, found := OldLine("not a diff", 1); found {
+		t.Error("an unparsable patch shows no line")
+	}
+}

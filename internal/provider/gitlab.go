@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/iq2i/ainspector/internal/diff"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
@@ -58,6 +59,23 @@ func (p *GitLabProvider) GetChangeInfo(ctx context.Context, number int) (ChangeI
 	return info, nil
 }
 
+// listDiffs returns the diffs of every file of a merge request, page after page
+func (p *GitLabProvider) listDiffs(ctx context.Context, number int) ([]*gitlab.MergeRequestDiff, error) {
+	var all []*gitlab.MergeRequestDiff
+	opts := &gitlab.ListMergeRequestDiffsOptions{ListOptions: gitlab.ListOptions{PerPage: 100, Page: 1}}
+	for {
+		diffs, resp, err := p.client.MergeRequests.ListMergeRequestDiffs(p.projectID, int64(number), opts, gitlab.WithContext(ctx))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get MR diffs: %w", err)
+		}
+		all = append(all, diffs...)
+		if resp.NextPage == 0 {
+			return all, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
 // GetModifiedFiles returns all files modified in a merge request
 func (p *GitLabProvider) GetModifiedFiles(ctx context.Context, number int) ([]ModifiedFile, error) {
 	if p.client == nil {
@@ -73,26 +91,9 @@ func (p *GitLabProvider) GetModifiedFiles(ctx context.Context, number int) ([]Mo
 	}
 	p.headSHA = mr.SHA
 
-	// Get MR diffs with pagination
-	var allDiffs []*gitlab.MergeRequestDiff
-	opts := &gitlab.ListMergeRequestDiffsOptions{
-		ListOptions: gitlab.ListOptions{
-			PerPage: 100,
-			Page:    1,
-		},
-	}
-
-	for {
-		diffs, resp, err := p.client.MergeRequests.ListMergeRequestDiffs(p.projectID, mrNumber, opts, gitlab.WithContext(ctx))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get MR diffs: %w", err)
-		}
-		allDiffs = append(allDiffs, diffs...)
-
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
+	allDiffs, err := p.listDiffs(ctx, number)
+	if err != nil {
+		return nil, err
 	}
 
 	// Convert to ModifiedFile
@@ -200,7 +201,33 @@ func (p *GitLabProvider) CreateReview(ctx context.Context, number int, comments 
 		}
 		return results, nil
 	}
+
+	// GitLab positions a comment on a line of the diff: a line the change did not touch needs its
+	// number in the old file as well, and a line no hunk shows cannot be positioned at all
+	files := make(map[string]*gitlab.MergeRequestDiff)
+	if diffs, err := p.listDiffs(ctx, number); err != nil {
+		fmt.Printf("Warning: %v, comments are positioned on the new file only\n", err)
+	} else {
+		for _, d := range diffs {
+			files[d.NewPath] = d
+		}
+	}
+
 	for _, c := range comments {
+		var oldLine *int64
+		var oldPath *string
+		if file, ok := files[c.Path]; ok {
+			old, added, found := diff.OldLine(file.Diff, c.Line)
+			if !found {
+				results = append(results, CommentResult{Comment: c, Err: errors.New("the line is outside the hunks of the diff")})
+				continue
+			}
+			if !added {
+				o := int64(old)
+				oldLine, oldPath = &o, &file.OldPath
+			}
+		}
+
 		body := c.Body
 		if c.Suggestion != "" {
 			below := 0
@@ -220,6 +247,8 @@ func (p *GitLabProvider) CreateReview(ctx context.Context, number int, comments 
 				PositionType: gitlab.Ptr("text"),
 				NewPath:      gitlab.Ptr(c.Path),
 				NewLine:      &line,
+				OldPath:      oldPath,
+				OldLine:      oldLine,
 			},
 		}
 
